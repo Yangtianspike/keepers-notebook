@@ -1,10 +1,11 @@
 "use client";
 
-import { ensureChunkIndex } from "./retrieval";
+import { ensureChunkIndex, hashPages } from "./retrieval";
 import { loadVectorSpace, saveVectorSpace } from "./storage";
 import type { EmbeddingCapability, ModelConfig, Project } from "./types";
 
 type VectorRecord = { chunkId: string; vector: number[] };
+type VectorSpace = { textHash: string; records: VectorRecord[] };
 
 function namespace(projectId: string, capability: EmbeddingCapability) {
   return `${projectId}:${capability.model}:${capability.dimensions}`;
@@ -67,7 +68,9 @@ export async function ensureVectorIndex(
   apiKey: string,
 ): Promise<void> {
   const key = namespace(project.id, capability);
-  if (await loadVectorSpace<VectorRecord[]>(key)) return;
+  const textHash = hashPages(project.pages);
+  const existing = await loadVectorSpace<VectorSpace>(key);
+  if (existing?.textHash === textHash) return;
   const chunks = await ensureChunkIndex(project);
   const records: VectorRecord[] = [];
   for (let index = 0; index < chunks.length; index += 32) {
@@ -84,7 +87,7 @@ export async function ensureVectorIndex(
       records.push({ chunkId: chunk.id, vector: vectors[vectorIndex] }),
     );
   }
-  await saveVectorSpace(key, records);
+  await saveVectorSpace(key, { textHash, records } satisfies VectorSpace);
 }
 
 export async function vectorSearch(
@@ -93,9 +96,10 @@ export async function vectorSearch(
   queryVector: number[],
   k: number,
 ) {
-  const records = await loadVectorSpace<VectorRecord[]>(
+  const space = await loadVectorSpace<VectorSpace>(
     namespace(project.id, capability),
   );
+  const records = space?.textHash === hashPages(project.pages) ? space.records : [];
   if (!records?.length) return [];
   const chunks = await ensureChunkIndex(project);
   const chunkById = new Map(chunks.map((chunk) => [chunk.id, chunk]));

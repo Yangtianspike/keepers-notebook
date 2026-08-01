@@ -43,6 +43,7 @@ export async function layoutWithElk(
     layoutOptions: {
       "elk.algorithm": "layered",
       "elk.direction": "RIGHT",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN",
       "elk.layered.spacing.nodeNodeBetweenLayers": "240",
       "elk.spacing.nodeNode": "130",
     },
@@ -136,9 +137,11 @@ export function filterClueView(
   options: {
     importance?: Clue["importance"][];
     targetTypes?: Clue["targets"][number]["type"][];
+    focusId?: string;
+    depth?: 1 | 2;
   },
 ) {
-  return clues.filter(
+  const filtered = clues.filter(
     (clue) =>
       (!options.importance?.length ||
         options.importance.includes(clue.importance)) &&
@@ -147,4 +150,13 @@ export function filterClueView(
           options.targetTypes!.includes(target.type),
         )),
   );
+  if (!options.focusId || !options.depth) return filtered;
+  const edges = filtered.flatMap((clue) =>
+    clue.targets.map((target) => ({
+      source: clue.id,
+      target: `${target.type}:${target.id || target.label}`,
+    })),
+  );
+  const visible = computeNeighborhood(options.focusId, edges, options.depth);
+  return filtered.filter((clue) => visible.has(clue.id));
 }

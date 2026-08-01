@@ -12,18 +12,20 @@ export function AtlasMapView({
   project,
   onUpdate,
   onOpenSource,
+  onOpenClue,
 }: {
   project: Project;
   onUpdate: (project: Project) => void;
   onOpenSource: (source: SourceRef) => void;
+  onOpenClue: (clueId: string) => void;
 }) {
   const [selectedMapId, setSelectedMapId] = useState(
     project.analysis.maps[0]?.id ?? "",
   );
   const [placingPlaceId, setPlacingPlaceId] = useState<string | null>(null);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState("");
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const [loadedImage, setLoadedImage] = useState({ mapId: "", url: "" });
+  const imageStageRef = useRef<HTMLDivElement>(null);
   const selectedMap = project.analysis.maps.find(
     (map) => map.id === selectedMapId,
   );
@@ -32,14 +34,16 @@ export function AtlasMapView({
   );
   useEffect(() => {
     let url = "";
+    let cancelled = false;
     if (!selectedMap) return;
     loadSourceFile(selectedMap.imageKey).then((blob) => {
-      if (blob) {
+      if (blob && !cancelled) {
         url = URL.createObjectURL(blob);
-        setImageUrl(url);
+        setLoadedImage({ mapId: selectedMap.id, url });
       }
     });
     return () => {
+      cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
   }, [selectedMap]);
@@ -83,14 +87,14 @@ export function AtlasMapView({
     setSelectedPlaceId(place.id);
   };
   const pointFor = (clientX: number, clientY: number) => {
-    const rect = canvasRef.current!.getBoundingClientRect();
+    const rect = imageStageRef.current!.getBoundingClientRect();
     return {
       x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
       y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
     };
   };
   const placeMarker = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!placingPlaceId || !selectedMap || !canvasRef.current) return;
+    if (!placingPlaceId || !selectedMap || !imageStageRef.current) return;
     const { x, y } = pointFor(event.clientX, event.clientY);
     save({
       markers: [
@@ -124,6 +128,46 @@ export function AtlasMapView({
         : [],
     [project.analysis.clues, selectedPlace],
   );
+  const relatedTargets = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          related
+            .flatMap((clue) => clue.targets)
+            .filter(
+              (target) =>
+                target.type !== "place" || target.id !== selectedPlace?.id,
+            )
+            .map((target) => [
+              `${target.type}:${target.id || target.label}`,
+              target,
+            ]),
+        ).values(),
+      ),
+    [related, selectedPlace],
+  );
+  const mergePlace = (targetId: string) => {
+    if (!selectedPlace || targetId === selectedPlace.id) return;
+    save({
+      places: project.analysis.places.filter(
+        (place) => place.id !== selectedPlace.id,
+      ),
+      markers: project.analysis.markers.map((marker) =>
+        marker.placeId === selectedPlace.id
+          ? { ...marker, placeId: targetId }
+          : marker,
+      ),
+      clues: project.analysis.clues.map((clue) => ({
+        ...clue,
+        targets: clue.targets.map((target) =>
+          target.type === "place" && target.id === selectedPlace.id
+            ? { ...target, id: targetId }
+            : target,
+        ),
+      })),
+    });
+    setSelectedPlaceId(targetId);
+  };
   return (
     <div className="atlas-map-view">
       <header className="content-header">
@@ -157,77 +201,109 @@ export function AtlasMapView({
             </button>
           ))}
           {selectedMap && (
-            <button
-              className="text-button"
-              onClick={async () => {
-                await deleteSourceFile(selectedMap.imageKey);
-                save({
-                  maps: project.analysis.maps.filter(
-                    (map) => map.id !== selectedMap.id,
-                  ),
-                  markers: project.analysis.markers.filter(
-                    (marker) => marker.mapId !== selectedMap.id,
-                  ),
-                });
-                setSelectedMapId("");
-              }}
-            >
-              删除地图
-            </button>
+            <>
+              <label className="field compact-field">
+                <span>地图名称</span>
+                <input
+                  value={selectedMap.name}
+                  onChange={(event) =>
+                    save({
+                      maps: project.analysis.maps.map((map) =>
+                        map.id === selectedMap.id
+                          ? { ...map, name: event.target.value }
+                          : map,
+                      ),
+                    })
+                  }
+                />
+              </label>
+              <button
+                className="text-button"
+                onClick={async () => {
+                  await deleteSourceFile(selectedMap.imageKey);
+                  save({
+                    maps: project.analysis.maps.filter(
+                      (map) => map.id !== selectedMap.id,
+                    ),
+                    markers: project.analysis.markers.filter(
+                      (marker) => marker.mapId !== selectedMap.id,
+                    ),
+                  });
+                  setSelectedMapId("");
+                }}
+              >
+                删除地图
+              </button>
+            </>
           )}
         </aside>
-        <section className="atlas-canvas" ref={canvasRef} onClick={placeMarker}>
-          {imageUrl ? (
-            <img
-              /* eslint-disable-line @next/next/no-img-element */ src={imageUrl}
-              alt={selectedMap?.name ?? "地图"}
-            />
+        <section className="atlas-canvas">
+          {loadedImage.mapId === selectedMapId && loadedImage.url ? (
+            <div
+              className="atlas-image-stage"
+              ref={imageStageRef}
+              onClick={placeMarker}
+              style={{
+                aspectRatio: selectedMap
+                  ? `${selectedMap.width} / ${selectedMap.height}`
+                  : undefined,
+              }}
+            >
+              {/* User-provided maps are local object URLs, so next/image cannot optimize them. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={loadedImage.url}
+                alt={selectedMap?.name ?? "地图"}
+              />
+              {selectedMap &&
+                project.analysis.markers
+                  .filter((marker) => marker.mapId === selectedMap.id)
+                  .map((marker) => {
+                    const place = project.analysis.places.find(
+                      (item) => item.id === marker.placeId,
+                    );
+                    return place ? (
+                      <button
+                        draggable
+                        key={marker.id}
+                        className="map-marker"
+                        style={{
+                          left: `${marker.x * 100}%`,
+                          top: `${marker.y * 100}%`,
+                        }}
+                        onDragEnd={(event) => {
+                          const point = pointFor(event.clientX, event.clientY);
+                          save({
+                            markers: project.analysis.markers.map((item) =>
+                              item.id === marker.id
+                                ? { ...item, ...point }
+                                : item,
+                            ),
+                          });
+                        }}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          save({
+                            markers: project.analysis.markers.filter(
+                              (item) => item.id !== marker.id,
+                            ),
+                          });
+                        }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedPlaceId(place.id);
+                        }}
+                      >
+                        ●<span>{place.name}</span>
+                      </button>
+                    ) : null;
+                  })}
+              {placingPlaceId && (
+                <b className="map-placement-tip">点击地图放置地点</b>
+              )}
+            </div>
           ) : (
             <p>选择或上传一张地图。</p>
-          )}
-          {selectedMap &&
-            project.analysis.markers
-              .filter((marker) => marker.mapId === selectedMap.id)
-              .map((marker) => {
-                const place = project.analysis.places.find(
-                  (item) => item.id === marker.placeId,
-                );
-                return place ? (
-                  <button
-                    draggable
-                    key={marker.id}
-                    className="map-marker"
-                    style={{
-                      left: `${marker.x * 100}%`,
-                      top: `${marker.y * 100}%`,
-                    }}
-                    onDragEnd={(event) => {
-                      const point = pointFor(event.clientX, event.clientY);
-                      save({
-                        markers: project.analysis.markers.map((item) =>
-                          item.id === marker.id ? { ...item, ...point } : item,
-                        ),
-                      });
-                    }}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      save({
-                        markers: project.analysis.markers.filter(
-                          (item) => item.id !== marker.id,
-                        ),
-                      });
-                    }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedPlaceId(place.id);
-                    }}
-                  >
-                    ●<span>{place.name}</span>
-                  </button>
-                ) : null;
-              })}
-          {placingPlaceId && (
-            <b className="map-placement-tip">点击地图放置地点</b>
           )}
         </section>
         <aside className="atlas-side">
@@ -266,6 +342,16 @@ export function AtlasMapView({
                     ),
                   })
                 }
+                onBlur={() => {
+                  if (selectedPlace.name.trim()) return;
+                  save({
+                    places: project.analysis.places.map((place) =>
+                      place.id === selectedPlace.id
+                        ? { ...place, name: "新地点" }
+                        : place,
+                    ),
+                  });
+                }}
               />
               <textarea
                 value={selectedPlace.summary}
@@ -279,17 +365,80 @@ export function AtlasMapView({
                   })
                 }
               />
+              <label className="field compact-field">
+                <span>别名（用逗号分隔）</span>
+                <input
+                  value={selectedPlace.aliases.join("，")}
+                  onChange={(event) =>
+                    save({
+                      places: project.analysis.places.map((place) =>
+                        place.id === selectedPlace.id
+                          ? {
+                              ...place,
+                              aliases: event.target.value
+                                .split(/[,，]/)
+                                .map((alias) => alias.trim())
+                                .filter(Boolean),
+                            }
+                          : place,
+                      ),
+                    })
+                  }
+                />
+              </label>
               <button
                 className="primary-button compact"
                 onClick={() => setPlacingPlaceId(selectedPlace.id)}
               >
                 在地图打点
               </button>
+              {project.analysis.places.length > 1 && (
+                <select
+                  defaultValue=""
+                  onChange={(event) => mergePlace(event.target.value)}
+                >
+                  <option value="" disabled>
+                    合并到其他地点…
+                  </option>
+                  {project.analysis.places
+                    .filter((place) => place.id !== selectedPlace.id)
+                    .map((place) => (
+                      <option key={place.id} value={place.id}>
+                        {place.name}
+                      </option>
+                    ))}
+                </select>
+              )}
               <small>拖动标记可调整位置，右键可删除。</small>
               <h4>关联线索</h4>
               {related.map((clue) => (
-                <p key={clue.id}>{clue.name}</p>
+                <button
+                  className="text-button"
+                  key={clue.id}
+                  onClick={() => onOpenClue(clue.id)}
+                >
+                  {clue.name} →
+                </button>
               ))}
+              {relatedTargets.length > 0 && (
+                <>
+                  <h4>关联人物 / 事件 / 真相</h4>
+                  <div className="place-related-targets">
+                    {relatedTargets.map((target) => (
+                      <span key={`${target.type}:${target.id || target.label}`}>
+                        {target.type === "person"
+                          ? "人物"
+                          : target.type === "event"
+                            ? "事件"
+                            : target.type === "truth"
+                              ? "真相"
+                              : "地点"}
+                        ：{target.label}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
               {selectedPlace.sources.map((source, index) => (
                 <button
                   className="text-button"
