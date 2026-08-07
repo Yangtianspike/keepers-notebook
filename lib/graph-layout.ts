@@ -31,6 +31,32 @@ export function partitionRelationsByPeople(
   return { accepted, unresolved };
 }
 
+export function selectRelationshipPeople(
+  people: Person[],
+  relations: Relation[],
+  limit = 18,
+) {
+  const degree = new Map<string, number>();
+  relations.forEach((relation) => {
+    degree.set(relation.sourceId, (degree.get(relation.sourceId) ?? 0) + 1);
+    degree.set(relation.targetId, (degree.get(relation.targetId) ?? 0) + 1);
+  });
+  const importanceScore = (person: Person) =>
+    person.importance === "core"
+      ? 3
+      : person.importance === "important"
+        ? 2
+        : 1;
+  const visible = [...people]
+    .sort(
+      (a, b) =>
+        importanceScore(b) - importanceScore(a) ||
+        (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0),
+    )
+    .slice(0, limit);
+  return { visible, hiddenCount: Math.max(0, people.length - visible.length) };
+}
+
 export async function layoutWithElk(
   input: ElkGraphInput,
 ): Promise<Map<string, { x: number; y: number }>> {

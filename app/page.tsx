@@ -37,6 +37,7 @@ import {
   filterRelationshipView,
   layoutWithElk,
   partitionRelationsByPeople,
+  selectRelationshipPeople,
 } from "@/lib/graph-layout";
 import { AtlasMapView } from "@/app/components/atlas-map";
 import {
@@ -1108,26 +1109,10 @@ function RelationshipGraph({
     "inference",
     "conflict",
   ]);
-  const basePeople = useMemo(() => {
-    const degree = new Map<string, number>();
-    relations.forEach((relation) => {
-      degree.set(relation.sourceId, (degree.get(relation.sourceId) ?? 0) + 1);
-      degree.set(relation.targetId, (degree.get(relation.targetId) ?? 0) + 1);
-    });
-    const importanceScore = (person: Person) =>
-      person.importance === "core"
-        ? 3
-        : person.importance === "important"
-          ? 2
-          : 1;
-    return [...people]
-      .sort(
-        (a, b) =>
-          importanceScore(b) - importanceScore(a) ||
-          (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0),
-      )
-      .slice(0, 18);
-  }, [people, relations]);
+  const { visible: basePeople, hiddenCount: hiddenPeopleCount } = useMemo(
+    () => selectRelationshipPeople(people, relations),
+    [people, relations],
+  );
   const { visiblePeople, visibleRelations } = useMemo(
     () =>
       filterRelationshipView(basePeople, relations, {
@@ -1367,6 +1352,9 @@ function RelationshipGraph({
 
   return (
     <div className="graph-shell">
+      {hiddenPeopleCount > 0 && (
+        <div className="notice warning">还有 {hiddenPeopleCount} 人未显示</div>
+      )}
       <div className="graph-toolbar">
         <label>
           <input
