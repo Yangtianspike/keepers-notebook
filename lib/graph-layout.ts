@@ -11,6 +11,26 @@ export type ElkGraphInput = {
   edges: Array<{ id: string; source: string; target: string }>;
 };
 
+export function partitionRelationsByPeople(
+  relations: Relation[],
+  peopleIds: Iterable<string>,
+) {
+  const validPeople = new Set(peopleIds);
+  const accepted: Relation[] = [];
+  const unresolved: Relation[] = [];
+  relations.forEach((relation) => {
+    const endpointsRecognized =
+      validPeople.has(relation.sourceId) &&
+      validPeople.has(relation.targetId);
+    if (!endpointsRecognized) {
+      unresolved.push(relation);
+      return;
+    }
+    if (relation.sourceId !== relation.targetId) accepted.push(relation);
+  });
+  return { accepted, unresolved };
+}
+
 export async function layoutWithElk(
   input: ElkGraphInput,
 ): Promise<Map<string, { x: number; y: number }>> {

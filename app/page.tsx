@@ -36,6 +36,7 @@ import {
   filterClueView,
   filterRelationshipView,
   layoutWithElk,
+  partitionRelationsByPeople,
 } from "@/lib/graph-layout";
 import { AtlasMapView } from "@/app/components/atlas-map";
 import {
@@ -1571,6 +1572,11 @@ function RelationsView({
           </p>
         </div>
       </header>
+      {project.analysis.unresolvedRelationCount > 0 && (
+        <div className="notice warning">
+          {project.analysis.unresolvedRelationCount} 条关系因端点未识别被搁置
+        </div>
+      )}
       <RelationshipGraph
         people={project.analysis.people}
         relations={project.analysis.relations}
@@ -2941,6 +2947,8 @@ function hydrateProject(project: Project): Project {
       activityLog: project.analysis.activityLog ?? [],
       relationshipLayout: project.analysis.relationshipLayout ?? {},
       clueLayout: project.analysis.clueLayout ?? {},
+      unresolvedRelationCount:
+        project.analysis.unresolvedRelationCount ?? 0,
       places: project.analysis.places ?? [],
       maps: project.analysis.maps ?? [],
       markers: project.analysis.markers ?? [],
@@ -3387,14 +3395,9 @@ export default function Home() {
         }
       }
       if (stage === "relations" && Array.isArray(data.relations)) {
-        const validPeople = new Set(
+        const { accepted: relations, unresolved } = partitionRelationsByPeople(
+          data.relations as Relation[],
           nextAnalysis.people.map((person) => person.id),
-        );
-        const relations = (data.relations as Relation[]).filter(
-          (relation) =>
-            validPeople.has(relation.sourceId) &&
-            validPeople.has(relation.targetId) &&
-            relation.sourceId !== relation.targetId,
         );
         relations.forEach((relation) => {
           relation.id ||= crypto.randomUUID();
@@ -3406,7 +3409,24 @@ export default function Home() {
             ? relation.sources
             : [];
         });
-        nextAnalysis = { ...nextAnalysis, relations };
+        nextAnalysis = {
+          ...nextAnalysis,
+          relations,
+          unresolvedRelationCount: unresolved.length,
+          activityLog:
+            unresolved.length > 0
+              ? [
+                  ...nextAnalysis.activityLog,
+                  {
+                    id: crypto.randomUUID(),
+                    stage,
+                    kind: "progress",
+                    message: `${unresolved.length} 条关系因端点未识别被搁置。`,
+                    createdAt: new Date().toISOString(),
+                  },
+                ]
+              : nextAnalysis.activityLog,
+        };
         relations
           .filter((relation) => relation.provenance === "inference")
           .slice(0, 20)

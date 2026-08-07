@@ -178,6 +178,7 @@ export type ProjectAnalysis = {
   overview?: StoryOverview;
   people: Person[];
   relations: Relation[];
+  unresolvedRelationCount: number;
   timeline: TimelineEvent[];
   clues: Clue[];
   relationshipLayout: Record<string, { x: number; y: number }>;
@@ -225,6 +226,7 @@ export type ModelCapabilities = {
 export const emptyAnalysis = (): ProjectAnalysis => ({
   people: [],
   relations: [],
+  unresolvedRelationCount: 0,
   timeline: [],
   clues: [],
   relationshipLayout: {},
