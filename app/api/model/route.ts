@@ -38,7 +38,13 @@ function isDeepSeekEndpoint(endpoint: string): boolean {
 
 function maxTokensFor(stage?: AnalysisStage, isTest = false): number {
   if (isTest) return 128;
-  if (stage === "people" || stage === "timeline" || stage === "clues") return 16000;
+  if (
+    stage === "people" ||
+    stage === "relations" ||
+    stage === "timeline" ||
+    stage === "clues"
+  )
+    return 16000;
   return 12000;
 }
 
