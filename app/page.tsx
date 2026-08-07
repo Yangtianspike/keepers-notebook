@@ -35,8 +35,10 @@ import {
 import {
   filterClueView,
   filterRelationshipView,
+  hasGraphPosition,
   layoutWithElk,
   partitionRelationsByPeople,
+  savedGraphPosition,
   selectRelationshipPeople,
 } from "@/lib/graph-layout";
 import { AtlasMapView } from "@/app/components/atlas-map";
@@ -1013,14 +1015,16 @@ function layoutRelationshipNodes(
     return {
       id: person.id,
       type: "person",
-      position:
-        savedLayout[person.id] ??
-        (position
+      position: savedGraphPosition(
+        savedLayout,
+        person.id,
+        position
           ? { x: position.x - 120, y: position.y - 58 }
           : {
               x: 100 + (index % 4) * 390,
               y: 100 + Math.floor(index / 4) * 260,
-            }),
+            },
+      ),
       data: { person, onSelect },
     };
   });
@@ -1280,12 +1284,14 @@ function RelationshipGraph({
       return initialNodes.map((node) => ({
         ...node,
         position:
-          relationshipPositions.current.get(
-            `${organizationView ? "grouped" : "flat"}:${node.id}`,
-          ) ?? node.position,
+          hasGraphPosition(layout, node.id)
+            ? node.position
+            : (relationshipPositions.current.get(
+                `${organizationView ? "grouped" : "flat"}:${node.id}`,
+              ) ?? node.position),
       }));
     });
-  }, [initialNodes, organizationView, setNodes]);
+  }, [initialNodes, layout, organizationView, setNodes]);
   const nodesWithSelection = useMemo(
     () =>
       nodes
@@ -1821,10 +1827,11 @@ function CluesView({
         return {
           id: `clue:${clue.id}`,
           type: "clue",
-          position: project.analysis.clueLayout?.[`clue:${clue.id}`] ?? {
-            x: point.x - 115,
-            y: point.y - 62,
-          },
+          position: savedGraphPosition(
+            project.analysis.clueLayout ?? {},
+            `clue:${clue.id}`,
+            { x: point.x - 115, y: point.y - 62 },
+          ),
           data: { clue, onOpenSource, onEdit: setEditingClue },
         } as Node<ClueFlowNodeData>;
       }),
@@ -1833,7 +1840,11 @@ function CluesView({
         return {
           id,
           type: "clueTarget",
-          position: { x: point.x - 80, y: point.y - 36 },
+          position: savedGraphPosition(
+            project.analysis.clueLayout ?? {},
+            id,
+            { x: point.x - 80, y: point.y - 36 },
+          ),
           data: target,
         } as Node<ClueTargetFlowNodeData>;
       }),
@@ -1902,10 +1913,15 @@ function CluesView({
       );
       return initialNodes.map((node) => ({
         ...node,
-        position: cluePositions.current.get(node.id) ?? node.position,
+        position: hasGraphPosition(
+          project.analysis.clueLayout ?? {},
+          node.id,
+        )
+          ? node.position
+          : (cluePositions.current.get(node.id) ?? node.position),
       }));
     });
-  }, [initialNodes, setNodes]);
+  }, [initialNodes, project.analysis.clueLayout, setNodes]);
   const saveClue = () => {
     if (!editingClue || !editingClue.name.trim() || !editingClue.source.trim())
       return;

@@ -11,6 +11,23 @@ export type ElkGraphInput = {
   edges: Array<{ id: string; source: string; target: string }>;
 };
 
+export type GraphPosition = { x: number; y: number };
+
+export function hasGraphPosition(
+  layout: Record<string, GraphPosition>,
+  id: string,
+) {
+  return Object.prototype.hasOwnProperty.call(layout, id);
+}
+
+export function savedGraphPosition(
+  layout: Record<string, GraphPosition>,
+  id: string,
+  fallback: GraphPosition,
+) {
+  return hasGraphPosition(layout, id) ? layout[id] : fallback;
+}
+
 export function partitionRelationsByPeople(
   relations: Relation[],
   peopleIds: Iterable<string>,
