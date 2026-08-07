@@ -1395,6 +1395,7 @@ function RelationshipGraph({
             </button>
           ))}
         <select
+          aria-label="关系图聚焦范围"
           value={focusDepth}
           onChange={(event) =>
             setFocusDepth(
@@ -1403,14 +1404,11 @@ function RelationshipGraph({
                 : (Number(event.target.value) as 1 | 2),
             )
           }
+          disabled={!selectedId}
         >
           <option value="all">全图</option>
-          <option value="1" disabled={!selectedId}>
-            聚焦一层
-          </option>
-          <option value="2" disabled={!selectedId}>
-            聚焦两层
-          </option>
+          <option value="1">聚焦一层</option>
+          <option value="2">聚焦两层</option>
         </select>
         <div className="graph-filter">
           {(["truth", "public", "belief"] as const).map((layer) => (
@@ -1487,6 +1485,9 @@ function RelationshipGraph({
           nodeTypes={relationshipNodeTypes}
           edgeTypes={relationshipEdgeTypes}
           onNodesChange={onNodesChange}
+          onNodeClick={(_, node) => {
+            if (node.type === "person") onSelect(node.id);
+          }}
           onNodeDragStop={(_, node) => {
             const parent = node.parentId
               ? nodes.find((candidate) => candidate.id === node.parentId)
@@ -2015,6 +2016,7 @@ function CluesView({
             ))}
           </div>
           <select
+            aria-label="聚焦线索"
             value={focusClueId}
             onChange={(event) => setFocusClueId(event.target.value)}
           >
@@ -2026,6 +2028,7 @@ function CluesView({
             ))}
           </select>
           <select
+            aria-label="线索图聚焦范围"
             value={focusDepth}
             onChange={(event) =>
               setFocusDepth(
@@ -2286,6 +2289,10 @@ function CluesView({
             edges={edges}
             nodeTypes={clueNodeTypes}
             onNodesChange={onNodesChange}
+            onNodeClick={(_, node) => {
+              if (node.type === "clue")
+                setFocusClueId(node.id.replace(/^clue:/, ""));
+            }}
             onNodeDragStop={(_, node) => {
               cluePositions.current.set(node.id, node.position);
               onUpdate({
