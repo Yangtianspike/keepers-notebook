@@ -161,7 +161,7 @@ export function stageQuery(
     case "people":
       return "人物 角色 姓名 身份 动机 组织";
     case "relations":
-      return `人物 关系 联盟 敌对 秘密 ${analysis.people.map((person) => person.name).join(" ")}`;
+      return `人物 关系 联盟 敌对 秘密 刺杀 谋杀 阴谋 计划 意图 勒索 跟踪 背叛 献祭 威胁 监视 仇恨 保护 利用 ${analysis.people.map((person) => person.name).join(" ")}`;
     case "timeline":
       return "时间 日期 先后 发生 历史 事件";
     case "clues":
