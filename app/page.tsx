@@ -36,7 +36,6 @@ import {
   layoutWithElk,
   savedGraphPosition,
 } from "@/lib/graph-layout";
-import { AtlasMapView } from "@/app/components/atlas-map";
 import { PersonGallery } from "@/app/components/person-gallery";
 import { PersonEgoView } from "@/app/components/person-ego-view";
 import { ConfirmWizard } from "@/app/components/confirm-wizard";
@@ -3627,12 +3626,18 @@ export default function Home() {
             />
           )}
           {view === "map" && (
-            <AtlasMapView
-              project={activeProject}
-              onUpdate={persistProject}
-              onOpenSource={setSourceRef}
-              onOpenClue={() => setView("clues")}
-            />
+            <div className="content-stack map-placeholder">
+              <header className="content-header">
+                <div>
+                  <p className="eyebrow">ATLAS ARCHIVE</p>
+                  <h2>地图</h2>
+                </div>
+              </header>
+              <EmptyState
+                title="地图画布将在后续版本上线"
+                description="v0.4 仅整理并保存已确认的地点数据，不提供地图上传或可视化。"
+              />
+            </div>
           )}
           {view === "review" && (
             <ReviewView
