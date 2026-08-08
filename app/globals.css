@@ -1,40 +1,27 @@
 @import "tailwindcss";
-@import "./components/atlas-theme.css";
 
 :root {
-  --bg: #f5f0e1;
-  --bg-soft: #ece5d0;
-  --panel: #e8e0cc;
-  --panel-2: #ddd5c0;
-  --panel-3: #d5cdb8;
-  --line: #8a7e6a;
-  --line-soft: #a89880;
-  --text: #2c1810;
-  --muted: #5c4a3a;
-  --faint: #8a7a6a;
-  --teal: #8b2500;
-  --teal-bright: #a03000;
-  --teal-dark: #f8e8e0;
-  --amber: #8a6a00;
+  --bg: #1d282b;
+  --bg-soft: #263235;
+  --panel: #1d2224;
+  --panel-2: #262c31;
+  --panel-3: #30383b;
+  --line: #4a5557;
+  --line-soft: #384346;
+  --text: #f4f4f1;
+  --muted: #c5cbc8;
+  --faint: #a4aeaa;
+  --teal: #168a78;
+  --teal-bright: #0d6b5d;
+  --teal-dark: #dff2ed;
+  --amber: #99621f;
   --amber-soft: #f8eddb;
   --red: #b34b44;
   --red-soft: #fae6e4;
-  --blue: #5a7a9a;
+  --blue: #4778ad;
   --blue-soft: #e5edf7;
   --serif: "Noto Serif SC", "Songti SC", "SimSun", Georgia, serif;
-  --sans: "Noto Serif SC", "Songti SC", "SimSun", Georgia, serif;
-  --parchment: #f5f0e1;
-  --parchment-dark: #e8e0cc;
-  --ink: #2c1810;
-  --ink-light: #5c4a3a;
-  --seal-red: #8b2500;
-  --seal-red-soft: #f8e8e0;
-  --frame-gold: #b8a070;
-  --atlas-parchment: var(--parchment);
-  --atlas-ink: var(--ink);
-  --atlas-accent: var(--seal-red);
-  --atlas-border: #a09080;
-  --atlas-shadow: rgba(44, 24, 16, 0.15);
+  --sans: "Inter", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
 }
 
 * {
@@ -43,16 +30,16 @@
 
 html {
   background: var(--bg);
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 body {
   min-height: 100vh;
   margin: 0;
   background:
-    radial-gradient(ellipse 52% 38% at 50% 8%, rgba(255, 250, 232, 0.75), transparent 72%),
-    radial-gradient(ellipse 34% 30% at 76% 20%, rgba(184, 160, 112, 0.16), transparent 75%),
-    linear-gradient(180deg, #f7f1df 0%, #efe7d2 45%, #e8dfc8 100%);
+    radial-gradient(ellipse 52% 38% at 50% 8%, rgba(151, 154, 144, 0.56), transparent 72%),
+    radial-gradient(ellipse 34% 30% at 76% 20%, rgba(92, 103, 101, 0.3), transparent 75%),
+    linear-gradient(180deg, #344241 0%, #293638 36%, #1d282b 72%, #192326 100%);
   background-attachment: fixed;
   color: var(--text);
   font-family: var(--sans);
@@ -91,13 +78,13 @@ button:disabled {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-soft);
+  background: #1d282b;
 }
 
 ::-webkit-scrollbar-thumb {
-  border: 2px solid var(--bg-soft);
+  border: 2px solid #1d282b;
   border-radius: 999px;
-  background: var(--line);
+  background: #596568;
 }
 
 .eyebrow {
