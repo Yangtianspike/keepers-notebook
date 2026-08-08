@@ -1113,13 +1113,9 @@ function TimelineFlowView({
           minZoom={0.25}
           maxZoom={1.5}
         >
-          <Background color="var(--line-soft)" gap={22} size={1} />
+          <Background gap={22} size={1} />
           <Controls showInteractive={false} />
-          <MiniMap
-            pannable
-            zoomable
-            style={{ background: "var(--panel-2)" }}
-          />
+          <MiniMap pannable zoomable />
         </ReactFlow>
       </div>
     </div>
@@ -1675,13 +1671,9 @@ function CluesView({
             minZoom={0.25}
             maxZoom={1.6}
           >
-            <Background color="var(--line-soft)" gap={22} size={1} />
+            <Background gap={22} size={1} />
             <Controls showInteractive={false} />
-            <MiniMap
-              pannable
-              zoomable
-              style={{ background: "var(--panel-2)" }}
-            />
+            <MiniMap pannable zoomable />
           </ReactFlow>
         </div>
       ) : (
