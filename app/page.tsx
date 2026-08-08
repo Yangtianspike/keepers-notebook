@@ -3677,14 +3677,11 @@ export default function Home() {
           key={wizardItem.id}
           item={wizardItem}
           totalPending={wizardItems.length}
-          onAccept={(item, keeperNote) =>
-            void resolveReview(item, true, keeperNote)
+          onAccept={(_, keeperNote) =>
+            void resolveReview(wizardItem, true, keeperNote)
           }
-          onReject={(item, keeperNote) =>
-            void resolveReview(item, false, keeperNote)
-          }
-          onModify={(item, changes) =>
-            void resolveReview({ ...item, ...changes }, true, changes.keeperNote)
+          onReject={(keeperNote) =>
+            void resolveReview(wizardItem, false, keeperNote)
           }
         />
       )}
