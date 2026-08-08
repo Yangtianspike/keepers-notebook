@@ -12,6 +12,7 @@ import type {
   AnalysisStage,
   DocumentPage,
   ModelConfig,
+  Person,
   Project,
   ProjectAnalysis,
   TextChunk,
@@ -167,6 +168,53 @@ export function stageQuery(
     case "clues":
       return "线索 物品 发现 指向 地点 场景";
   }
+}
+
+const RELATION_TERMS =
+  "关系 联盟 敌对 秘密 刺杀 谋杀 阴谋 计划 意图 勒索 跟踪 背叛 献祭 威胁 监视 仇恨 保护 利用";
+
+export function relationRecall(
+  chunks: TextChunk[],
+  people: Person[],
+  limit = 30,
+): ScoredChunk[] {
+  const importantPeople = people
+    .filter((person) => person.importance !== "minor")
+    .slice(0, 30);
+  const corePeople = importantPeople.length > 0 ? importantPeople : people.slice(0, 30);
+  const recalled: ScoredChunk[] = [];
+
+  corePeople.forEach((person) => {
+    const names = [person.name, ...person.aliases].filter(Boolean).join(" ");
+    recalled.push(...bm25Search(chunks, `${names} ${RELATION_TERMS}`, 3));
+  });
+  for (let left = 0; left < corePeople.length; left += 1) {
+    for (let right = left + 1; right < corePeople.length; right += 1) {
+      recalled.push(
+        ...bm25Search(
+          chunks,
+          `${corePeople[left].name} ${corePeople[right].name}`,
+          2,
+        ),
+      );
+    }
+  }
+
+  const byChunk = new Map<string, ScoredChunk>();
+  recalled.forEach((result) => {
+    const previous = byChunk.get(result.chunk.id);
+    if (!previous || result.score > previous.score) {
+      byChunk.set(result.chunk.id, result);
+    }
+  });
+  return [...byChunk.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Math.min(30, limit));
+}
+
+export async function relationSearch(project: Project): Promise<ScoredChunk[]> {
+  const chunks = await ensureChunkIndex(project);
+  return relationRecall(chunks, project.analysis.people, 30);
 }
 
 export async function hybridSearch(

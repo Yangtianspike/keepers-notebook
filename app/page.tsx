@@ -24,7 +24,7 @@ import {
 import dagre from "dagre";
 import "@xyflow/react/dist/style.css";
 import { parseScenarioFile } from "@/lib/parser";
-import { hybridSearch, stageQuery } from "@/lib/retrieval";
+import { hybridSearch, relationSearch, stageQuery } from "@/lib/retrieval";
 import { ensureVectorIndex, probeEmbedding } from "@/lib/embedding";
 import {
   flagUnverifiedSourceRefs,
@@ -2609,13 +2609,16 @@ export default function Home() {
       let runningAnalysis = runningProject.analysis;
       let scenarioText = includedText(runningProject);
       try {
-        const chunks = await hybridSearch(
-          runningProject,
-          stageQuery(stage, runningProject.analysis),
-          12,
-          modelConfig,
-          apiKey,
-        );
+        const chunks =
+          stage === "relations"
+            ? await relationSearch(runningProject)
+            : await hybridSearch(
+                runningProject,
+                stageQuery(stage, runningProject.analysis),
+                12,
+                modelConfig,
+                apiKey,
+              );
         if (chunks.length) {
           scenarioText = chunks
             .sort((a, b) => a.chunk.startPage - b.chunk.startPage)
