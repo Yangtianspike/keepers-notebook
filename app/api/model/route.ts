@@ -100,8 +100,10 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
 }`,
     relations: `${common}
 依据提供的人物列表提取人物关系。sourceId 和 targetId 必须使用列表中的 id。
-区分客观真相 truth、对外关系 public、人物主观认知 belief。
-未被原作明确说明但值得提醒的关联，provenance 必须为 inference。
+关系只分为 real 和 hidden：模组公开陈述、玩家可直接获知的关系为 real；
+模组暗藏、仅 KP 应知的秘密关系为 hidden。不要推测原文未明确支持的关系。
+必须覆盖身份/血缘、社会/组织、情感/态度、行动/意图、秘密/把柄等范畴。
+单向意图和计划也是关系，包括刺杀、谋杀、阴谋、计划、意图、勒索、跟踪、背叛、献祭、威胁、监视、仇恨、保护和利用。
 返回：
 {
   "relations":[{
@@ -109,9 +111,8 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
     "sourceId":"人物id",
     "targetId":"人物id",
     "label":"简短关系",
-    "layer":"truth|public|belief",
-    "confidence":0.9,
-    "provenance":"source|inference|conflict",
+    "type":"real|hidden",
+    "confidence":1,
     "sources":[]
   }],
   "reviewItems":[]
