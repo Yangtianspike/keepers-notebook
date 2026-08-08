@@ -89,16 +89,17 @@ const STAGE_ORDER: AnalysisStage[] = [
   "timeline",
   "clues",
 ];
-const PAUSE_STAGES: AnalysisStage[] = ["overview", "people", "clues"];
+const PAUSE_STAGES: AnalysisStage[] = ["people", "clues"];
 
 function pausedStageFor(project: Project): AnalysisStage | null {
   return (
     STAGE_ORDER.find(
       (stage) =>
         project.analysis.stages[stage].status === "paused" &&
-        project.analysis.reviewItems.some(
-          (item) => item.stage === stage && item.status === "pending",
-        ),
+        (project.analysis.pendingAskUserCall?.stage === stage ||
+          project.analysis.reviewItems.some(
+            (item) => item.stage === stage && item.status === "pending",
+          )),
     ) ?? null
   );
 }
@@ -1948,6 +1949,31 @@ function SettingsView({
                   : "测试连接"}
           </button>
         </section>
+        <section className="settings-card">
+          <span className="settings-index">03</span>
+          <h3>确认模式</h3>
+          <label className="field">
+            <span>模型确认能力</span>
+            <select
+              value={config.confirmMode ?? "tier1"}
+              onChange={(event) =>
+                onConfig({
+                  ...config,
+                  confirmMode: event.target.value as NonNullable<
+                    ModelConfig["confirmMode"]
+                  >,
+                })
+              }
+            >
+              <option value="tier1">实时确认（推荐，Function Calling）</option>
+              <option value="tier2">准实时确认（结构化标记）</option>
+              <option value="tier3">阶段后确认（兼容模式）</option>
+            </select>
+            <small>
+              DeepSeek、OpenAI 等选实时；Kimi、Qwen 可选准实时；旧模型或本地小模型选阶段后确认。
+            </small>
+          </label>
+        </section>
       </div>
       <div className="notice neutral">
         <strong>隐私说明</strong>
@@ -2361,14 +2387,31 @@ export default function Home() {
   const analysisAbortRef = useRef<AbortController | null>(null);
   const [modelConfig, setModelConfig] = useState<ModelConfig>(() => {
     if (typeof window === "undefined") {
-      return { baseUrl: "https://api.moonshot.cn/v1", model: "" };
+      return {
+        baseUrl: "https://api.moonshot.cn/v1",
+        model: "",
+        confirmMode: "tier1",
+      };
     }
     const saved = localStorage.getItem("keeper-atlas:model-config");
-    if (!saved) return { baseUrl: "https://api.moonshot.cn/v1", model: "" };
+    if (!saved)
+      return {
+        baseUrl: "https://api.moonshot.cn/v1",
+        model: "",
+        confirmMode: "tier1",
+      };
     try {
-      return JSON.parse(saved) as ModelConfig;
+      return {
+        ...(JSON.parse(saved) as ModelConfig),
+        confirmMode:
+          (JSON.parse(saved) as ModelConfig).confirmMode ?? "tier1",
+      };
     } catch {
-      return { baseUrl: "https://api.moonshot.cn/v1", model: "" };
+      return {
+        baseUrl: "https://api.moonshot.cn/v1",
+        model: "",
+        confirmMode: "tier1",
+      };
     }
   });
   const [apiKey, setApiKey] = useState(() =>
@@ -2573,7 +2616,11 @@ export default function Home() {
     stage: item.stage,
   });
 
-  const runStage = async (stage: AnalysisStage, projectOverride?: Project) => {
+  const runStage = async (
+    stage: AnalysisStage,
+    projectOverride?: Project,
+    resumeData?: Record<string, unknown>,
+  ) => {
     const stageProject = projectOverride ?? activeProject;
     if (!stageProject) return;
     setActiveStage(stage);
@@ -2663,6 +2710,22 @@ export default function Home() {
           analysis: runningAnalysis,
         });
       }
+      let responseOk = true;
+      let payload: {
+        type?: "ask_user" | "complete";
+        data?: Record<string, unknown>;
+        error?: string;
+        callId?: string;
+        question?: string;
+        options?: string[];
+        context?: string;
+        previousMessages?: NonNullable<
+          Project["analysis"]["pendingAskUserCall"]
+        >["previousMessages"];
+      };
+      if (resumeData) {
+        payload = { type: "complete", data: resumeData };
+      } else {
       const response = await fetch("/api/model", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2673,6 +2736,7 @@ export default function Home() {
           apiKey,
           config: modelConfig,
           stage,
+          confirmMode: modelConfig.confirmMode ?? "tier1",
           document: {
             name: runningProject.name,
             text: scenarioText,
@@ -2698,7 +2762,6 @@ export default function Home() {
           },
         }),
       });
-      let payload: { data?: Record<string, unknown>; error?: string };
       if (
         response.headers.get("content-type")?.includes("text/event-stream") &&
         response.body
@@ -2729,11 +2792,61 @@ export default function Home() {
         payload = { data: parseModelJson(content) };
       } else {
         payload = (await response.json()) as {
+          type?: "ask_user" | "complete";
           data?: Record<string, unknown>;
           error?: string;
+          callId?: string;
+          question?: string;
+          options?: string[];
+          context?: string;
+          previousMessages?: NonNullable<
+            Project["analysis"]["pendingAskUserCall"]
+          >["previousMessages"];
         };
       }
-      if (!response.ok || !payload.data) {
+      responseOk = response.ok;
+      if (
+        response.ok &&
+        payload.type === "ask_user" &&
+        payload.callId &&
+        payload.question &&
+        payload.previousMessages
+      ) {
+        const pendingAskUserCall = {
+          stage,
+          callId: payload.callId,
+          question: payload.question,
+          options: payload.options ?? [],
+          context: payload.context ?? "模型需要 KP 裁决后才能继续。",
+          previousMessages: payload.previousMessages,
+        };
+        await persistProject({
+          ...runningProject,
+          status: "structured",
+          analysis: {
+            ...runningAnalysis,
+            pendingAskUserCall,
+            stages: {
+              ...runningAnalysis.stages,
+              [stage]: { status: "paused", updatedAt: new Date().toISOString() },
+            },
+            activityLog: [
+              ...runningAnalysis.activityLog,
+              {
+                id: crypto.randomUUID(),
+                stage,
+                kind: "paused",
+                message: `${stageLabels[stage]}实时暂停，等待 KP 裁决。`,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          },
+        });
+        setWizardStage(stage);
+        return;
+      }
+      }
+      if (!responseOk || !payload.data) {
         throw new Error(payload.error || "分析失败。");
       }
 
@@ -3015,10 +3128,12 @@ export default function Home() {
         }),
       );
       const shouldPause =
+        (modelConfig.confirmMode ?? "tier1") === "tier3" &&
         PAUSE_STAGES.includes(stage) &&
         stageReviews.some((item) => item.status === "pending");
       nextAnalysis = {
         ...nextAnalysis,
+        pendingAskUserCall: undefined,
         reviewItems: [
           ...nextAnalysis.reviewItems.filter(
             (item) =>
@@ -3125,6 +3240,97 @@ export default function Home() {
       setActiveStage(null);
       setStreamPreview("");
       analysisAbortRef.current = null;
+    }
+  };
+
+  const continueRealtimeAnalysis = async (
+    answer: string,
+    keeperNote?: string,
+  ) => {
+    const pending = activeProject?.analysis.pendingAskUserCall;
+    if (!activeProject || !pending) return;
+    setActiveStage(pending.stage);
+    setError("");
+    try {
+      const response = await fetch("/api/model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "continue",
+          apiKey,
+          config: modelConfig,
+          stage: pending.stage,
+          confirmMode: modelConfig.confirmMode ?? "tier1",
+          callId: pending.callId,
+          answer: keeperNote ? `${answer}\nKP 备注：${keeperNote}` : answer,
+          previousMessages: pending.previousMessages,
+        }),
+      });
+      const payload = (await response.json()) as {
+        type?: "ask_user" | "complete";
+        data?: Record<string, unknown>;
+        error?: string;
+        callId?: string;
+        question?: string;
+        options?: string[];
+        context?: string;
+        previousMessages?: typeof pending.previousMessages;
+      };
+      if (!response.ok) throw new Error(payload.error || "继续分析失败。");
+      if (
+        payload.type === "ask_user" &&
+        payload.callId &&
+        payload.question &&
+        payload.previousMessages
+      ) {
+        await persistProject({
+          ...activeProject,
+          updatedAt: new Date().toISOString(),
+          analysis: {
+            ...activeProject.analysis,
+            pendingAskUserCall: {
+              stage: pending.stage,
+              callId: payload.callId,
+              question: payload.question,
+              options: payload.options ?? [],
+              context: payload.context ?? "模型需要进一步裁决。",
+              previousMessages: payload.previousMessages,
+            },
+            activityLog: [
+              ...activeProject.analysis.activityLog,
+              {
+                id: crypto.randomUUID(),
+                stage: pending.stage,
+                kind: "checkpoint",
+                message: `${stageLabels[pending.stage]}继续后再次请求 KP 裁决。`,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          },
+        });
+        setWizardStage(pending.stage);
+        return;
+      }
+      if (payload.type !== "complete" || !payload.data) {
+        throw new Error("模型继续响应中没有完整分析结果。");
+      }
+      const resumedProject: Project = {
+        ...activeProject,
+        analysis: {
+          ...activeProject.analysis,
+          pendingAskUserCall: undefined,
+          stages: {
+            ...activeProject.analysis.stages,
+            [pending.stage]: { status: "running" },
+          },
+        },
+      };
+      setWizardStage(null);
+      await runStage(pending.stage, resumedProject, payload.data);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "继续分析失败。");
+    } finally {
+      setActiveStage(null);
     }
   };
 
@@ -3409,6 +3615,7 @@ export default function Home() {
         )
       : [];
   const wizardItem = wizardItems[0];
+  const realtimeAskUserCall = activeProject?.analysis.pendingAskUserCall;
   const configReady = Boolean(
     modelConfig.baseUrl.trim() && modelConfig.model.trim() && apiKey.trim(),
   );
@@ -3672,7 +3879,22 @@ export default function Home() {
           onClose={() => setSourceRef(null)}
         />
       )}
-      {wizardItem && (
+      {realtimeAskUserCall ? (
+        <ConfirmWizard
+          key={realtimeAskUserCall.callId}
+          askUserCall={realtimeAskUserCall}
+          totalPending={1}
+          onAccept={(answer, keeperNote) =>
+            void continueRealtimeAnalysis(answer, keeperNote)
+          }
+          onReject={(keeperNote) =>
+            void continueRealtimeAnalysis(
+              "KP 拒绝当前建议；请依据原文继续，并且不要采用该假设。",
+              keeperNote,
+            )
+          }
+        />
+      ) : wizardItem ? (
         <ConfirmWizard
           key={wizardItem.id}
           item={wizardItem}
@@ -3684,7 +3906,7 @@ export default function Home() {
             void resolveReview(wizardItem, false, keeperNote)
           }
         />
-      )}
+      ) : null}
       {toast && <div className="toast">{toast}</div>}
       {error && (
         <div className="error-toast">

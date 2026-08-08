@@ -99,6 +99,7 @@ export function buildModelRequest(
     previousMessages.length > 0
       ? previousMessages
       : [{ role: "system" as const, content: `当前分析阶段：${stage}` }];
+  if (stage !== "people" && stage !== "clues") return { messages };
   if (confirmMode === "tier1") {
     return { messages, tools: [ASK_USER_TOOL_DEF], tool_choice: "auto" };
   }

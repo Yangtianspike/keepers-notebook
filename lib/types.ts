@@ -191,6 +191,23 @@ export type ProjectAnalysis = {
   reviewItems: ReviewItem[];
   activityLog: AnalysisLogEntry[];
   stages: Record<AnalysisStage, StageState>;
+  pendingAskUserCall?: {
+    stage: AnalysisStage;
+    callId: string;
+    question: string;
+    options: string[];
+    context: string;
+    previousMessages: Array<{
+      role: "system" | "user" | "assistant" | "tool";
+      content: string | null;
+      tool_call_id?: string;
+      tool_calls?: Array<{
+        id: string;
+        type: "function";
+        function: { name: string; arguments: string };
+      }>;
+    }>;
+  };
 };
 
 export type Project = {
@@ -211,6 +228,7 @@ export type Project = {
 export type ModelConfig = {
   baseUrl: string;
   model: string;
+  confirmMode?: "tier1" | "tier2" | "tier3";
   capabilities?: ModelCapabilities;
 };
 
