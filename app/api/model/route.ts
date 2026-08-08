@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { AnalysisStage } from "@/lib/types";
+import {
+  buildContinueRequest,
+  buildModelRequest,
+  parseStreamResponse,
+  type ConfirmMode,
+  type ModelMessage,
+  type ModelRawResponse,
+} from "@/lib/model-adapter";
 
 type RequestBody = {
-  action: "test" | "analyze" | "embedTest" | "embed";
+  action: "test" | "analyze" | "continue" | "embedTest" | "embed";
   apiKey: string;
   config: { baseUrl: string; model: string };
   stage?: AnalysisStage;
+  confirmMode?: ConfirmMode;
+  callId?: string;
+  answer?: string;
+  previousMessages?: ModelMessage[];
   stream?: boolean;
   embeddingModel?: string;
   texts?: string[];
@@ -195,7 +207,15 @@ export async function POST(request: NextRequest) {
     const isEmbeddingAction = body.action === "embedTest" || body.action === "embed";
     const endpoint = endpointFor(body.config.baseUrl, isEmbeddingAction ? "/embeddings" : "/chat/completions");
     const isTest = body.action === "test";
-    if (!isTest && !isEmbeddingAction && (!body.stage || !body.document)) {
+    const isContinue = body.action === "continue";
+    if (
+      !isTest &&
+      !isEmbeddingAction &&
+      (!body.stage ||
+        (isContinue
+          ? !body.callId || !body.answer || !body.previousMessages?.length
+          : !body.document))
+    ) {
       return NextResponse.json({ error: "缺少分析阶段或文档。" }, { status: 400 });
     }
 
@@ -246,20 +266,35 @@ ${keeperContext}
 ${selectedText}
 </scenario>`;
 
+    const confirmMode = body.confirmMode ?? "tier3";
+    const initialMessages: ModelMessage[] = [
+      {
+        role: "system",
+        content: isTest
+          ? "只返回合法 JSON。"
+          : stageInstructions(body.stage as AnalysisStage),
+      },
+      { role: "user", content: userMessage },
+    ];
+    const adaptedRequest = isContinue
+      ? buildContinueRequest(
+          body.callId as string,
+          body.answer as string,
+          body.previousMessages as ModelMessage[],
+          confirmMode,
+        )
+      : buildModelRequest(
+          body.stage as AnalysisStage,
+          confirmMode,
+          initialMessages,
+        );
+    const requestStream = Boolean(body.stream) && confirmMode === "tier3";
     const modelRequest: Record<string, unknown> = {
       model: body.config.model,
       temperature: 0.1,
       max_tokens: maxTokensFor(body.stage, isTest),
-      messages: [
-        {
-          role: "system",
-          content: isTest
-            ? "只返回合法 JSON。"
-            : stageInstructions(body.stage as AnalysisStage),
-        },
-        { role: "user", content: userMessage },
-      ],
-      stream: Boolean(body.stream),
+      ...adaptedRequest,
+      stream: requestStream,
     };
 
     // DeepSeek V4 defaults to thinking mode. Its max_tokens budget includes the
@@ -268,7 +303,9 @@ ${selectedText}
     // economical in non-thinking mode.
     if (isDeepSeekEndpoint(endpoint)) {
       modelRequest.thinking = { type: "disabled" };
-      modelRequest.response_format = { type: "json_object" };
+      if (confirmMode === "tier3" || isTest) {
+        modelRequest.response_format = { type: "json_object" };
+      }
     }
 
     const response = await fetch(endpoint, {
@@ -280,7 +317,7 @@ ${selectedText}
       body: JSON.stringify(modelRequest),
     });
 
-    if (body.stream && response.ok && response.body) {
+    if (requestStream && response.ok && response.body) {
       return new Response(response.body, {
         status: response.status,
         headers: {
@@ -290,13 +327,18 @@ ${selectedText}
       });
     }
 
-    const raw = (await response.json()) as {
+    const raw = (await response.json()) as ModelRawResponse & {
       error?: { message?: string } | string;
       choices?: Array<{
         finish_reason?: string | null;
         message?: {
           content?: string | null;
           reasoning_content?: string | null;
+          tool_calls?: Array<{
+            id: string;
+            type: "function";
+            function: { name: string; arguments: string };
+          }>;
         };
       }>;
     };
@@ -306,6 +348,37 @@ ${selectedText}
           ? raw.error
           : raw.error?.message || `模型服务返回 ${response.status}`;
       return NextResponse.json({ error: message }, { status: response.status });
+    }
+
+    if (!isTest && confirmMode !== "tier3") {
+      const event = parseStreamResponse(raw, confirmMode);
+      const responseMessage = raw.choices?.[0]?.message;
+      const previousMessages: ModelMessage[] = [
+        ...adaptedRequest.messages,
+        {
+          role: "assistant",
+          content: responseMessage?.content ?? null,
+          ...(responseMessage?.tool_calls?.length
+            ? { tool_calls: responseMessage.tool_calls }
+            : {}),
+        },
+      ];
+      if (event.type === "ask_user") {
+        return NextResponse.json({
+          type: "ask_user",
+          ...event.askUserCall,
+          previousMessages,
+        });
+      }
+      if (event.type === "complete") {
+        if (typeof event.data === "string") {
+          return NextResponse.json(
+            { error: "模型没有返回合法 JSON 对象。" },
+            { status: 502 },
+          );
+        }
+        return NextResponse.json({ type: "complete", data: event.data });
+      }
     }
 
     const choice = raw.choices?.[0];
