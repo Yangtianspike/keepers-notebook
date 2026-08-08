@@ -40,6 +40,7 @@ import {
 import { AtlasMapView } from "@/app/components/atlas-map";
 import { PersonGallery } from "@/app/components/person-gallery";
 import { PersonEgoView } from "@/app/components/person-ego-view";
+import { ConfirmWizard } from "@/app/components/confirm-wizard";
 import {
   deleteProject,
   listProjects,
@@ -82,6 +83,27 @@ const stageLabels: Record<AnalysisStage, string> = {
   timeline: "分支时间线",
   clues: "线索网络",
 };
+
+const STAGE_ORDER: AnalysisStage[] = [
+  "overview",
+  "people",
+  "relations",
+  "timeline",
+  "clues",
+];
+const PAUSE_STAGES: AnalysisStage[] = ["overview", "people", "clues"];
+
+function pausedStageFor(project: Project): AnalysisStage | null {
+  return (
+    STAGE_ORDER.find(
+      (stage) =>
+        project.analysis.stages[stage].status === "paused" &&
+        project.analysis.reviewItems.some(
+          (item) => item.stage === stage && item.status === "pending",
+        ),
+    ) ?? null
+  );
+}
 
 const provenanceLabels: Record<Provenance, string> = {
   source: "原作事实",
@@ -2297,6 +2319,12 @@ function SourcePanel({
 
 function hydrateProject(project: Project): Project {
   const defaults = emptyAnalysis();
+  const stages = Object.fromEntries(
+    STAGE_ORDER.map((stage) => {
+      const saved = project.analysis.stages?.[stage] ?? defaults.stages[stage];
+      return [stage, saved.status === "running" ? { status: "idle" } : saved];
+    }),
+  ) as Project["analysis"]["stages"];
   return {
     ...project,
     analysis: {
@@ -2310,7 +2338,7 @@ function hydrateProject(project: Project): Project {
       places: project.analysis.places ?? [],
       maps: project.analysis.maps ?? [],
       markers: project.analysis.markers ?? [],
-      stages: { ...defaults.stages, ...project.analysis.stages },
+      stages,
     },
   };
 }
@@ -2330,6 +2358,7 @@ export default function Home() {
   const [sourceRef, setSourceRef] = useState<SourceRef | null>(null);
   const [sourceUrl, setSourceUrl] = useState("");
   const [activeStage, setActiveStage] = useState<AnalysisStage | null>(null);
+  const [wizardStage, setWizardStage] = useState<AnalysisStage | null>(null);
   const [streamPreview, setStreamPreview] = useState("");
   const analysisAbortRef = useRef<AbortController | null>(null);
   const [modelConfig, setModelConfig] = useState<ModelConfig>(() => {
@@ -2546,23 +2575,24 @@ export default function Home() {
     stage: item.stage,
   });
 
-  const runStage = async (stage: AnalysisStage) => {
-    if (!activeProject) return;
+  const runStage = async (stage: AnalysisStage, projectOverride?: Project) => {
+    const stageProject = projectOverride ?? activeProject;
+    if (!stageProject) return;
     setActiveStage(stage);
     setStreamPreview("");
     analysisAbortRef.current = new AbortController();
     setError("");
     const runningProject: Project = {
-      ...activeProject,
+      ...stageProject,
       status: "analyzing",
       analysis: {
-        ...activeProject.analysis,
+        ...stageProject.analysis,
         stages: {
-          ...activeProject.analysis.stages,
+          ...stageProject.analysis.stages,
           [stage]: { status: "running" },
         },
         activityLog: [
-          ...(activeProject.analysis.activityLog ?? []),
+          ...(stageProject.analysis.activityLog ?? []),
           {
             id: crypto.randomUUID(),
             stage,
@@ -2972,6 +3002,9 @@ export default function Home() {
           stage,
         }),
       );
+      const shouldPause =
+        PAUSE_STAGES.includes(stage) &&
+        stageReviews.some((item) => item.status === "pending");
       nextAnalysis = {
         ...nextAnalysis,
         reviewItems: [
@@ -2992,9 +3025,7 @@ export default function Home() {
         stages: {
           ...nextAnalysis.stages,
           [stage]: {
-            status: stageReviews.some((item) => item.type !== "external")
-              ? "paused"
-              : "complete",
+            status: shouldPause ? "paused" : "complete",
             updatedAt: new Date().toISOString(),
           },
         },
@@ -3002,9 +3033,6 @@ export default function Home() {
       const allComplete = Object.values(nextAnalysis.stages).every(
         (state) => state.status === "complete",
       );
-      const shouldContinueToRelations =
-        stage === "people" &&
-        !stageReviews.some((item) => item.type !== "external");
       const completedProject: Project = {
         ...runningProject,
         updatedAt: new Date().toISOString(),
@@ -3016,11 +3044,9 @@ export default function Home() {
             {
               id: crypto.randomUUID(),
               stage,
-              kind: stageReviews.some((item) => item.type !== "external")
-                ? "paused"
-                : "completed",
-              message: stageReviews.some((item) => item.type !== "external")
-                ? `${stageLabels[stage]}发现待确认事项，等待 KP 确认。`
+              kind: shouldPause ? "paused" : "completed",
+              message: shouldPause
+                ? `${stageLabels[stage]}完成，${stageReviews.length} 项待确认。`
                 : `${stageLabels[stage]}分析完成。`,
               createdAt: new Date().toISOString(),
             },
@@ -3030,11 +3056,8 @@ export default function Home() {
       await persistProject(completedProject);
       setStreamPreview("");
       setToast(`${stageLabels[stage]}分析完成。`);
-      if (shouldContinueToRelations) {
-        window.setTimeout(() => {
-          void runStage("relations");
-        }, 0);
-      }
+      if (shouldPause) setWizardStage(stage);
+      else window.setTimeout(() => void continueToNextStage(stage, completedProject), 0);
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
         const pausedProject: Project = {
@@ -3093,7 +3116,31 @@ export default function Home() {
     }
   };
 
-  const resolveReview = async (item: ReviewItem, accepted: boolean) => {
+  const continueToNextStage = async (
+    currentStage: AnalysisStage,
+    project: Project,
+  ) => {
+    const currentIndex = STAGE_ORDER.indexOf(currentStage);
+    const nextStage = STAGE_ORDER.slice(currentIndex + 1).find(
+      (candidate) => project.analysis.stages[candidate].status !== "complete",
+    );
+    if (!nextStage) {
+      if (project.status !== "ready") {
+        await persistProject({ ...project, status: "ready" });
+      }
+      setWizardStage(null);
+      setToast("全部分析阶段已完成。");
+      return;
+    }
+    setWizardStage(null);
+    await runStage(nextStage, project);
+  };
+
+  const resolveReview = async (
+    item: ReviewItem,
+    accepted: boolean,
+    keeperNote?: string,
+  ) => {
     if (!activeProject) return;
     let people = [...activeProject.analysis.people];
     let relations = [...activeProject.analysis.relations];
@@ -3196,7 +3243,9 @@ export default function Home() {
         review.id === item.id
           ? {
               ...review,
+              ...item,
               status: accepted ? ("accepted" as const) : ("rejected" as const),
+              keeperNote: keeperNote ?? review.keeperNote,
             }
           : review,
     );
@@ -3205,9 +3254,14 @@ export default function Home() {
       !reviewItems.some(
         (review) =>
           review.stage === item.stage &&
-          review.status === "pending" &&
-          review.type !== "external",
+          review.status === "pending",
       );
+    const remainingForStage = item.stage
+      ? reviewItems.filter(
+          (review) =>
+            review.stage === item.stage && review.status === "pending",
+        ).length
+      : 0;
     const next: Project = {
       ...activeProject,
       updatedAt: new Date().toISOString(),
@@ -3228,22 +3282,29 @@ export default function Home() {
                 },
               }
             : activeProject.analysis.stages,
-        activityLog:
-          stageCleared && item.stage
-            ? [
-                ...(activeProject.analysis.activityLog ?? []),
-                {
-                  id: crypto.randomUUID(),
-                  stage: item.stage,
-                  kind: "completed",
-                  message: `${stageLabels[item.stage]}的待确认事项已处理。`,
-                  createdAt: new Date().toISOString(),
-                },
-              ]
-            : activeProject.analysis.activityLog,
+        activityLog: item.stage
+          ? [
+              ...(activeProject.analysis.activityLog ?? []),
+              {
+                id: crypto.randomUUID(),
+                stage: item.stage,
+                kind: stageCleared ? "completed" : "checkpoint",
+                message: stageCleared
+                  ? `${stageLabels[item.stage]}的待确认事项已全部处理。`
+                  : `${stageLabels[item.stage]}确认项已处理，剩余 ${remainingForStage} 项。`,
+                createdAt: new Date().toISOString(),
+              },
+            ]
+          : activeProject.analysis.activityLog,
       },
     };
     await persistProject(next);
+    if (stageCleared && item.stage && wizardStage === item.stage) {
+      window.setTimeout(
+        () => void continueToNextStage(item.stage!, next),
+        0,
+      );
+    }
   };
 
   const editReview = async (item: ReviewItem, changes: Partial<ReviewItem>) => {
@@ -3329,6 +3390,13 @@ export default function Home() {
     activeProject?.analysis.reviewItems.filter(
       (item) => item.status === "pending",
     ).length ?? 0;
+  const wizardItems =
+    activeProject && wizardStage
+      ? activeProject.analysis.reviewItems.filter(
+          (item) => item.stage === wizardStage && item.status === "pending",
+        )
+      : [];
+  const wizardItem = wizardItems[0];
   const configReady = Boolean(
     modelConfig.baseUrl.trim() && modelConfig.model.trim() && apiKey.trim(),
   );
@@ -3362,6 +3430,7 @@ export default function Home() {
           onImport={handleImport}
           onOpen={(project) => {
             setActiveProject(project);
+            setWizardStage(pausedStageFor(project));
             setView("dashboard");
           }}
           onDelete={handleDelete}
@@ -3583,6 +3652,22 @@ export default function Home() {
           source={sourceRef}
           sourceUrl={sourceUrl}
           onClose={() => setSourceRef(null)}
+        />
+      )}
+      {wizardItem && (
+        <ConfirmWizard
+          key={wizardItem.id}
+          item={wizardItem}
+          totalPending={wizardItems.length}
+          onAccept={(item, keeperNote) =>
+            void resolveReview(item, true, keeperNote)
+          }
+          onReject={(item, keeperNote) =>
+            void resolveReview(item, false, keeperNote)
+          }
+          onModify={(item, changes) =>
+            void resolveReview({ ...item, ...changes }, true, changes.keeperNote)
+          }
         />
       )}
       {toast && <div className="toast">{toast}</div>}
