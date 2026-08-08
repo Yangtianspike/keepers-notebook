@@ -1377,6 +1377,7 @@ function CluesView({
             ))}
           </div>
           <select
+            className="dark-control"
             aria-label="聚焦线索"
             value={focusClueId}
             onChange={(event) => setFocusClueId(event.target.value)}
@@ -1389,6 +1390,7 @@ function CluesView({
             ))}
           </select>
           <select
+            className="dark-control"
             aria-label="线索图聚焦范围"
             value={focusDepth}
             onChange={(event) =>

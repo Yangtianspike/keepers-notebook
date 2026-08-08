@@ -52,6 +52,7 @@ export function PersonGallery({
         <label>
           <span>搜索人物</span>
           <input
+            className="dark-control"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="姓名、组织或身份"
@@ -61,6 +62,7 @@ export function PersonGallery({
         <label>
           <span>重要程度</span>
           <select
+            className="dark-control"
             value={importance}
             onChange={(event) =>
               setImportance(event.target.value as ImportanceFilter)

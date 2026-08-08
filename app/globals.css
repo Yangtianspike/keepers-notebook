@@ -3381,6 +3381,38 @@ button:disabled {
   padding: 8px 11px;
 }
 
+.dark-control,
+.clue-editor input:not([type="checkbox"]):not([type="radio"]),
+.clue-editor select,
+.clue-editor textarea {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.dark-control option,
+.clue-editor option {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.dark-control::placeholder,
+.clue-editor input::placeholder,
+.clue-editor textarea::placeholder {
+  color: var(--faint);
+  opacity: 1;
+}
+
+.dark-control:focus,
+.clue-editor input:focus,
+.clue-editor select:focus,
+.clue-editor textarea:focus {
+  border-color: var(--teal);
+  outline: 0;
+  box-shadow: 0 0 0 2px rgba(101, 199, 178, 0.08);
+}
+
 .person-gallery-grid,
 .person-related-grid {
   display: grid;
