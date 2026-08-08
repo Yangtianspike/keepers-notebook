@@ -1,5 +1,5 @@
 import ELK from "elkjs/lib/elk.bundled.js";
-import type { Clue, Person, Relation } from "./types";
+import type { Clue } from "./types";
 
 export type ElkGraphInput = {
   nodes: Array<{
@@ -26,52 +26,6 @@ export function savedGraphPosition(
   fallback: GraphPosition,
 ) {
   return hasGraphPosition(layout, id) ? layout[id] : fallback;
-}
-
-export function partitionRelationsByPeople(
-  relations: Relation[],
-  peopleIds: Iterable<string>,
-) {
-  const validPeople = new Set(peopleIds);
-  const accepted: Relation[] = [];
-  const unresolved: Relation[] = [];
-  relations.forEach((relation) => {
-    const endpointsRecognized =
-      validPeople.has(relation.sourceId) &&
-      validPeople.has(relation.targetId);
-    if (!endpointsRecognized) {
-      unresolved.push(relation);
-      return;
-    }
-    if (relation.sourceId !== relation.targetId) accepted.push(relation);
-  });
-  return { accepted, unresolved };
-}
-
-export function selectRelationshipPeople(
-  people: Person[],
-  relations: Relation[],
-  limit = 18,
-) {
-  const degree = new Map<string, number>();
-  relations.forEach((relation) => {
-    degree.set(relation.sourceId, (degree.get(relation.sourceId) ?? 0) + 1);
-    degree.set(relation.targetId, (degree.get(relation.targetId) ?? 0) + 1);
-  });
-  const importanceScore = (person: Person) =>
-    person.importance === "core"
-      ? 3
-      : person.importance === "important"
-        ? 2
-        : 1;
-  const visible = [...people]
-    .sort(
-      (a, b) =>
-        importanceScore(b) - importanceScore(a) ||
-        (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0),
-    )
-    .slice(0, limit);
-  return { visible, hiddenCount: Math.max(0, people.length - visible.length) };
 }
 
 export async function layoutWithElk(
@@ -157,39 +111,6 @@ export function computeNeighborhood(
     frontier = next;
   }
   return visible;
-}
-
-export function filterRelationshipView(
-  people: Person[],
-  relations: Relation[],
-  options: {
-    types?: Relation["type"][];
-    focusId?: string;
-    depth?: 1 | 2;
-  },
-) {
-  let visibleRelations = relations.filter(
-    (relation) =>
-      !options.types?.length || options.types.includes(relation.type),
-  );
-  let visibleIds = new Set(people.map((person) => person.id));
-  if (options.focusId && options.depth)
-    visibleIds = computeNeighborhood(
-      options.focusId,
-      visibleRelations.map((relation) => ({
-        source: relation.sourceId,
-        target: relation.targetId,
-      })),
-      options.depth,
-    );
-  visibleRelations = visibleRelations.filter(
-    (relation) =>
-      visibleIds.has(relation.sourceId) && visibleIds.has(relation.targetId),
-  );
-  return {
-    visiblePeople: people.filter((person) => visibleIds.has(person.id)),
-    visibleRelations,
-  };
 }
 
 export function filterClueView(

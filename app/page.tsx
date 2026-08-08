@@ -34,7 +34,6 @@ import {
   filterClueView,
   hasGraphPosition,
   layoutWithElk,
-  partitionRelationsByPeople,
   savedGraphPosition,
 } from "@/lib/graph-layout";
 import { AtlasMapView } from "@/app/components/atlas-map";
@@ -2860,9 +2859,20 @@ export default function Home() {
         }
       }
       if (stage === "relations" && Array.isArray(data.relations)) {
-        const { accepted: relationCandidates, unresolved } = partitionRelationsByPeople(
-          data.relations as Relation[],
+        const validPeople = new Set(
           nextAnalysis.people.map((person) => person.id),
+        );
+        const rawRelations = data.relations as Relation[];
+        const unresolved = rawRelations.filter(
+          (relation) =>
+            !validPeople.has(relation.sourceId) ||
+            !validPeople.has(relation.targetId),
+        );
+        const relationCandidates = rawRelations.filter(
+          (relation) =>
+            validPeople.has(relation.sourceId) &&
+            validPeople.has(relation.targetId) &&
+            relation.sourceId !== relation.targetId,
         );
         relationCandidates.forEach((relation) => {
           relation.id ||= crypto.randomUUID();
