@@ -3,7 +3,7 @@
 import type { Project, TextChunk } from "./types";
 
 const DB_NAME = "keeper-atlas";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const PROJECTS = "projects";
 const FILES = "files";
 const CHUNKS = "chunks";
@@ -22,7 +22,7 @@ export type ChunkIndexMeta = {
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
       if (!db.objectStoreNames.contains(PROJECTS)) {
         db.createObjectStore(PROJECTS, { keyPath: "id" });
@@ -35,6 +35,40 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(VECTORS)) {
         db.createObjectStore(VECTORS);
+      }
+
+      if (event.oldVersion < 3 && request.transaction) {
+        const projects = request.transaction.objectStore(PROJECTS);
+        const cursorRequest = projects.openCursor();
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
+          if (!cursor) return;
+
+          const project = cursor.value as unknown as {
+            analysis: {
+              relationshipLayout?: Record<string, { x: number; y: number }>;
+              relations: Array<Record<string, unknown>>;
+            };
+          };
+
+          project.analysis.relations = project.analysis.relations.map(
+            (relation) => {
+              const layer = relation.layer;
+              relation.type =
+                layer === "belief" || layer === "inferred"
+                  ? "hidden"
+                  : "real";
+              relation.confidence = 1;
+              delete relation.layer;
+              delete relation.provenance;
+              delete relation.source;
+              return relation;
+            },
+          );
+          delete project.analysis.relationshipLayout;
+          cursor.update(project);
+          cursor.continue();
+        };
       }
     };
     request.onsuccess = () => resolve(request.result);
