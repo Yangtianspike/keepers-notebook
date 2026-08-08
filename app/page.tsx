@@ -17,10 +17,8 @@ import {
   MiniMap,
   Position,
   type Edge,
-  type EdgeProps,
   type Node,
   type NodeProps,
-  getSmoothStepPath,
   useNodesState,
 } from "@xyflow/react";
 import dagre from "dagre";
@@ -34,14 +32,14 @@ import {
 } from "@/lib/quote-check";
 import {
   filterClueView,
-  filterRelationshipView,
   hasGraphPosition,
   layoutWithElk,
   partitionRelationsByPeople,
   savedGraphPosition,
-  selectRelationshipPeople,
 } from "@/lib/graph-layout";
 import { AtlasMapView } from "@/app/components/atlas-map";
+import { PersonGallery } from "@/app/components/person-gallery";
+import { PersonEgoView } from "@/app/components/person-ego-view";
 import {
   deleteProject,
   listProjects,
@@ -74,6 +72,8 @@ type View =
   | "map"
   | "review"
   | "settings";
+
+type PortalView = "gallery" | "ego";
 
 const stageLabels: Record<AnalysisStage, string> = {
   overview: "故事概览",
@@ -861,62 +861,6 @@ function OverviewView({
   );
 }
 
-type RelationshipNodeData = {
-  person: Person;
-  onSelect: (id: string) => void;
-};
-
-function RelationshipNode({
-  data,
-  selected,
-}: NodeProps<Node<RelationshipNodeData>>) {
-  const { person, onSelect } = data;
-  return (
-    <button
-      className={`flow-person-node importance-${person.importance} ${selected ? "is-selected" : ""}`}
-      onClick={() => onSelect(person.id)}
-    >
-      <Handle type="target" position={Position.Left} className="flow-handle" />
-      <span className="node-sigil">
-        {person.name.trim().slice(0, 1).toUpperCase()}
-      </span>
-      <strong>{person.name}</strong>
-      <small>{person.role || "身份待确认"}</small>
-      {person.provenance !== "source" && (
-        <i className={`node-alert alert-${person.provenance}`} />
-      )}
-      <Handle type="source" position={Position.Right} className="flow-handle" />
-    </button>
-  );
-}
-
-type OrganizationNodeData = {
-  organization: string;
-  collapsed: boolean;
-};
-
-function OrganizationNode({ data }: NodeProps<Node<OrganizationNodeData>>) {
-  return (
-    <section
-      className={`flow-organization-node ${data.collapsed ? "is-collapsed" : ""}`}
-    >
-      {data.collapsed && (
-        <Handle type="target" position={Position.Left} className="flow-handle" />
-      )}
-      <strong>{data.organization}</strong>
-      {data.collapsed && <small>组织（已折叠）</small>}
-      {data.collapsed && (
-        <Handle type="source" position={Position.Right} className="flow-handle" />
-      )}
-    </section>
-  );
-}
-
-const relationshipNodeTypes = {
-  person: RelationshipNode,
-  organization: OrganizationNode,
-};
-
 type ClueFlowNodeData = {
   clue: Clue;
   onOpenSource: (source: SourceRef) => void;
@@ -986,569 +930,6 @@ function ClueTargetFlowNode({ data }: NodeProps<Node<ClueTargetFlowNodeData>>) {
 }
 
 const clueNodeTypes = { clue: ClueFlowNode, clueTarget: ClueTargetFlowNode };
-
-function layoutRelationshipNodes(
-  people: Person[],
-  relations: Relation[],
-  onSelect: (id: string) => void,
-  savedLayout: Record<string, { x: number; y: number }>,
-): Node<RelationshipNodeData>[] {
-  const graph = new dagre.graphlib.Graph();
-  graph.setDefaultEdgeLabel(() => ({}));
-  graph.setGraph({
-    rankdir: "LR",
-    ranksep: 320,
-    nodesep: 165,
-    edgesep: 90,
-    marginx: 110,
-    marginy: 100,
-  });
-  people.forEach((person) =>
-    graph.setNode(person.id, { width: 240, height: 116 }),
-  );
-  relations.forEach((relation) =>
-    graph.setEdge(relation.sourceId, relation.targetId),
-  );
-  dagre.layout(graph);
-  return people.map((person, index) => {
-    const position = graph.node(person.id);
-    return {
-      id: person.id,
-      type: "person",
-      position: savedGraphPosition(
-        savedLayout,
-        person.id,
-        position
-          ? { x: position.x - 120, y: position.y - 58 }
-          : {
-              x: 100 + (index % 4) * 390,
-              y: 100 + Math.floor(index / 4) * 260,
-            },
-      ),
-      data: { person, onSelect },
-    };
-  });
-}
-
-type RelationshipFlowEdge = Edge<
-  { label?: string; edgeClass: string },
-  "relation"
->;
-
-function RelationshipEdge({
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-  markerEnd,
-  style,
-  data,
-}: EdgeProps<RelationshipFlowEdge>) {
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-    borderRadius: 12,
-  });
-  return (
-    <>
-      <path
-        d={edgePath}
-        markerEnd={markerEnd}
-        style={style}
-        className={`react-flow__edge-path ${data?.edgeClass ?? ""}`}
-        fill="none"
-      />
-      {data?.label && (
-        <text
-          x={labelX}
-          y={labelY + 4}
-          className="relation-edge-svg-label"
-          textAnchor="middle"
-        >
-          {data.label}
-        </text>
-      )}
-    </>
-  );
-}
-
-const relationshipEdgeTypes = { relation: RelationshipEdge };
-
-function RelationshipGraph({
-  people,
-  relations,
-  selectedId,
-  onSelect,
-  layout,
-  onSaveLayout,
-  onOpenSource,
-}: {
-  people: Person[];
-  relations: Relation[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  layout: Record<string, { x: number; y: number }>;
-  onSaveLayout: (layout: Record<string, { x: number; y: number }>) => void;
-  onOpenSource: (source: SourceRef) => void;
-}) {
-  const [organizationView, setOrganizationView] = useState(false);
-  const [collapsedOrganizations, setCollapsedOrganizations] = useState<
-    string[]
-  >([]);
-  const [focusDepth, setFocusDepth] = useState<"all" | 1 | 2>("all");
-  const [enabledTypes, setEnabledTypes] = useState<Relation["type"][]>([
-    "real",
-    "hidden",
-  ]);
-  const { visible: basePeople, hiddenCount: hiddenPeopleCount } = useMemo(
-    () => selectRelationshipPeople(people, relations),
-    [people, relations],
-  );
-  const { visiblePeople, visibleRelations } = useMemo(
-    () =>
-      filterRelationshipView(basePeople, relations, {
-        types: enabledTypes,
-        focusId: focusDepth === "all" ? undefined : (selectedId ?? undefined),
-        depth: focusDepth === "all" ? undefined : focusDepth,
-      }),
-    [
-      basePeople,
-      enabledTypes,
-      focusDepth,
-      relations,
-      selectedId,
-    ],
-  );
-  const groupedPeople = useMemo(
-    () =>
-      organizationView
-        ? visiblePeople.filter(
-            (person) =>
-              !person.organization ||
-              !collapsedOrganizations.includes(person.organization),
-          )
-        : visiblePeople,
-    [collapsedOrganizations, organizationView, visiblePeople],
-  );
-  const initialNodes = useMemo(() => {
-    const personNodes: Node[] = layoutRelationshipNodes(
-        groupedPeople,
-        visibleRelations.filter(
-          (relation) =>
-            groupedPeople.some((person) => person.id === relation.sourceId) &&
-            groupedPeople.some((person) => person.id === relation.targetId),
-        ),
-        onSelect,
-        layout,
-      );
-    if (!organizationView) return personNodes;
-    const organizations = [
-      ...new Set(
-        visiblePeople.map((person) => person.organization).filter(Boolean),
-      ),
-    ] as string[];
-    const organizationNodes: Node[] = [];
-    organizations.forEach((organization, organizationIndex) => {
-      const groupId = `org:${organization}`;
-      const collapsed = collapsedOrganizations.includes(organization);
-      const members = personNodes.filter(
-        (node) =>
-          visiblePeople.find((person) => person.id === node.id)?.organization ===
-          organization,
-      );
-      if (collapsed) {
-        organizationNodes.push({
-          id: groupId,
-          type: "organization",
-          position: layout[groupId] ?? {
-            x: 80 + organizationIndex * 320,
-            y: 80,
-          },
-          data: { organization, collapsed: true },
-          style: { width: 240, height: 82 },
-        });
-        return;
-      }
-      const minX = Math.min(...members.map((node) => node.position.x), 0);
-      const minY = Math.min(...members.map((node) => node.position.y), 0);
-      const maxX = Math.max(...members.map((node) => node.position.x), 240);
-      const maxY = Math.max(...members.map((node) => node.position.y), 116);
-      const groupPosition = layout[groupId] ?? { x: minX - 42, y: minY - 58 };
-      organizationNodes.push({
-        id: groupId,
-        type: "organization",
-        position: groupPosition,
-        data: { organization, collapsed: false },
-        style: {
-          width: Math.max(340, maxX - minX + 324),
-          height: Math.max(230, maxY - minY + 232),
-        },
-      });
-      members.forEach((node) => {
-        node.parentId = groupId;
-        node.extent = "parent";
-        node.position = {
-          x: node.position.x - groupPosition.x,
-          y: node.position.y - groupPosition.y,
-        };
-      });
-    });
-    return [...organizationNodes, ...personNodes];
-  }, [
-    collapsedOrganizations,
-    groupedPeople,
-    layout,
-    onSelect,
-    organizationView,
-    visiblePeople,
-    visibleRelations,
-  ]);
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const relationshipPositions = useRef(
-    new Map(
-      initialNodes.map((node) => [
-        `${organizationView ? "grouped" : "flat"}:${node.id}`,
-        node.position,
-      ]),
-    ),
-  );
-  const relationshipInitialized = useRef(false);
-  const applyRelationshipLayout = useCallback(async () => {
-    try {
-      const positions = await layoutWithElk({
-        nodes: initialNodes.map((node) => ({
-          id: node.id,
-          width: Number(node.style?.width ?? (node.type === "person" ? 240 : 340)),
-          height: Number(node.style?.height ?? (node.type === "person" ? 116 : 230)),
-          parentId: node.parentId,
-        })),
-        edges: visibleRelations
-          .map((relation) => ({
-            id: relation.id,
-            source: relation.sourceId,
-            target: relation.targetId,
-          }))
-          .filter((edge) =>
-            initialNodes.some((node) => node.id === edge.source) &&
-            initialNodes.some((node) => node.id === edge.target),
-          ),
-      });
-      const laidOut = initialNodes.map((node) => {
-        const absolute = positions.get(node.id);
-        const parent = node.parentId ? positions.get(node.parentId) : undefined;
-        const position = absolute
-          ? {
-              x: absolute.x - (parent?.x ?? 0),
-              y: absolute.y - (parent?.y ?? 0),
-            }
-          : node.position;
-        relationshipPositions.current.set(
-          `${organizationView ? "grouped" : "flat"}:${node.id}`,
-          position,
-        );
-        return { ...node, position };
-      });
-      setNodes(laidOut);
-    } catch {
-      setNodes(initialNodes);
-    }
-  }, [initialNodes, organizationView, setNodes, visibleRelations]);
-  useEffect(() => {
-    if (relationshipInitialized.current) return;
-    relationshipInitialized.current = true;
-    if (Object.keys(layout).length === 0) void applyRelationshipLayout();
-  }, [applyRelationshipLayout, layout]);
-  useEffect(() => {
-    setNodes((current) => {
-      current.forEach((node) =>
-        relationshipPositions.current.set(
-          `${organizationView ? "grouped" : "flat"}:${node.id}`,
-          node.position,
-        ),
-      );
-      return initialNodes.map((node) => ({
-        ...node,
-        position:
-          hasGraphPosition(layout, node.id)
-            ? node.position
-            : (relationshipPositions.current.get(
-                `${organizationView ? "grouped" : "flat"}:${node.id}`,
-              ) ?? node.position),
-      }));
-    });
-  }, [initialNodes, layout, organizationView, setNodes]);
-  const nodesWithSelection = useMemo(
-    () =>
-      nodes
-        .filter(
-          (node) =>
-            node.type === "organization" ||
-            groupedPeople.some((person) => person.id === node.id),
-        )
-        .map((node) => ({ ...node, selected: node.id === selectedId })),
-    [nodes, selectedId, groupedPeople],
-  );
-  const edges = useMemo<RelationshipFlowEdge[]>(() => {
-    const rewired = visibleRelations
-      .map((relation) => {
-        const source = visiblePeople.find(
-          (person) => person.id === relation.sourceId,
-        );
-        const target = visiblePeople.find(
-          (person) => person.id === relation.targetId,
-        );
-        return {
-          relation,
-          sourceId:
-            organizationView &&
-            source?.organization &&
-            collapsedOrganizations.includes(source.organization)
-              ? `org:${source.organization}`
-              : relation.sourceId,
-          targetId:
-            organizationView &&
-            target?.organization &&
-            collapsedOrganizations.includes(target.organization)
-              ? `org:${target.organization}`
-              : relation.targetId,
-        };
-      })
-      .filter(({ sourceId, targetId }) => sourceId !== targetId);
-    const seen = new Set<string>();
-    return rewired
-      .filter(({ sourceId, targetId }) => {
-        const key = `${sourceId}\u0000${targetId}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map(({ relation, sourceId, targetId }) => ({
-        id: relation.id,
-        source: sourceId,
-        target: targetId,
-        type: "relation",
-        animated: false,
-        data: {
-          label: relation.label,
-          edgeClass: `flow-edge flow-edge-${relation.type}`,
-        },
-        markerEnd: { type: MarkerType.ArrowClosed },
-      }));
-  }, [
-    collapsedOrganizations,
-    organizationView,
-    visiblePeople,
-    visibleRelations,
-  ]);
-
-  return (
-    <div className="graph-shell">
-      {hiddenPeopleCount > 0 && (
-        <div className="notice warning">还有 {hiddenPeopleCount} 人未显示</div>
-      )}
-      <div className="graph-toolbar">
-        <label>
-          <input
-            type="checkbox"
-            checked={organizationView}
-            onChange={(event) => setOrganizationView(event.target.checked)}
-          />
-          按组织分组
-        </label>
-        {organizationView &&
-          [
-            ...new Set(
-              visiblePeople
-                .map((person) => person.organization)
-                .filter(Boolean),
-            ),
-          ].map((organization) => (
-            <button
-              className="ghost-button compact"
-              key={organization}
-              onClick={() =>
-                setCollapsedOrganizations((items) =>
-                  items.includes(organization!)
-                    ? items.filter((item) => item !== organization)
-                    : [...items, organization!],
-                )
-              }
-            >
-              {collapsedOrganizations.includes(organization!)
-                ? `展开 ${organization}`
-                : `折叠 ${organization}`}
-            </button>
-          ))}
-        <select
-          aria-label="关系图聚焦范围"
-          value={focusDepth}
-          onChange={(event) =>
-            setFocusDepth(
-              event.target.value === "all"
-                ? "all"
-                : (Number(event.target.value) as 1 | 2),
-            )
-          }
-          disabled={!selectedId}
-        >
-          <option value="all">全图</option>
-          <option value="1">聚焦一层</option>
-          <option value="2">聚焦两层</option>
-        </select>
-        <div className="graph-filter">
-          {(["real", "hidden"] as const).map((type) => (
-            <label key={type}>
-              <input
-                type="checkbox"
-                checked={enabledTypes.includes(type)}
-                onChange={() =>
-                  setEnabledTypes((items) =>
-                    items.includes(type)
-                      ? items.filter((item) => item !== type)
-                      : [...items, type],
-                  )
-                }
-              />
-              {type === "real" ? "公开" : "隐藏"}
-            </label>
-          ))}
-        </div>
-        <div className="graph-root-indicator">
-          绿色为 KP 已知关系，蓝色为公开人物关系。拖拽人物卡可整理布局。
-        </div>
-        <button
-          className="ghost-button compact"
-          onClick={() => void applyRelationshipLayout()}
-        >
-          重新布局
-        </button>
-        <div className="graph-legend">
-          <span>
-            <i className="legend-line solid kp-known" />
-            KP 已知
-          </span>
-          <span>
-            <i className="legend-line solid public-relation" />
-            公开关系
-          </span>
-          <span>
-            <i className="legend-line dashed" />
-            AI 推断
-          </span>
-        </div>
-      </div>
-      <div className="flow-canvas">
-        <ReactFlow
-          nodes={nodesWithSelection}
-          edges={edges}
-          nodeTypes={relationshipNodeTypes}
-          edgeTypes={relationshipEdgeTypes}
-          onNodesChange={onNodesChange}
-          onNodeClick={(_, node) => {
-            if (node.type === "person") onSelect(node.id);
-          }}
-          onNodeDragStop={(_, node) => {
-            const parent = node.parentId
-              ? nodes.find((candidate) => candidate.id === node.parentId)
-              : undefined;
-            const position = parent
-              ? {
-                  x: parent.position.x + node.position.x,
-                  y: parent.position.y + node.position.y,
-                }
-              : node.position;
-            relationshipPositions.current.set(
-              `${organizationView ? "grouped" : "flat"}:${node.id}`,
-              node.position,
-            );
-            onSaveLayout({ ...layout, [node.id]: position });
-          }}
-          onEdgeClick={(_, edge) => {
-            const relation = visibleRelations.find(
-              (item) => item.id === edge.id,
-            );
-            if (relation?.sources[0]) onOpenSource(relation.sources[0]);
-          }}
-          fitView
-          minZoom={0.25}
-          maxZoom={1.6}
-          defaultEdgeOptions={{ type: "smoothstep" }}
-        >
-          <Background gap={22} size={1} />
-          <Controls showInteractive={false} />
-          <MiniMap pannable zoomable />
-        </ReactFlow>
-        {visibleRelations.length === 0 && (
-          <div className="graph-empty-relations">
-            <strong>当前没有可显示的关系线</strong>
-            <span>
-              {relations.length === 0
-                ? "请先在“分析流程”中完成关系梳理。"
-                : "当前没有可连接的人物关系。"}
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function RelationsView({
-  project,
-  selectedId,
-  onSelect,
-  onUpdate,
-  onOpenSource,
-}: {
-  project: Project;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  onUpdate: (project: Project) => void;
-  onOpenSource: (source: SourceRef) => void;
-}) {
-  if (project.analysis.people.length === 0) {
-    return (
-      <EmptyState
-        title="尚未识别人物"
-        description="先在分析流程中完成人物识别，再核对别名，随后生成关系。"
-      />
-    );
-  }
-  return (
-    <div className="content-stack graph-content">
-      <header className="content-header">
-        <div>
-          <p className="eyebrow">CHARACTERS & FACTIONS</p>
-          <h2>人物关系</h2>
-          <p>
-            {project.analysis.people.length} 个对象 ·{" "}
-            {project.analysis.relations.length} 条关系
-          </p>
-        </div>
-      </header>
-      {project.analysis.unresolvedRelationCount > 0 && (
-        <div className="notice warning">
-          {project.analysis.unresolvedRelationCount} 条关系因端点未识别被搁置
-        </div>
-      )}
-      <RelationshipGraph
-        people={project.analysis.people}
-        relations={project.analysis.relations}
-        selectedId={selectedId}
-        onSelect={onSelect}
-        layout={{}}
-        onSaveLayout={() => onUpdate(project)}
-        onOpenSource={onOpenSource}
-      />
-    </div>
-  );
-}
 
 function TimelineView({
   project,
@@ -2685,6 +2066,7 @@ function DetailPanel({
   onClose,
   onUpdate,
   onOpenSource,
+  onUploadPortrait,
 }: {
   project: Project;
   selectedPerson?: Person;
@@ -2692,6 +2074,7 @@ function DetailPanel({
   onClose: () => void;
   onUpdate: (project: Project) => void;
   onOpenSource: (source: SourceRef) => void;
+  onUploadPortrait: (personId: string) => void;
 }) {
   if (!selectedPerson && !selectedEvent) return null;
   const updatePerson = (patch: Partial<Person>) => {
@@ -2733,6 +2116,12 @@ function DetailPanel({
       {selectedPerson && (
         <>
           <p className="eyebrow">CHARACTER FILE</p>
+          <button
+            className="ghost-button portrait-upload-button"
+            onClick={() => onUploadPortrait(selectedPerson.id)}
+          >
+            {selectedPerson.portrait ? "更换肖像" : "上传肖像"}
+          </button>
           <div className="detail-title">
             <span>{selectedPerson.name.slice(0, 1)}</span>
             <div>
@@ -2934,6 +2323,9 @@ export default function Home() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  const [portalView, setPortalView] = useState<PortalView>("gallery");
+  const [portalPersonId, setPortalPersonId] = useState<string | null>(null);
+  const [, setEgoHistory] = useState<string[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [sourceRef, setSourceRef] = useState<SourceRef | null>(null);
   const [sourceUrl, setSourceUrl] = useState("");
@@ -3008,6 +2400,69 @@ export default function Home() {
       );
     });
     await saveProject(project);
+  }, []);
+
+  const uploadPortrait = useCallback(
+    (personId: string) => {
+      if (!activeProject) return;
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/jpeg,image/png,image/webp";
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const image = new Image();
+          image.onload = () => {
+            const scale = Math.min(1, 256 / Math.max(image.width, image.height));
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(1, Math.round(image.width * scale));
+            canvas.height = Math.max(1, Math.round(image.height * scale));
+            const context = canvas.getContext("2d");
+            if (!context) {
+              setError("浏览器无法处理该肖像图片。");
+              return;
+            }
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            const portrait = canvas.toDataURL("image/jpeg", 0.7);
+            void persistProject({
+              ...activeProject,
+              updatedAt: new Date().toISOString(),
+              analysis: {
+                ...activeProject.analysis,
+                people: activeProject.analysis.people.map((person) =>
+                  person.id === personId
+                    ? { ...person, portrait, portraitSource: "manual" as const }
+                    : person,
+                ),
+              },
+            });
+          };
+          image.onerror = () => setError("无法读取该肖像图片。");
+          image.src = String(reader.result);
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
+    },
+    [activeProject, persistProject],
+  );
+
+  const enterEgo = useCallback((personId: string) => {
+    setEgoHistory((history) => [...history, personId]);
+    setPortalPersonId(personId);
+    setPortalView("ego");
+  }, []);
+
+  const goBackFromEgo = useCallback(() => {
+    setEgoHistory((history) => {
+      const next = history.slice(0, -1);
+      const previous = next.at(-1) ?? null;
+      setPortalPersonId(previous);
+      if (!previous) setPortalView("gallery");
+      return next;
+    });
   }, []);
 
   const handleImport = async (file: File) => {
@@ -3364,11 +2819,11 @@ export default function Home() {
         }
       }
       if (stage === "relations" && Array.isArray(data.relations)) {
-        const { accepted: relations, unresolved } = partitionRelationsByPeople(
+        const { accepted: relationCandidates, unresolved } = partitionRelationsByPeople(
           data.relations as Relation[],
           nextAnalysis.people.map((person) => person.id),
         );
-        relations.forEach((relation) => {
+        relationCandidates.forEach((relation) => {
           relation.id ||= crypto.randomUUID();
           relation.label = String(relation.label ?? "关系待确认");
           relation.type = relation.type === "hidden" ? "hidden" : "real";
@@ -3376,6 +2831,13 @@ export default function Home() {
           relation.sources = Array.isArray(relation.sources)
             ? relation.sources
             : [];
+        });
+        const relationKeys = new Set<string>();
+        const relations = relationCandidates.filter((relation) => {
+          const key = `${relation.sourceId}\u0000${relation.targetId}\u0000${relation.type}`;
+          if (relationKeys.has(key)) return false;
+          relationKeys.add(key);
+          return true;
         });
         nextAnalysis = {
           ...nextAnalysis,
@@ -3842,6 +3304,24 @@ export default function Home() {
   const selectedPerson = activeProject?.analysis.people.find(
     (person) => person.id === selectedPersonId,
   );
+  const portalPerson = activeProject?.analysis.people.find(
+    (person) => person.id === portalPersonId,
+  );
+  const relatedPeople = useMemo(() => {
+    if (!activeProject || !portalPersonId) return [];
+    return activeProject.analysis.relations.flatMap((relation) => {
+      const isSource = relation.sourceId === portalPersonId;
+      const relatedId = isSource
+        ? relation.targetId
+        : relation.targetId === portalPersonId
+          ? relation.sourceId
+          : null;
+      const person = activeProject.analysis.people.find(
+        (candidate) => candidate.id === relatedId,
+      );
+      return person ? [{ person, relation, isSource }] : [];
+    });
+  }, [activeProject, portalPersonId]);
   const selectedEvent = activeProject?.analysis.timeline.find(
     (event) => event.id === selectedEventId,
   );
@@ -4003,16 +3483,41 @@ export default function Home() {
             <OverviewView project={activeProject} onOpenSource={setSourceRef} />
           )}
           {view === "relations" && (
-            <RelationsView
-              project={activeProject}
-              onUpdate={persistProject}
-              onOpenSource={setSourceRef}
-              selectedId={selectedPersonId}
-              onSelect={(id) => {
-                setSelectedPersonId(id);
-                setSelectedEventId(null);
-              }}
-            />
+            <div className="content-stack person-portal">
+              <header className="content-header">
+                <div>
+                  <p className="eyebrow">CHARACTER PORTAL</p>
+                  <h2>人物门户</h2>
+                  <p>
+                    {activeProject.analysis.people.length} 个人物 ·{" "}
+                    {activeProject.analysis.relations.length} 条关系
+                  </p>
+                </div>
+              </header>
+              {activeProject.analysis.people.length === 0 ? (
+                <EmptyState
+                  title="尚未识别人物"
+                  description="先在分析流程中完成人物识别，再进入人物门户。"
+                />
+              ) : portalView === "ego" && portalPerson ? (
+                <PersonEgoView
+                  person={portalPerson}
+                  relatedPeople={relatedPeople}
+                  onSelectRelated={enterEgo}
+                  onBack={goBackFromEgo}
+                  onEditPerson={(person) => {
+                    setSelectedPersonId(person.id);
+                    setSelectedEventId(null);
+                  }}
+                />
+              ) : (
+                <PersonGallery
+                  people={activeProject.analysis.people}
+                  onSelectPerson={enterEgo}
+                  onUploadPortrait={uploadPortrait}
+                />
+              )}
+            </div>
           )}
           {view === "timeline" && (
             <TimelineView
@@ -4070,6 +3575,7 @@ export default function Home() {
         }}
         onUpdate={persistProject}
         onOpenSource={setSourceRef}
+        onUploadPortrait={uploadPortrait}
       />
       {sourceRef && (
         <SourcePanel
