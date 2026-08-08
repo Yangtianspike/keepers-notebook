@@ -1102,16 +1102,9 @@ function RelationshipGraph({
     string[]
   >([]);
   const [focusDepth, setFocusDepth] = useState<"all" | 1 | 2>("all");
-  const [enabledLayers, setEnabledLayers] = useState<Relation["layer"][]>([
-    "truth",
-    "public",
-    "belief",
-  ]);
-  const [enabledProvenance, setEnabledProvenance] = useState<Provenance[]>([
-    "source",
-    "keeper",
-    "inference",
-    "conflict",
+  const [enabledTypes, setEnabledTypes] = useState<Relation["type"][]>([
+    "real",
+    "hidden",
   ]);
   const { visible: basePeople, hiddenCount: hiddenPeopleCount } = useMemo(
     () => selectRelationshipPeople(people, relations),
@@ -1120,15 +1113,13 @@ function RelationshipGraph({
   const { visiblePeople, visibleRelations } = useMemo(
     () =>
       filterRelationshipView(basePeople, relations, {
-        layers: enabledLayers,
-        provenance: enabledProvenance,
+        types: enabledTypes,
         focusId: focusDepth === "all" ? undefined : (selectedId ?? undefined),
         depth: focusDepth === "all" ? undefined : focusDepth,
       }),
     [
       basePeople,
-      enabledLayers,
-      enabledProvenance,
+      enabledTypes,
       focusDepth,
       relations,
       selectedId,
@@ -1342,10 +1333,10 @@ function RelationshipGraph({
         source: sourceId,
         target: targetId,
         type: "relation",
-        animated: relation.provenance === "inference",
+        animated: false,
         data: {
           label: relation.label,
-          edgeClass: `flow-edge flow-edge-${relation.layer} ${relation.provenance === "inference" ? "is-inference" : ""}`,
+          edgeClass: `flow-edge flow-edge-${relation.type}`,
         },
         markerEnd: { type: MarkerType.ArrowClosed },
       }));
@@ -1411,46 +1402,20 @@ function RelationshipGraph({
           <option value="2">聚焦两层</option>
         </select>
         <div className="graph-filter">
-          {(["truth", "public", "belief"] as const).map((layer) => (
-            <label key={layer}>
+          {(["real", "hidden"] as const).map((type) => (
+            <label key={type}>
               <input
                 type="checkbox"
-                checked={enabledLayers.includes(layer)}
+                checked={enabledTypes.includes(type)}
                 onChange={() =>
-                  setEnabledLayers((items) =>
-                    items.includes(layer)
-                      ? items.filter((item) => item !== layer)
-                      : [...items, layer],
+                  setEnabledTypes((items) =>
+                    items.includes(type)
+                      ? items.filter((item) => item !== type)
+                      : [...items, type],
                   )
                 }
               />
-              {layer === "truth"
-                ? "真相"
-                : layer === "public"
-                  ? "公开"
-                  : "认知"}
-            </label>
-          ))}
-        </div>
-        <div className="graph-filter">
-          {(["keeper", "source", "inference"] as const).map((provenance) => (
-            <label key={provenance}>
-              <input
-                type="checkbox"
-                checked={enabledProvenance.includes(provenance)}
-                onChange={() =>
-                  setEnabledProvenance((items) =>
-                    items.includes(provenance)
-                      ? items.filter((item) => item !== provenance)
-                      : [...items, provenance],
-                  )
-                }
-              />
-              {provenance === "keeper"
-                ? "KP"
-                : provenance === "source"
-                  ? "原作"
-                  : "AI"}
+              {type === "real" ? "公开" : "隐藏"}
             </label>
           ))}
         </div>
@@ -1577,14 +1542,8 @@ function RelationsView({
         relations={project.analysis.relations}
         selectedId={selectedId}
         onSelect={onSelect}
-        layout={project.analysis.relationshipLayout ?? {}}
-        onSaveLayout={(relationshipLayout) =>
-          onUpdate({
-            ...project,
-            updatedAt: new Date().toISOString(),
-            analysis: { ...project.analysis, relationshipLayout },
-          })
-        }
+        layout={{}}
+        onSaveLayout={() => onUpdate(project)}
         onOpenSource={onOpenSource}
       />
     </div>
@@ -2956,7 +2915,6 @@ function hydrateProject(project: Project): Project {
       ...project.analysis,
       clues: project.analysis.clues ?? [],
       activityLog: project.analysis.activityLog ?? [],
-      relationshipLayout: project.analysis.relationshipLayout ?? {},
       clueLayout: project.analysis.clueLayout ?? {},
       unresolvedRelationCount:
         project.analysis.unresolvedRelationCount ?? 0,
@@ -3413,9 +3371,8 @@ export default function Home() {
         relations.forEach((relation) => {
           relation.id ||= crypto.randomUUID();
           relation.label = String(relation.label ?? "关系待确认");
-          relation.layer ||= "truth";
-          relation.provenance ||= "source";
-          relation.confidence = Number(relation.confidence ?? 0.5);
+          relation.type = relation.type === "hidden" ? "hidden" : "real";
+          relation.confidence = 1;
           relation.sources = Array.isArray(relation.sources)
             ? relation.sources
             : [];
@@ -3438,26 +3395,6 @@ export default function Home() {
                 ]
               : nextAnalysis.activityLog,
         };
-        relations
-          .filter((relation) => relation.provenance === "inference")
-          .slice(0, 20)
-          .forEach((relation) => {
-            const from = nextAnalysis.people.find(
-              (person) => person.id === relation.sourceId,
-            );
-            const to = nextAnalysis.people.find(
-              (person) => person.id === relation.targetId,
-            );
-            generatedReviews.push({
-              id: crypto.randomUUID(),
-              type: "relation",
-              severity: "warning",
-              title: `${from?.name || "未知"} ↔ ${to?.name || "未知"}`,
-              description: `AI 根据当前人物资料推断“${from?.name || "未知"}”与“${to?.name || "未知"}”存在“${relation.label}”关系；原文未明确写出，请核对来源后决定是否保留。`,
-              status: "pending",
-              sources: relation.sources || [],
-            });
-          });
       }
       if (stage === "timeline" && Array.isArray(data.timeline)) {
         const timeline = (data.timeline as TimelineEvent[]).map((event) => ({

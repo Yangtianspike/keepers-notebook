@@ -61,6 +61,8 @@ export type Person = {
   provenance: Provenance;
   sources: SourceRef[];
   organization?: string;
+  portrait?: string;
+  portraitSource?: "manual" | "extracted" | "generated";
 };
 
 export type Place = {
@@ -68,6 +70,8 @@ export type Place = {
   name: string;
   aliases: string[];
   summary: string;
+  description?: string;
+  regionHint?: string;
   confirmed: boolean;
   provenance: Provenance;
   sources: SourceRef[];
@@ -95,9 +99,8 @@ export type Relation = {
   sourceId: string;
   targetId: string;
   label: string;
-  layer: "truth" | "public" | "belief";
+  type: "real" | "hidden";
   confidence: number;
-  provenance: Provenance;
   sources: SourceRef[];
 };
 
@@ -181,7 +184,6 @@ export type ProjectAnalysis = {
   unresolvedRelationCount: number;
   timeline: TimelineEvent[];
   clues: Clue[];
-  relationshipLayout: Record<string, { x: number; y: number }>;
   clueLayout: Record<string, { x: number; y: number }>;
   places: Place[];
   maps: AtlasMap[];
@@ -229,7 +231,6 @@ export const emptyAnalysis = (): ProjectAnalysis => ({
   unresolvedRelationCount: 0,
   timeline: [],
   clues: [],
-  relationshipLayout: {},
   clueLayout: {},
   places: [],
   maps: [],

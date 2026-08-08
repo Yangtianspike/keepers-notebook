@@ -163,17 +163,14 @@ export function filterRelationshipView(
   people: Person[],
   relations: Relation[],
   options: {
-    layers?: Relation["layer"][];
-    provenance?: Relation["provenance"][];
+    types?: Relation["type"][];
     focusId?: string;
     depth?: 1 | 2;
   },
 ) {
   let visibleRelations = relations.filter(
     (relation) =>
-      (!options.layers?.length || options.layers.includes(relation.layer)) &&
-      (!options.provenance?.length ||
-        options.provenance.includes(relation.provenance)),
+      !options.types?.length || options.types.includes(relation.type),
   );
   let visibleIds = new Set(people.map((person) => person.id));
   if (options.focusId && options.depth)
