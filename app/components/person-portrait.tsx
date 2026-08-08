@@ -28,7 +28,7 @@ export function PersonPortrait({
   const style = {
     "--portrait-size": `${dimension}px`,
     "--portrait-border":
-      borderStyle === "hidden" ? "var(--red)" : "var(--frame-gold)",
+      borderStyle === "hidden" ? "var(--red)" : "var(--teal)",
   } as CSSProperties;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

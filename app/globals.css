@@ -3321,6 +3321,191 @@ button:disabled {
   }
 }
 
+.person-portrait {
+  width: var(--portrait-size);
+  height: var(--portrait-size);
+  flex: 0 0 var(--portrait-size);
+  overflow: hidden;
+  border: 3px solid var(--portrait-border);
+  border-radius: 12px;
+  background: var(--panel-3);
+  box-shadow: inset 0 0 0 1px var(--line-soft), 0 8px 22px rgba(0, 0, 0, 0.22);
+  transition: 160ms ease;
+}
+
+.person-portrait:hover {
+  transform: translateY(-1px) scale(1.02);
+}
+
+.person-portrait.is-uploadable {
+  cursor: pointer;
+}
+
+.person-portrait-image,
+.person-portrait-placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+.person-portrait-image {
+  background-position: center;
+  background-size: cover;
+}
+
+.person-portrait-placeholder {
+  background: linear-gradient(145deg, var(--panel-2), var(--panel-3));
+  color: var(--muted);
+  font-size: clamp(1.8rem, 5vw, 4rem);
+  font-weight: 800;
+}
+
+.person-gallery-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.person-gallery-toolbar label {
+  display: grid;
+  min-width: min(100%, 240px);
+  gap: 7px;
+  color: var(--muted);
+}
+
+.person-gallery-toolbar input,
+.person-gallery-toolbar select {
+  min-height: 42px;
+  padding: 8px 11px;
+}
+
+.person-gallery-grid,
+.person-related-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  gap: 18px;
+}
+
+.person-gallery-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  place-items: center;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  padding: 20px 14px;
+  color: var(--text);
+  text-align: center;
+  cursor: pointer;
+  transition: 160ms ease;
+}
+
+.person-gallery-card:hover {
+  border-color: var(--teal);
+  background: var(--panel-3);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+
+.person-gallery-card h3,
+.person-gallery-card p {
+  margin: 0;
+}
+
+.person-gallery-card p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.person-importance,
+.relation-badge {
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.person-ego-view {
+  display: grid;
+  gap: 22px;
+}
+
+.person-ego-toolbar,
+.person-ego-profile {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.person-ego-toolbar {
+  justify-content: space-between;
+}
+
+.person-ego-toolbar h2,
+.person-ego-profile h3 {
+  margin: 0;
+}
+
+.person-ego-profile {
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  padding: 24px;
+}
+
+.person-ego-profile dl {
+  margin: 14px 0 0;
+}
+
+.person-ego-profile dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.person-ego-profile dd {
+  margin: 4px 0 0;
+}
+
+.person-ego-relations > header {
+  margin-bottom: 16px;
+}
+
+.person-related-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 14px;
+  color: var(--text);
+  text-align: left;
+}
+
+.person-related-card:hover {
+  border-color: var(--teal);
+  background: var(--panel-3);
+}
+
+.person-related-card.relation-hidden,
+.relation-badge.relation-hidden {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.person-related-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
 .confirm-wizard-backdrop {
   position: fixed;
   z-index: 1000;
@@ -3393,6 +3578,12 @@ button:disabled {
 }
 
 @media (max-width: 640px) {
+  .person-gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .person-ego-profile,
+  .person-ego-toolbar,
   .confirm-wizard > header,
   .confirm-wizard > footer {
     align-items: stretch;
