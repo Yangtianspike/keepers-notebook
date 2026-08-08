@@ -3249,12 +3249,21 @@ export default function Home() {
   ) => {
     const pending = activeProject?.analysis.pendingAskUserCall;
     if (!activeProject || !pending) return;
+    if (
+      analysisAbortRef.current &&
+      !analysisAbortRef.current.signal.aborted
+    ) {
+      analysisAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
     setActiveStage(pending.stage);
     setError("");
     try {
       const response = await fetch("/api/model", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           action: "continue",
           apiKey,
@@ -3328,9 +3337,19 @@ export default function Home() {
       setWizardStage(null);
       await runStage(pending.stage, resumedProject, payload.data);
     } catch (caught) {
+      if (caught instanceof DOMException && caught.name === "AbortError") {
+        if (analysisAbortRef.current === controller) setActiveStage(null);
+        return;
+      }
       setError(caught instanceof Error ? caught.message : "继续分析失败。");
     } finally {
-      setActiveStage(null);
+      if (
+        analysisAbortRef.current === controller &&
+        !controller.signal.aborted
+      ) {
+        analysisAbortRef.current = null;
+        setActiveStage(null);
+      }
     }
   };
 
