@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type ChangeEvent,
 } from "react";
 import { parseScenarioFile } from "@/lib/parser";
 import { hybridSearch, stageQuery } from "@/lib/retrieval";
@@ -2717,11 +2716,7 @@ export default function Home() {
             <button
               key={item.view}
               className={view === item.view ? "active" : ""}
-              onClick={() => {
-                setView(item.view);
-                setSelectedPersonId(null);
-                setSelectedEventId(null);
-              }}
+              onClick={() => setView(item.view)}
             >
               <i>{item.short}</i>
               <span>{item.label}</span>
