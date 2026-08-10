@@ -15,6 +15,8 @@ import {
   verifySourceRefs,
 } from "@/lib/quote-check";
 import { ConfirmWizard } from "@/app/components/confirm-wizard";
+import { ActTreeView } from "@/app/components/act-tree-view";
+import { ActDetailView } from "@/app/components/act-detail-view";
 import {
   deleteProject,
   listProjects,
@@ -1238,6 +1240,11 @@ export default function Home() {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const [actView, setActView] = useState<"tree" | "detail">("tree");
+  const [selectedActId, setSelectedActId] = useState<string | null>(null);
+  const [selectedActPersonId, setSelectedActPersonId] = useState<string | null>(
+    null,
+  );
   const [sourceRef, setSourceRef] = useState<SourceRef | null>(null);
   const [sourceUrl, setSourceUrl] = useState("");
   const [activeStage, setActiveStage] = useState<AnalysisStage | null>(null);
@@ -2461,6 +2468,9 @@ export default function Home() {
   const configReady = Boolean(
     modelConfig.baseUrl.trim() && modelConfig.model.trim() && apiKey.trim(),
   );
+  const selectedAct = activeProject?.analysis.acts.find(
+    (act) => act.id === selectedActId,
+  );
 
   if (!activeProject) {
     if (view === "settings") {
@@ -2611,10 +2621,78 @@ export default function Home() {
             <OverviewView project={activeProject} onOpenSource={setSourceRef} />
           )}
           {view === "acts" && (
-            <EmptyState
-              title="尚未生成幕"
-              description="完成七阶段分析后，这里会显示幕列表与分支树状图。"
-            />
+            <div className="content-stack">
+              <header className="content-header">
+                <div>
+                  <p className="eyebrow">ACT STRUCTURE</p>
+                  <h2>幕</h2>
+                  <p>{activeProject.analysis.acts.length} 个剧情幕</p>
+                </div>
+              </header>
+              {actView === "detail" && selectedAct ? (
+                <ActDetailView
+                  act={selectedAct}
+                  acts={activeProject.analysis.acts}
+                  people={activeProject.analysis.people}
+                  clues={activeProject.analysis.clues}
+                  places={activeProject.analysis.places}
+                  onBack={() => {
+                    setActView("tree");
+                    setSelectedActPersonId(null);
+                  }}
+                  onSelectAct={(actId) => {
+                    setSelectedActId(actId);
+                    setSelectedActPersonId(null);
+                  }}
+                  onSelectPerson={setSelectedActPersonId}
+                  onUpdateAct={(act) =>
+                    void persistProject({
+                      ...activeProject,
+                      updatedAt: new Date().toISOString(),
+                      analysis: {
+                        ...activeProject.analysis,
+                        acts: activeProject.analysis.acts.map((candidate) =>
+                          candidate.id === act.id ? act : candidate,
+                        ),
+                      },
+                    })
+                  }
+                  onUpdatePerson={(person) =>
+                    void persistProject({
+                      ...activeProject,
+                      updatedAt: new Date().toISOString(),
+                      analysis: {
+                        ...activeProject.analysis,
+                        people: activeProject.analysis.people.map((candidate) =>
+                          candidate.id === person.id ? person : candidate,
+                        ),
+                      },
+                    })
+                  }
+                />
+              ) : (
+                <ActTreeView
+                  acts={activeProject.analysis.acts}
+                  onSelectAct={(actId) => {
+                    setSelectedActId(actId);
+                    setActView("detail");
+                  }}
+                />
+              )}
+              {selectedActPersonId && (
+                <aside className="notice neutral">
+                  <strong>人物在其他幕中的记录</strong>
+                  <p>
+                    {activeProject.analysis.acts
+                      .filter((act) =>
+                        act.personIds.includes(selectedActPersonId),
+                      )
+                      .map((act) => act.title)
+                      .join("、") || "仅在当前幕出现"}
+                  </p>
+                </aside>
+              )}
+            </div>
           )}
           {view === "review" && (
             <ReviewView
