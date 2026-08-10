@@ -3647,6 +3647,148 @@ button:disabled {
   text-align: center;
 }
 
+.act-detail-toolbar,
+.act-editor-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.act-detail-header,
+.act-detail-section,
+.act-editor {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 22px;
+}
+
+.act-detail-header > span,
+.act-tier h4,
+.act-event-list article > span {
+  color: var(--accent);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.act-detail-header h2,
+.act-detail-section h3 {
+  margin: 6px 0 10px;
+}
+
+.act-tier + .act-tier {
+  margin-top: 22px;
+}
+
+.act-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.act-person-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 12px;
+}
+
+.act-portrait {
+  width: 58px;
+  height: 58px;
+  overflow: hidden;
+  flex: 0 0 58px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+.act-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.act-card-copy {
+  display: grid;
+  flex: 1;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.act-card-copy span,
+.act-clue-card span,
+.act-detail-header p {
+  color: var(--muted);
+}
+
+.act-clue-card,
+.act-event-list article {
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 14px;
+}
+
+.act-branch-list,
+.act-event-list,
+.act-editor,
+.act-editor-branches {
+  display: grid;
+  gap: 12px;
+}
+
+.act-branch-list button {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 13px;
+  text-align: left;
+}
+
+.act-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.act-branch-editor {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 0.8fr) auto;
+  gap: 10px;
+}
+
+.act-branch-editor input,
+.act-branch-editor select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 10px;
+}
+
+.act-event-list code {
+  color: var(--accent);
+  white-space: normal;
+}
+
+.act-description {
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 640px) {
   .person-gallery-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
