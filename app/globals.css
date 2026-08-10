@@ -3789,6 +3789,59 @@ button:disabled {
   white-space: pre-wrap;
 }
 
+.chapter-summary-slot {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.chapter-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.chapter-summary > article {
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 16px;
+}
+
+.chapter-summary > article > span {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.chapter-summary h4 {
+  margin: 5px 0 10px;
+}
+
+.chapter-summary p {
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.chapter-summary details {
+  border-top: 1px solid var(--line-soft);
+  padding: 9px 0;
+}
+
+.chapter-summary summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.chapter-key-event {
+  border-top: 1px solid var(--line-soft);
+  padding: 10px 0;
+}
+
+.chapter-key-event code {
+  color: var(--accent);
+  white-space: normal;
+}
+
 @media (max-width: 640px) {
   .person-gallery-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

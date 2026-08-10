@@ -17,6 +17,7 @@ import {
 import { ConfirmWizard } from "@/app/components/confirm-wizard";
 import { ActTreeView } from "@/app/components/act-tree-view";
 import { ActDetailView } from "@/app/components/act-detail-view";
+import { ChapterSummaryView } from "@/app/components/chapter-summary-view";
 import {
   deleteProject,
   listProjects,
@@ -415,6 +416,9 @@ function StructureView({
   onConfirm: () => void;
 }) {
   const imagePages = project.pages.filter((page) => page.imageHeavy);
+  const [expandedSummaryId, setExpandedSummaryId] = useState<string | null>(
+    null,
+  );
   const updateChapter = (
     id: string,
     patch: Partial<Project["chapters"][number]>,
@@ -504,6 +508,29 @@ function StructureView({
                 />
               </label>
             </div>
+            {project.analysis.chapterSummaries.some(
+              (summary) => summary.chapterId === chapter.id,
+            ) && (
+              <button
+                className="ghost-button compact"
+                onClick={() =>
+                  setExpandedSummaryId((current) =>
+                    current === chapter.id ? null : chapter.id,
+                  )
+                }
+              >
+                {expandedSummaryId === chapter.id ? "收起总结" : "查看总结"}
+              </button>
+            )}
+            {expandedSummaryId === chapter.id && (
+              <div className="chapter-summary-slot">
+                <ChapterSummaryView
+                  summary={project.analysis.chapterSummaries.find(
+                    (summary) => summary.chapterId === chapter.id,
+                  )!}
+                />
+              </div>
+            )}
           </article>
         ))}
       </div>
