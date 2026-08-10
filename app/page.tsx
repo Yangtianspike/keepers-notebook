@@ -29,10 +29,12 @@ import {
   type AnalysisStage,
   type Act,
   type CharacterArc,
+  type ChapterSummary,
   type Clue,
   type ModelConfig,
   type Person,
   type Project,
+  type ProjectAnalysis,
   type Provenance,
   type ReviewItem,
   type SourceRef,
@@ -122,6 +124,95 @@ function statusLabel(status: Project["status"]) {
     analyzing: "分析进行中",
     ready: "备本已生成",
   }[status];
+}
+
+function buildChapterSummaries(
+  project: Project,
+  analysis: ProjectAnalysis,
+): ChapterSummary[] {
+  const chapters = project.chapters.filter((chapter) => chapter.included);
+  if (chapters.length === 0) return [];
+  const orderedActs = [...analysis.acts].sort(
+    (left, right) => left.sequence - right.sequence,
+  );
+
+  return chapters.map((chapter, chapterIndex) => {
+    const chapterActs = orderedActs.filter((act, actIndex) => {
+      const explicitMatch = [act.title, act.description].some((value) =>
+        value.includes(chapter.title),
+      );
+      if (explicitMatch) return true;
+      return actIndex % chapters.length === chapterIndex;
+    });
+    const chapterClues = analysis.clues.filter((clue) =>
+      clue.sources.some(
+        (source) =>
+          (source.chapter && source.chapter.includes(chapter.title)) ||
+          (source.page >= chapter.startPage && source.page <= chapter.endPage),
+      ),
+    );
+    const personIds = new Set(chapterActs.flatMap((act) => act.personIds));
+    const chapterPeople = analysis.people.filter((person) =>
+      personIds.has(person.id),
+    );
+    const chapterArcs = (analysis.characterArcs ?? []).filter((arc) =>
+      personIds.has(arc.personId),
+    );
+    const placeNames = Array.from(
+      new Set(
+        chapterActs.map(
+          (act) =>
+            analysis.places.find((place) => place.id === act.placeId)?.name ||
+            act.placeText ||
+            "地点未定",
+        ),
+      ),
+    );
+
+    return {
+      chapterId: chapter.id,
+      background:
+        analysis.overview?.oneLine || analysis.overview?.currentState || "暂无背景摘要。",
+      timeAndPlace: [
+        analysis.timePlace?.timeline,
+        placeNames.length > 0 ? `地点：${placeNames.join("、")}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      coreCharacters:
+        chapterPeople
+          .map((person) => `${person.name}（${person.role || "角色待补充"}）`)
+          .join("、") || "暂无明确人物。",
+      characterArcs:
+        chapterArcs
+          .map((arc) => {
+            const name =
+              analysis.people.find((person) => person.id === arc.personId)
+                ?.name || arc.personId;
+            return `${name}：${arc.experience}；动机：${arc.motivation}`;
+          })
+          .join("\n") || "暂无人物经历摘要。",
+      openingHook: analysis.openingHook || "暂无开篇钩子。",
+      clueArrangements: chapterClues.map((clue) => ({
+        name: clue.name,
+        acquisition: clue.acquisition || clue.source || "获取方式待补充",
+        leadsTo:
+          clue.targets.map((target) => target.label).join("、") || "指向待补充",
+      })),
+      acts: chapterActs.map((act) => ({
+        actId: act.id,
+        title: act.title,
+        summary: [
+          act.description,
+          `地点：${analysis.places.find((place) => place.id === act.placeId)?.name || act.placeText || "未定"}`,
+          `时间：${act.time || "未定"}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      })),
+      keyEvents: chapterActs.flatMap((act) => act.keyEvents),
+    };
+  });
 }
 
 function sourcePageLabel(source: SourceRef) {
@@ -1974,6 +2065,13 @@ export default function Home() {
           }))
           .sort((left, right) => left.sequence - right.sequence);
         nextAnalysis = { ...nextAnalysis, acts };
+        nextAnalysis = {
+          ...nextAnalysis,
+          chapterSummaries: buildChapterSummaries(
+            runningProject,
+            nextAnalysis,
+          ),
+        };
       }
 
       const stageReviews = [...returnedReviews, ...generatedReviews].map(
