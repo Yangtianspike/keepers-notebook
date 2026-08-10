@@ -3,26 +3,10 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ChangeEvent,
 } from "react";
-import {
-  ReactFlow,
-  Background,
-  Controls,
-  Handle,
-  MarkerType,
-  MiniMap,
-  Position,
-  type Edge,
-  type Node,
-  type NodeProps,
-  useNodesState,
-} from "@xyflow/react";
-import dagre from "dagre";
-import "@xyflow/react/dist/style.css";
 import { parseScenarioFile } from "@/lib/parser";
 import { hybridSearch, stageQuery } from "@/lib/retrieval";
 import { ensureVectorIndex, probeEmbedding } from "@/lib/embedding";
@@ -30,14 +14,6 @@ import {
   flagUnverifiedSourceRefs,
   verifySourceRefs,
 } from "@/lib/quote-check";
-import {
-  filterClueView,
-  hasGraphPosition,
-  layoutWithElk,
-  savedGraphPosition,
-} from "@/lib/graph-layout";
-import { PersonGallery } from "@/app/components/person-gallery";
-import { PersonEgoView } from "@/app/components/person-ego-view";
 import { ConfirmWizard } from "@/app/components/confirm-wizard";
 import {
   deleteProject,
@@ -58,7 +34,6 @@ import {
   type Provenance,
   type ReviewItem,
   type SourceRef,
-  type TimelineEvent,
   type TimePlace,
 } from "@/lib/types";
 
@@ -67,14 +42,9 @@ type View =
   | "structure"
   | "analysis"
   | "overview"
-  | "relations"
-  | "timeline"
-  | "clues"
-  | "map"
+  | "acts"
   | "review"
   | "settings";
-
-type PortalView = "gallery" | "ego";
 
 const stageLabels: Record<AnalysisStage, string> = {
   background: "故事背景",
@@ -122,10 +92,7 @@ const navigation: Array<{ view: View; label: string; short: string }> = [
   { view: "structure", label: "文档结构", short: "章" },
   { view: "analysis", label: "分析流程", short: "析" },
   { view: "overview", label: "幕后真相", short: "真" },
-  { view: "relations", label: "人物关系", short: "人" },
-  { view: "timeline", label: "分支时间线", short: "时" },
-  { view: "clues", label: "线索网络", short: "线" },
-  { view: "map", label: "地图", short: "图" },
+  { view: "acts", label: "幕", short: "幕" },
   { view: "review", label: "待确认", short: "核" },
 ];
 
@@ -837,853 +804,6 @@ function OverviewView({
   );
 }
 
-type ClueFlowNodeData = {
-  clue: Clue;
-  onOpenSource: (source: SourceRef) => void;
-  onEdit: (clue: Clue) => void;
-};
-
-type ClueTargetFlowNodeData = {
-  label: string;
-  type: "person" | "place" | "event" | "truth";
-};
-
-function ClueFlowNode({ data }: NodeProps<Node<ClueFlowNodeData>>) {
-  const { clue, onOpenSource, onEdit } = data;
-  return (
-    <article className={`flow-clue-node clue-${clue.importance}`}>
-      <Handle type="target" position={Position.Left} className="flow-handle" />
-      <span className="flow-node-kicker">
-        {clue.importance === "key"
-          ? "关键线索"
-          : clue.importance === "secondary"
-            ? "次要线索"
-            : "其他线索"}
-      </span>
-      <strong>{clue.name}</strong>
-      <small>{clue.source}</small>
-      {clue.risk && <i className="flow-clue-risk">!</i>}
-      {clue.sources[0] && (
-        <button
-          className="flow-source-button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpenSource(clue.sources[0]);
-          }}
-        >
-          原文依据 ↗
-        </button>
-      )}
-      <button
-        className="flow-edit-button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onEdit(clue);
-        }}
-      >
-        编辑
-      </button>
-      <Handle type="source" position={Position.Right} className="flow-handle" />
-    </article>
-  );
-}
-
-function ClueTargetFlowNode({ data }: NodeProps<Node<ClueTargetFlowNodeData>>) {
-  const labels = {
-    person: "人物",
-    place: "地点",
-    event: "事件",
-    truth: "真相",
-  };
-  return (
-    <article className={`flow-clue-target target-${data.type}`}>
-      <Handle type="target" position={Position.Left} className="flow-handle" />
-      <span>{labels[data.type]}</span>
-      <strong>{data.label}</strong>
-      <Handle type="source" position={Position.Right} className="flow-handle" />
-    </article>
-  );
-}
-
-const clueNodeTypes = { clue: ClueFlowNode, clueTarget: ClueTargetFlowNode };
-
-function TimelineView({
-  project,
-  onOpenSource,
-  onSelect,
-}: {
-  project: Project;
-  onOpenSource: (source: SourceRef) => void;
-  onSelect: (id: string) => void;
-}) {
-  if (project.analysis.timeline.length === 0) {
-    return (
-      <EmptyState
-        title="尚未生成分支时间线"
-        description="完成时间线分析后，这里会显示固定历史、默认发展和玩家干预分支。"
-      />
-    );
-  }
-  return (
-    <TimelineFlowView
-      project={project}
-      onOpenSource={onOpenSource}
-      onSelect={onSelect}
-    />
-  );
-}
-
-type TimelineFlowNodeData = {
-  event: TimelineEvent;
-  onOpenSource: (source: SourceRef) => void;
-  onSelect: (id: string) => void;
-};
-
-function TimelineFlowNode({ data }: NodeProps<Node<TimelineFlowNodeData>>) {
-  const { event, onOpenSource, onSelect } = data;
-  return (
-    <article
-      className={`flow-timeline-node event-${event.kind}`}
-      onClick={() => onSelect(event.id)}
-    >
-      <Handle type="target" position={Position.Top} className="flow-handle" />
-      <div>
-        <span>{event.date || "时间不明"}</span>
-        <Badge provenance={event.provenance} />
-      </div>
-      <h3>{event.title}</h3>
-      <p>{event.summary}</p>
-      {event.trigger && <small>触发：{event.trigger}</small>}
-      {event.outcome && <small>后果：{event.outcome}</small>}
-      {event.sources[0] && (
-        <button
-          className="flow-source-button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenSource(event.sources[0]);
-          }}
-        >
-          原文依据 ↗
-        </button>
-      )}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="flow-handle"
-      />
-    </article>
-  );
-}
-
-const timelineNodeTypes = { timeline: TimelineFlowNode };
-
-function TimelineFlowView({
-  project,
-  onOpenSource,
-  onSelect,
-}: {
-  project: Project;
-  onOpenSource: (source: SourceRef) => void;
-  onSelect: (id: string) => void;
-}) {
-  const events = project.analysis.timeline;
-  const nodesAndEdges = useMemo(() => {
-    const graph = new dagre.graphlib.Graph();
-    graph.setDefaultEdgeLabel(() => ({}));
-    graph.setGraph({
-      rankdir: "TB",
-      ranksep: 120,
-      nodesep: 90,
-      marginx: 90,
-      marginy: 80,
-    });
-    events.forEach((event) =>
-      graph.setNode(event.id, { width: 300, height: 170 }),
-    );
-    const roots = events.filter(
-      (event) =>
-        !event.parentId ||
-        !events.some((candidate) => candidate.id === event.parentId),
-    );
-    roots
-      .slice(0, -1)
-      .forEach((event, index) =>
-        graph.setEdge(event.id, roots[index + 1].id, { kind: "main" }),
-      );
-    events
-      .filter(
-        (event) =>
-          event.parentId &&
-          events.some((candidate) => candidate.id === event.parentId),
-      )
-      .forEach((event) =>
-        graph.setEdge(event.parentId!, event.id, { kind: "branch" }),
-      );
-    dagre.layout(graph);
-    const nodes: Node<TimelineFlowNodeData>[] = events.map((event) => {
-      const point = graph.node(event.id);
-      return {
-        id: event.id,
-        type: "timeline",
-        position: { x: point.x - 150, y: point.y - 85 },
-        data: { event, onOpenSource, onSelect },
-      };
-    });
-    const edges: Edge[] = graph.edges().map((edge) => {
-      const info = graph.edge(edge) as { kind?: string };
-      return {
-        id: `${edge.v}-${edge.w}`,
-        source: edge.v,
-        target: edge.w,
-        type: "smoothstep",
-        markerEnd: { type: MarkerType.ArrowClosed },
-        className:
-          info.kind === "branch"
-            ? "flow-timeline-branch"
-            : "flow-timeline-main",
-      };
-    });
-    return { nodes, edges };
-  }, [events, onOpenSource, onSelect]);
-  const [nodes, setNodes, onNodesChange] = useNodesState(nodesAndEdges.nodes);
-  useEffect(
-    () => setNodes(nodesAndEdges.nodes),
-    [nodesAndEdges.nodes, setNodes],
-  );
-  return (
-    <div className="content-stack timeline-content">
-      <header className="content-header">
-        <div>
-          <p className="eyebrow">BRANCHING CHRONOLOGY</p>
-          <h2>分支时间线</h2>
-          <p>主线自上而下推进；分支从对应事件展开。</p>
-        </div>
-      </header>
-      <div className="flow-canvas timeline-flow-canvas">
-        <ReactFlow
-          nodes={nodes}
-          edges={nodesAndEdges.edges}
-          nodeTypes={timelineNodeTypes}
-          onNodesChange={onNodesChange}
-          fitView
-          minZoom={0.25}
-          maxZoom={1.5}
-        >
-          <Background gap={22} size={1} />
-          <Controls showInteractive={false} />
-          <MiniMap pannable zoomable />
-        </ReactFlow>
-      </div>
-    </div>
-  );
-}
-
-function CluesView({
-  project,
-  onOpenSource,
-  onUpdate,
-}: {
-  project: Project;
-  onOpenSource: (source: SourceRef) => void;
-  onUpdate: (project: Project) => void;
-}) {
-  const [importanceFilter, setImportanceFilter] = useState<
-    Clue["importance"][]
-  >(["key", "secondary", "other"]);
-  const [targetFilter, setTargetFilter] = useState<
-    Clue["targets"][number]["type"][]
-  >(["person", "place", "event", "truth"]);
-  const [focusClueId, setFocusClueId] = useState<string>("");
-  const [focusDepth, setFocusDepth] = useState<"all" | 1 | 2>("all");
-  const [viewMode, setViewMode] = useState<"graph" | "list">("graph");
-  const [editingClue, setEditingClue] = useState<Clue | null>(null);
-  const allClues = useMemo(
-    () => project.analysis.clues ?? [],
-    [project.analysis.clues],
-  );
-  const clues = useMemo(() => {
-    return filterClueView(allClues, {
-      importance: importanceFilter,
-      targetTypes: targetFilter,
-      focusId:
-        focusClueId && focusDepth !== "all" ? focusClueId : undefined,
-      depth: focusDepth === "all" ? undefined : focusDepth,
-    });
-  }, [allClues, focusClueId, focusDepth, importanceFilter, targetFilter]);
-  const initialNodes = useMemo(() => {
-    const graph = new dagre.graphlib.Graph();
-    graph.setDefaultEdgeLabel(() => ({}));
-    graph.setGraph({
-      rankdir: "LR",
-      ranksep: 200,
-      nodesep: 80,
-      marginx: 70,
-      marginy: 70,
-    });
-    clues.forEach((clue) =>
-      graph.setNode(`clue:${clue.id}`, { width: 230, height: 124 }),
-    );
-    const targets = new Map<
-      string,
-      { label: string; type: "person" | "place" | "event" | "truth" }
-    >();
-    clues.forEach((clue) =>
-      clue.targets
-        .filter((target) => target.type !== "truth" || target.confirmed)
-        .forEach((target) => {
-          const id = `${target.type}:${target.id || target.label}`;
-          targets.set(id, { label: target.label, type: target.type });
-          graph.setNode(id, { width: 160, height: 72 });
-          graph.setEdge(`clue:${clue.id}`, id);
-        }),
-    );
-    dagre.layout(graph);
-    return [
-      ...clues.map((clue) => {
-        const point = graph.node(`clue:${clue.id}`);
-        return {
-          id: `clue:${clue.id}`,
-          type: "clue",
-          position: savedGraphPosition(
-            project.analysis.clueLayout ?? {},
-            `clue:${clue.id}`,
-            { x: point.x - 115, y: point.y - 62 },
-          ),
-          data: { clue, onOpenSource, onEdit: setEditingClue },
-        } as Node<ClueFlowNodeData>;
-      }),
-      ...[...targets.entries()].map(([id, target]) => {
-        const point = graph.node(id);
-        return {
-          id,
-          type: "clueTarget",
-          position: savedGraphPosition(
-            project.analysis.clueLayout ?? {},
-            id,
-            { x: point.x - 80, y: point.y - 36 },
-          ),
-          data: target,
-        } as Node<ClueTargetFlowNodeData>;
-      }),
-    ];
-  }, [clues, onOpenSource, project.analysis.clueLayout]);
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const edges = useMemo<Edge[]>(
-    () =>
-      clues.flatMap((clue) =>
-        clue.targets
-          .filter((target) => target.type !== "truth" || target.confirmed)
-          .map((target) => ({
-            id: `${clue.id}:${target.type}:${target.id || target.label}`,
-            source: `clue:${clue.id}`,
-            target: `${target.type}:${target.id || target.label}`,
-            type: "smoothstep",
-            label: target.priority === "primary" ? "指向" : "次要指向",
-            markerEnd: { type: MarkerType.ArrowClosed },
-            className:
-              target.priority === "primary"
-                ? "flow-clue-edge-primary"
-                : "flow-clue-edge-secondary",
-          })),
-      ),
-    [clues],
-  );
-  const cluePositions = useRef(
-    new Map(initialNodes.map((node) => [node.id, node.position])),
-  );
-  const clueInitialized = useRef(false);
-  const applyClueLayout = useCallback(async () => {
-    try {
-      const positions = await layoutWithElk({
-        nodes: initialNodes.map((node) => ({
-          id: node.id,
-          width: node.type === "clue" ? 230 : 160,
-          height: node.type === "clue" ? 124 : 72,
-        })),
-        edges: edges.map((edge) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-        })),
-      });
-      setNodes(
-        initialNodes.map((node) => ({
-          ...node,
-          position: positions.get(node.id) ?? node.position,
-        })),
-      );
-      positions.forEach((position, id) => cluePositions.current.set(id, position));
-    } catch {
-      setNodes(initialNodes);
-    }
-  }, [edges, initialNodes, setNodes]);
-  useEffect(() => {
-    if (clueInitialized.current) return;
-    clueInitialized.current = true;
-    if (Object.keys(project.analysis.clueLayout ?? {}).length === 0)
-      void applyClueLayout();
-  }, [applyClueLayout, project.analysis.clueLayout]);
-  useEffect(() => {
-    setNodes((current) => {
-      current.forEach((node) =>
-        cluePositions.current.set(node.id, node.position),
-      );
-      return initialNodes.map((node) => ({
-        ...node,
-        position: hasGraphPosition(
-          project.analysis.clueLayout ?? {},
-          node.id,
-        )
-          ? node.position
-          : (cluePositions.current.get(node.id) ?? node.position),
-      }));
-    });
-  }, [initialNodes, project.analysis.clueLayout, setNodes]);
-  const saveClue = () => {
-    if (!editingClue || !editingClue.name.trim() || !editingClue.source.trim())
-      return;
-    const exists = allClues.some((clue) => clue.id === editingClue.id);
-    const next: Project = {
-      ...project,
-      updatedAt: new Date().toISOString(),
-      analysis: {
-        ...project.analysis,
-        clues: exists
-          ? allClues.map((clue) =>
-              clue.id === editingClue.id ? editingClue : clue,
-            )
-          : [...allClues, editingClue],
-      },
-    };
-    onUpdate(next);
-    setEditingClue(null);
-  };
-  const startNewClue = () =>
-    setEditingClue({
-      id: crypto.randomUUID(),
-      name: "",
-      summary: "",
-      source: "",
-      importance: "secondary",
-      targets: [],
-      confidence: 1,
-      provenance: "keeper",
-      sources: [],
-    });
-  return (
-    <div className="content-stack">
-      <header className="content-header">
-        <div>
-          <p className="eyebrow">CLUE NETWORK</p>
-          <h2>线索网络</h2>
-          <p>
-            从关键线索到真相的调查入口、替代路径与卡关风险。每张卡均可直接打开编辑。
-          </p>
-        </div>
-        <div className="clue-controls">
-          <button className="primary-button compact" onClick={startNewClue}>
-            新增线索
-          </button>
-          <div className="graph-filter">
-            {(["key", "secondary", "other"] as const).map((level) => (
-              <label key={level}>
-                <input
-                  type="checkbox"
-                  checked={importanceFilter.includes(level)}
-                  onChange={() =>
-                    setImportanceFilter((items) =>
-                      items.includes(level)
-                        ? items.filter((item) => item !== level)
-                        : [...items, level],
-                    )
-                  }
-                />
-                {level === "key"
-                  ? "关键"
-                  : level === "secondary"
-                    ? "次要"
-                    : "其他"}
-              </label>
-            ))}
-          </div>
-          <div className="graph-filter">
-            {(["person", "place", "event", "truth"] as const).map((type) => (
-              <label key={type}>
-                <input
-                  type="checkbox"
-                  checked={targetFilter.includes(type)}
-                  onChange={() =>
-                    setTargetFilter((items) =>
-                      items.includes(type)
-                        ? items.filter((item) => item !== type)
-                        : [...items, type],
-                    )
-                  }
-                />
-                {
-                  {
-                    person: "人物",
-                    place: "地点",
-                    event: "事件",
-                    truth: "真相",
-                  }[type]
-                }
-              </label>
-            ))}
-          </div>
-          <select
-            className="dark-control"
-            aria-label="聚焦线索"
-            value={focusClueId}
-            onChange={(event) => setFocusClueId(event.target.value)}
-          >
-            <option value="">未聚焦线索</option>
-            {allClues.map((clue) => (
-              <option key={clue.id} value={clue.id}>
-                {clue.name}
-              </option>
-            ))}
-          </select>
-          <select
-            className="dark-control"
-            aria-label="线索图聚焦范围"
-            value={focusDepth}
-            onChange={(event) =>
-              setFocusDepth(
-                event.target.value === "all"
-                  ? "all"
-                  : (Number(event.target.value) as 1 | 2),
-              )
-            }
-            disabled={!focusClueId}
-          >
-            <option value="all">全图</option>
-            <option value="1">一层关系</option>
-            <option value="2">两层关系</option>
-          </select>
-          <div className="segmented-control">
-            <button
-              className={viewMode === "graph" ? "active" : ""}
-              onClick={() => setViewMode("graph")}
-            >
-              网络图
-            </button>
-            <button
-              className={viewMode === "list" ? "active" : ""}
-              onClick={() => setViewMode("list")}
-            >
-              清单
-            </button>
-          </div>
-          <button
-            className="ghost-button compact"
-            onClick={() => void applyClueLayout()}
-          >
-            重新布局
-          </button>
-        </div>
-      </header>
-      {editingClue && (
-        <section className="clue-editor">
-          <div>
-            <h3>
-              {allClues.some((clue) => clue.id === editingClue.id)
-                ? "编辑线索"
-                : "新增线索"}
-            </h3>
-            <button
-              className="panel-close"
-              onClick={() => setEditingClue(null)}
-            >
-              ×
-            </button>
-          </div>
-          <label className="field">
-            <span>线索名称</span>
-            <input
-              value={editingClue.name}
-              onChange={(event) =>
-                setEditingClue({ ...editingClue, name: event.target.value })
-              }
-            />
-          </label>
-          <label className="field">
-            <span>内容摘要</span>
-            <textarea
-              value={editingClue.summary}
-              onChange={(event) =>
-                setEditingClue({ ...editingClue, summary: event.target.value })
-              }
-            />
-          </label>
-          <label className="field">
-            <span>来源地点 / 场景</span>
-            <input
-              value={editingClue.source}
-              onChange={(event) =>
-                setEditingClue({ ...editingClue, source: event.target.value })
-              }
-            />
-          </label>
-          <div className="clue-target-editor">
-            <label className="field">
-              <span>主要指向</span>
-              {editingClue.targets.find(
-                (target) => target.priority === "primary",
-              )?.type === "place" ? (
-                <select
-                  value={
-                    editingClue.targets.find(
-                      (target) => target.priority === "primary",
-                    )?.id ?? ""
-                  }
-                  onChange={(event) => {
-                    const place = project.analysis.places.find(
-                      (candidate) => candidate.id === event.target.value,
-                    );
-                    const existing = editingClue.targets.find(
-                      (target) => target.priority === "primary",
-                    );
-                    if (!place || !existing) return;
-                    setEditingClue({
-                      ...editingClue,
-                      targets: editingClue.targets.map((target) =>
-                        target === existing
-                          ? { ...target, id: place.id, label: place.name }
-                          : target,
-                      ),
-                    });
-                  }}
-                >
-                  <option value="">选择已有地点</option>
-                  {project.analysis.places.map((place) => (
-                    <option key={place.id} value={place.id}>
-                      {place.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={
-                    editingClue.targets.find(
-                      (target) => target.priority === "primary",
-                    )?.label ?? ""
-                  }
-                  onChange={(event) => {
-                    const existing = editingClue.targets.find(
-                      (target) => target.priority === "primary",
-                    );
-                    const rest = editingClue.targets.filter(
-                      (target) => target.priority !== "primary",
-                    );
-                    setEditingClue({
-                      ...editingClue,
-                      targets: event.target.value
-                        ? [
-                            ...rest,
-                            {
-                              id: existing?.id ?? crypto.randomUUID(),
-                              type: existing?.type ?? "event",
-                              label: event.target.value,
-                              priority: "primary",
-                              confirmed: true,
-                            },
-                          ]
-                        : rest,
-                    });
-                  }}
-                />
-              )}
-            </label>
-            <label className="field">
-              <span>目标类型</span>
-              <select
-                value={
-                  editingClue.targets.find(
-                    (target) => target.priority === "primary",
-                  )?.type ?? "event"
-                }
-                onChange={(event) => {
-                  const existing = editingClue.targets.find(
-                    (target) => target.priority === "primary",
-                  );
-                  if (!existing) return;
-                  setEditingClue({
-                    ...editingClue,
-                    targets: editingClue.targets.map((target) =>
-                      target.id === existing.id
-                        ? {
-                            ...target,
-                            type: event.target.value as
-                              "person" | "place" | "event" | "truth",
-                            id:
-                              event.target.value === "place" ? "" : target.id,
-                            label:
-                              event.target.value === "place"
-                                ? ""
-                                : target.label,
-                          }
-                        : target,
-                    ),
-                  });
-                }}
-              >
-                <option value="person">人物</option>
-                <option value="place">地点</option>
-                <option value="event">事件</option>
-                <option value="truth">真相</option>
-              </select>
-            </label>
-          </div>
-          <label className="field">
-            <span>关键程度</span>
-            <select
-              value={editingClue.importance}
-              onChange={(event) =>
-                setEditingClue({
-                  ...editingClue,
-                  importance: event.target.value as Clue["importance"],
-                })
-              }
-            >
-              <option value="key">关键</option>
-              <option value="secondary">次要</option>
-              <option value="other">其他</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>获得条件</span>
-            <textarea
-              value={editingClue.acquisition ?? ""}
-              onChange={(event) =>
-                setEditingClue({
-                  ...editingClue,
-                  acquisition: event.target.value,
-                })
-              }
-            />
-          </label>
-          <label className="field">
-            <span>错过条件</span>
-            <textarea
-              value={editingClue.missCondition ?? ""}
-              onChange={(event) =>
-                setEditingClue({
-                  ...editingClue,
-                  missCondition: event.target.value,
-                })
-              }
-            />
-          </label>
-          <label className="field">
-            <span>KP 补救建议</span>
-            <textarea
-              value={editingClue.keeperSuggestion ?? ""}
-              onChange={(event) =>
-                setEditingClue({
-                  ...editingClue,
-                  keeperSuggestion: event.target.value,
-                })
-              }
-            />
-          </label>
-          <div className="clue-editor-actions">
-            <button className="primary-button compact" onClick={saveClue}>
-              保存线索
-            </button>
-            <button
-              className="ghost-button compact"
-              onClick={() => setEditingClue(null)}
-            >
-              取消
-            </button>
-          </div>
-        </section>
-      )}
-      {viewMode === "graph" ? (
-        <div className="flow-canvas clue-flow-canvas">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={clueNodeTypes}
-            onNodesChange={onNodesChange}
-            onNodeClick={(_, node) => {
-              if (node.type === "clue")
-                setFocusClueId(node.id.replace(/^clue:/, ""));
-            }}
-            onNodeDragStop={(_, node) => {
-              cluePositions.current.set(node.id, node.position);
-              onUpdate({
-                ...project,
-                updatedAt: new Date().toISOString(),
-                analysis: {
-                  ...project.analysis,
-                  clueLayout: {
-                    ...project.analysis.clueLayout,
-                    [node.id]: node.position,
-                  },
-                },
-              });
-            }}
-            fitView
-            minZoom={0.25}
-            maxZoom={1.6}
-          >
-            <Background gap={22} size={1} />
-            <Controls showInteractive={false} />
-            <MiniMap pannable zoomable />
-          </ReactFlow>
-        </div>
-      ) : (
-        <div className="clue-grid">
-          {clues.map((clue) => (
-            <article
-              className={`clue-card clue-${clue.importance}`}
-              key={clue.id}
-              onDoubleClick={() => setEditingClue(clue)}
-            >
-              <div className="clue-card-top">
-                <span>
-                  {clue.importance === "key"
-                    ? "关键"
-                    : clue.importance === "secondary"
-                      ? "次要"
-                      : "其他"}
-                </span>
-                <Badge provenance={clue.provenance} />
-              </div>
-              <h3>{clue.name}</h3>
-              <p>{clue.summary}</p>
-              <small>来源：{clue.source}</small>
-              <div className="clue-targets">
-                {clue.targets.map((target) => (
-                  <i key={target.id} className={`target-${target.type}`}>
-                    {target.priority === "primary" ? "主要" : "次要"} ·{" "}
-                    {target.label}
-                  </i>
-                ))}
-              </div>
-              {clue.risk && <p className="clue-risk">风险：{clue.risk}</p>}
-              {clue.fallback && (
-                <p className="clue-fallback">替代入口：{clue.fallback}</p>
-              )}
-              {clue.sources[0] && (
-                <SourceButton source={clue.sources[0]} onOpen={onOpenSource} />
-              )}
-              <button
-                className="text-button clue-edit-button"
-                onClick={() => setEditingClue(clue)}
-              >
-                编辑线索
-              </button>
-            </article>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ReviewView({
   items,
   onResolve,
@@ -1970,9 +1090,9 @@ function DashboardView({
           <span>项目状态</span>
           <strong>{statusLabel(project.status)}</strong>
           <div className="case-progress">
-            <i style={{ width: `${completed * 25}%` }} />
+            <i style={{ width: `${(completed / STAGE_ORDER.length) * 100}%` }} />
           </div>
-          <small>{completed} / 4 个分析阶段</small>
+          <small>{completed} / 7 个分析阶段</small>
         </div>
       </header>
       <div className="dashboard-stats">
@@ -1981,15 +1101,15 @@ function DashboardView({
           <strong>{project.pages.length}</strong>
           <small>页 · {project.chapters.length} 个章节</small>
         </button>
-        <button onClick={() => onNavigate("relations")}>
+        <button onClick={() => onNavigate("overview")}>
           <span>人物</span>
           <strong>{project.analysis.people.length}</strong>
-          <small>{project.analysis.relations.length} 条关系</small>
+          <small>核心人物</small>
         </button>
-        <button onClick={() => onNavigate("timeline")}>
-          <span>事件</span>
-          <strong>{project.analysis.timeline.length}</strong>
-          <small>时间线节点</small>
+        <button onClick={() => onNavigate("acts")}>
+          <span>幕</span>
+          <strong>{project.analysis.acts.length}</strong>
+          <small>剧情幕</small>
         </button>
         <button onClick={() => onNavigate("review")}>
           <span>核对</span>
@@ -2020,234 +1140,18 @@ function DashboardView({
           </button>
           <button
             className="action-card relation"
-            onClick={() => onNavigate("relations")}
+            onClick={() => onNavigate("acts")}
           >
             <span>02</span>
             <div>
-              <h3>人物关系</h3>
-              <p>真实、公开与主观认知</p>
-            </div>
-            <i>→</i>
-          </button>
-          <button
-            className="action-card time"
-            onClick={() => onNavigate("timeline")}
-          >
-            <span>03</span>
-            <div>
-              <h3>分支时间线</h3>
-              <p>默认走向与关键干预</p>
+              <h3>幕</h3>
+              <p>剧情分幕、关键事件与分支</p>
             </div>
             <i>→</i>
           </button>
         </div>
       </section>
     </div>
-  );
-}
-
-function AutoResizeTextarea({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    if (!ref.current) return;
-    ref.current.style.height = "0px";
-    ref.current.style.height = `${ref.current.scrollHeight}px`;
-  }, [value]);
-  return <textarea ref={ref} rows={1} value={value} onChange={onChange} />;
-}
-
-function DetailPanel({
-  project,
-  selectedPerson,
-  selectedEvent,
-  onClose,
-  onUpdate,
-  onOpenSource,
-  onUploadPortrait,
-}: {
-  project: Project;
-  selectedPerson?: Person;
-  selectedEvent?: TimelineEvent;
-  onClose: () => void;
-  onUpdate: (project: Project) => void;
-  onOpenSource: (source: SourceRef) => void;
-  onUploadPortrait: (personId: string) => void;
-}) {
-  if (!selectedPerson && !selectedEvent) return null;
-  const updatePerson = (patch: Partial<Person>) => {
-    if (!selectedPerson) return;
-    onUpdate({
-      ...project,
-      updatedAt: new Date().toISOString(),
-      analysis: {
-        ...project.analysis,
-        people: project.analysis.people.map((person) =>
-          person.id === selectedPerson.id
-            ? { ...person, ...patch, provenance: "keeper" }
-            : person,
-        ),
-      },
-    });
-  };
-  const updateEvent = (patch: Partial<TimelineEvent>) => {
-    if (!selectedEvent) return;
-    onUpdate({
-      ...project,
-      updatedAt: new Date().toISOString(),
-      analysis: {
-        ...project.analysis,
-        timeline: project.analysis.timeline.map((event) =>
-          event.id === selectedEvent.id
-            ? { ...event, ...patch, provenance: "keeper" }
-            : event,
-        ),
-      },
-    });
-  };
-
-  return (
-    <aside className="detail-panel">
-      <button className="panel-close" onClick={onClose} aria-label="关闭详情">
-        ×
-      </button>
-      {selectedPerson && (
-        <>
-          <p className="eyebrow">CHARACTER FILE</p>
-          <button
-            className="ghost-button portrait-upload-button"
-            onClick={() => onUploadPortrait(selectedPerson.id)}
-          >
-            {selectedPerson.portrait ? "更换肖像" : "上传肖像"}
-          </button>
-          <div className="detail-title">
-            <span>{selectedPerson.name.slice(0, 1)}</span>
-            <div>
-              <input
-                value={selectedPerson.name}
-                onChange={(event) => updatePerson({ name: event.target.value })}
-              />
-              <Badge provenance={selectedPerson.provenance} />
-            </div>
-          </div>
-          <label className="field">
-            <span>剧情作用</span>
-            <AutoResizeTextarea
-              value={selectedPerson.role}
-              onChange={(event) => updatePerson({ role: event.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>所属组织</span>
-            <input
-              value={selectedPerson.organization ?? ""}
-              onChange={(event) =>
-                updatePerson({ organization: event.target.value })
-              }
-            />
-          </label>
-          <label className="field">
-            <span>公开身份</span>
-            <AutoResizeTextarea
-              value={selectedPerson.publicIdentity}
-              onChange={(event) =>
-                updatePerson({ publicIdentity: event.target.value })
-              }
-            />
-          </label>
-          <label className="field">
-            <span>真实身份</span>
-            <AutoResizeTextarea
-              value={selectedPerson.trueIdentity}
-              onChange={(event) =>
-                updatePerson({ trueIdentity: event.target.value })
-              }
-            />
-          </label>
-          <label className="field">
-            <span>目标与动机</span>
-            <AutoResizeTextarea
-              value={selectedPerson.motivation}
-              onChange={(event) =>
-                updatePerson({ motivation: event.target.value })
-              }
-            />
-          </label>
-          <div className="detail-section">
-            <span>别名与称呼</span>
-            <div className="tag-list">
-              {selectedPerson.aliases.length ? (
-                selectedPerson.aliases.map((alias) => (
-                  <i key={alias}>{alias}</i>
-                ))
-              ) : (
-                <small>暂无已确认别名</small>
-              )}
-            </div>
-          </div>
-          <div className="detail-section">
-            <span>原文依据</span>
-            {selectedPerson.sources.slice(0, 4).map((source, index) => (
-              <SourceButton key={index} source={source} onOpen={onOpenSource} />
-            ))}
-          </div>
-        </>
-      )}
-      {selectedEvent && (
-        <>
-          <p className="eyebrow">EVENT FILE</p>
-          <div className="detail-title event-title">
-            <span>时</span>
-            <div>
-              <input
-                value={selectedEvent.title}
-                onChange={(event) => updateEvent({ title: event.target.value })}
-              />
-              <Badge provenance={selectedEvent.provenance} />
-            </div>
-          </div>
-          <label className="field">
-            <span>时间</span>
-            <input
-              value={selectedEvent.date}
-              onChange={(event) => updateEvent({ date: event.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>事件摘要</span>
-            <textarea
-              value={selectedEvent.summary}
-              onChange={(event) => updateEvent({ summary: event.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>触发条件</span>
-            <textarea
-              value={selectedEvent.trigger ?? ""}
-              onChange={(event) => updateEvent({ trigger: event.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>结果</span>
-            <textarea
-              value={selectedEvent.outcome ?? ""}
-              onChange={(event) => updateEvent({ outcome: event.target.value })}
-            />
-          </label>
-          <div className="detail-section">
-            <span>原文依据</span>
-            {selectedEvent.sources.slice(0, 4).map((source, index) => (
-              <SourceButton key={index} source={source} onOpen={onOpenSource} />
-            ))}
-          </div>
-        </>
-      )}
-    </aside>
   );
 }
 
@@ -2312,8 +1216,11 @@ function hydrateProject(project: Project): Project {
       ...defaults,
       ...project.analysis,
       clues: project.analysis.clues ?? [],
+      acts: project.analysis.acts ?? [],
+      chapterSummaries: project.analysis.chapterSummaries ?? [],
+      characterArcs: project.analysis.characterArcs ?? [],
+      openingHook: project.analysis.openingHook ?? "",
       activityLog: project.analysis.activityLog ?? [],
-      clueLayout: project.analysis.clueLayout ?? {},
       unresolvedRelationCount:
         project.analysis.unresolvedRelationCount ?? 0,
       places: project.analysis.places ?? [],
@@ -2331,11 +1238,6 @@ export default function Home() {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
-  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
-  const [portalView, setPortalView] = useState<PortalView>("gallery");
-  const [portalPersonId, setPortalPersonId] = useState<string | null>(null);
-  const [, setEgoHistory] = useState<string[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [sourceRef, setSourceRef] = useState<SourceRef | null>(null);
   const [sourceUrl, setSourceUrl] = useState("");
   const [activeStage, setActiveStage] = useState<AnalysisStage | null>(null);
@@ -2427,69 +1329,6 @@ export default function Home() {
       );
     });
     await saveProject(project);
-  }, []);
-
-  const uploadPortrait = useCallback(
-    (personId: string) => {
-      if (!activeProject) return;
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "image/jpeg,image/png,image/webp";
-      input.onchange = () => {
-        const file = input.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          const image = new Image();
-          image.onload = () => {
-            const scale = Math.min(1, 256 / Math.max(image.width, image.height));
-            const canvas = document.createElement("canvas");
-            canvas.width = Math.max(1, Math.round(image.width * scale));
-            canvas.height = Math.max(1, Math.round(image.height * scale));
-            const context = canvas.getContext("2d");
-            if (!context) {
-              setError("浏览器无法处理该肖像图片。");
-              return;
-            }
-            context.drawImage(image, 0, 0, canvas.width, canvas.height);
-            const portrait = canvas.toDataURL("image/jpeg", 0.7);
-            void persistProject({
-              ...activeProject,
-              updatedAt: new Date().toISOString(),
-              analysis: {
-                ...activeProject.analysis,
-                people: activeProject.analysis.people.map((person) =>
-                  person.id === personId
-                    ? { ...person, portrait, portraitSource: "manual" as const }
-                    : person,
-                ),
-              },
-            });
-          };
-          image.onerror = () => setError("无法读取该肖像图片。");
-          image.src = String(reader.result);
-        };
-        reader.readAsDataURL(file);
-      };
-      input.click();
-    },
-    [activeProject, persistProject],
-  );
-
-  const enterEgo = useCallback((personId: string) => {
-    setEgoHistory((history) => [...history, personId]);
-    setPortalPersonId(personId);
-    setPortalView("ego");
-  }, []);
-
-  const goBackFromEgo = useCallback(() => {
-    setEgoHistory((history) => {
-      const next = history.slice(0, -1);
-      const previous = next.at(-1) ?? null;
-      setPortalPersonId(previous);
-      if (!previous) setPortalView("gallery");
-      return next;
-    });
   }, []);
 
   const handleImport = async (file: File) => {
@@ -3387,7 +2226,7 @@ export default function Home() {
   ) => {
     if (!activeProject) return;
     let people = [...activeProject.analysis.people];
-    let relations = [...activeProject.analysis.relations];
+    let acts = [...activeProject.analysis.acts];
     let clues = [...(activeProject.analysis.clues ?? [])];
     let places = [...(activeProject.analysis.places ?? [])];
     if (accepted && item.type === "merge" && item.candidateNames?.length) {
@@ -3427,14 +2266,15 @@ export default function Home() {
             (person) => !removedIds.has(person.id) && person.id !== keeper.id,
           )
           .concat(merged);
-        relations = relations.map((relation) => ({
-          ...relation,
-          sourceId: removedIds.has(relation.sourceId)
-            ? keeper.id
-            : relation.sourceId,
-          targetId: removedIds.has(relation.targetId)
-            ? keeper.id
-            : relation.targetId,
+        acts = acts.map((act) => ({
+          ...act,
+          personIds: Array.from(
+            new Set(
+              act.personIds.map((personId) =>
+                removedIds.has(personId) ? keeper.id : personId,
+              ),
+            ),
+          ),
         }));
       }
     }
@@ -3512,7 +2352,7 @@ export default function Home() {
       analysis: {
         ...activeProject.analysis,
         people,
-        relations,
+        acts,
         clues,
         places,
         reviewItems,
@@ -3606,30 +2446,6 @@ export default function Home() {
     }
   };
 
-  const selectedPerson = activeProject?.analysis.people.find(
-    (person) => person.id === selectedPersonId,
-  );
-  const portalPerson = activeProject?.analysis.people.find(
-    (person) => person.id === portalPersonId,
-  );
-  const relatedPeople = useMemo(() => {
-    if (!activeProject || !portalPersonId) return [];
-    return activeProject.analysis.relations.flatMap((relation) => {
-      const isSource = relation.sourceId === portalPersonId;
-      const relatedId = isSource
-        ? relation.targetId
-        : relation.targetId === portalPersonId
-          ? relation.sourceId
-          : null;
-      const person = activeProject.analysis.people.find(
-        (candidate) => candidate.id === relatedId,
-      );
-      return person ? [{ person, relation, isSource }] : [];
-    });
-  }, [activeProject, portalPersonId]);
-  const selectedEvent = activeProject?.analysis.timeline.find(
-    (event) => event.id === selectedEventId,
-  );
   const pendingCount =
     activeProject?.analysis.reviewItems.filter(
       (item) => item.status === "pending",
@@ -3759,9 +2575,7 @@ export default function Home() {
           </div>
         </header>
 
-        <main
-          className={`workspace-main ${selectedPerson || selectedEvent ? "has-detail" : ""}`}
-        >
+        <main className="workspace-main">
           {view === "dashboard" && (
             <DashboardView project={activeProject} onNavigate={setView} />
           )}
@@ -3796,73 +2610,11 @@ export default function Home() {
           {view === "overview" && (
             <OverviewView project={activeProject} onOpenSource={setSourceRef} />
           )}
-          {view === "relations" && (
-            <div className="content-stack person-portal">
-              <header className="content-header">
-                <div>
-                  <p className="eyebrow">CHARACTER PORTAL</p>
-                  <h2>人物门户</h2>
-                  <p>
-                    {activeProject.analysis.people.length} 个人物 ·{" "}
-                    {activeProject.analysis.relations.length} 条关系
-                  </p>
-                </div>
-              </header>
-              {activeProject.analysis.people.length === 0 ? (
-                <EmptyState
-                  title="尚未识别人物"
-                  description="先在分析流程中完成人物识别，再进入人物门户。"
-                />
-              ) : portalView === "ego" && portalPerson ? (
-                <PersonEgoView
-                  person={portalPerson}
-                  relatedPeople={relatedPeople}
-                  onSelectRelated={enterEgo}
-                  onBack={goBackFromEgo}
-                  onEditPerson={(person) => {
-                    setSelectedPersonId(person.id);
-                    setSelectedEventId(null);
-                  }}
-                />
-              ) : (
-                <PersonGallery
-                  people={activeProject.analysis.people}
-                  onSelectPerson={enterEgo}
-                  onUploadPortrait={uploadPortrait}
-                />
-              )}
-            </div>
-          )}
-          {view === "timeline" && (
-            <TimelineView
-              project={activeProject}
-              onOpenSource={setSourceRef}
-              onSelect={(id) => {
-                setSelectedEventId(id);
-                setSelectedPersonId(null);
-              }}
+          {view === "acts" && (
+            <EmptyState
+              title="尚未生成幕"
+              description="完成七阶段分析后，这里会显示幕列表与分支树状图。"
             />
-          )}
-          {view === "clues" && (
-            <CluesView
-              project={activeProject}
-              onOpenSource={setSourceRef}
-              onUpdate={persistProject}
-            />
-          )}
-          {view === "map" && (
-            <div className="content-stack map-placeholder">
-              <header className="content-header">
-                <div>
-                  <p className="eyebrow">ATLAS ARCHIVE</p>
-                  <h2>地图</h2>
-                </div>
-              </header>
-              <EmptyState
-                title="地图画布将在后续版本上线"
-                description="v0.4 仅整理并保存已确认的地点数据，不提供地图上传或可视化。"
-              />
-            </div>
           )}
           {view === "review" && (
             <ReviewView
@@ -3885,18 +2637,6 @@ export default function Home() {
         </main>
       </section>
 
-      <DetailPanel
-        project={activeProject}
-        selectedPerson={selectedPerson}
-        selectedEvent={selectedEvent}
-        onClose={() => {
-          setSelectedPersonId(null);
-          setSelectedEventId(null);
-        }}
-        onUpdate={persistProject}
-        onOpenSource={setSourceRef}
-        onUploadPortrait={uploadPortrait}
-      />
       {sourceRef && (
         <SourcePanel
           project={activeProject}
