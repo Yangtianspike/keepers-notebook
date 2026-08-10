@@ -842,84 +842,139 @@ function OverviewView({
   project: Project;
   onOpenSource: (source: SourceRef) => void;
 }) {
-  const overview = project.analysis.overview;
-  if (!overview) {
+  const { overview, timePlace, people, characterArcs, openingHook, clues } =
+    project.analysis;
+  const hasResults =
+    overview ||
+    timePlace ||
+    people.length > 0 ||
+    (characterArcs?.length ?? 0) > 0 ||
+    openingHook ||
+    clues.length > 0;
+
+  if (!hasResults) {
     return (
       <EmptyState
         title="尚未生成幕后真相"
-        description="在“分析流程”中完成故事概览后，这里会按照起因、历史和当前状态重新组织剧本。"
+        description="完成分析流程的前六个阶段后，这里会集中展示全局结果。"
       />
     );
   }
+
   return (
     <div className="content-stack">
       <header className="content-header">
         <div>
           <p className="eyebrow">THE TRUTH BEHIND THE CASE</p>
           <h2>幕后真相</h2>
+          <p>前六个全局分析阶段的结果汇总。</p>
         </div>
         <Badge provenance="source" />
       </header>
-      <article className="truth-lead">
-        <span>一句话核心</span>
-        <p>{overview.oneLine}</p>
-      </article>
-      <div className="truth-grid">
-        <article className="truth-card">
-          <span>01 / 起因</span>
-          <h3>一切从哪里开始</h3>
-          <p>{overview.cause}</p>
-        </article>
-        <article className="truth-card">
-          <span>02 / 经过</span>
-          <h3>开团前的真实历史</h3>
-          <p>{overview.history}</p>
-        </article>
-        <article className="truth-card">
-          <span>03 / 现状</span>
-          <h3>调查开始时的世界</h3>
-          <p>{overview.currentState}</p>
-        </article>
-        <article className="truth-card">
-          <span>04 / 计划</span>
-          <h3>无人干预时</h3>
-          <ul>
-            {overview.plans.map((plan, index) => (
-              <li key={`${plan.faction}-${index}`}>
-                <strong>{plan.faction}</strong>
-                <span>{plan.plan}</span>
-              </li>
+
+      <div className="overview-sections">
+        <details open>
+          <summary>01 · 故事背景</summary>
+          {overview ? (
+            <div className="overview-section-body">
+              <h3>{overview.oneLine}</h3>
+              <p><strong>起因：</strong>{overview.cause}</p>
+              <p><strong>历史：</strong>{overview.history}</p>
+              <p><strong>现状：</strong>{overview.currentState}</p>
+              {overview.plans.map((plan, index) => (
+                <p key={`${plan.faction}-${index}`}>
+                  <strong>{plan.faction}：</strong>{plan.plan}
+                </p>
+              ))}
+              {overview.conflicts.map((conflict, index) => (
+                <div className="finding-row critical" key={`conflict-${index}`}>
+                  <span>原作矛盾</span>
+                  <div>
+                    <p>{conflict.summary}</p>
+                    {conflict.sources.map((source, sourceIndex) => (
+                      <SourceButton
+                        key={sourceIndex}
+                        source={source}
+                        onOpen={onOpenSource}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p>尚未完成故事背景分析。</p>
+          )}
+        </details>
+
+        <details>
+          <summary>02 · 时间地点</summary>
+          <div className="overview-section-body">
+            <p>{timePlace?.timeline || "尚未完成时间地点分析。"}</p>
+            {(timePlace?.places ?? []).map((place) => (
+              <article key={place.id}>
+                <strong>{place.name}</strong>
+                <p>{place.description || place.summary}</p>
+                {place.regionHint && <small>{place.regionHint}</small>}
+              </article>
             ))}
-          </ul>
-        </article>
+          </div>
+        </details>
+
+        <details>
+          <summary>03 · 核心人物</summary>
+          <div className="overview-card-grid">
+            {people.map((person) => (
+              <article key={person.id}>
+                <span>{person.importance}</span>
+                <h3>{person.name}</h3>
+                <p>{person.role}</p>
+                <small>{person.publicIdentity}</small>
+              </article>
+            ))}
+            {people.length === 0 && <p>尚未完成核心人物分析。</p>}
+          </div>
+        </details>
+
+        <details>
+          <summary>04 · 人物经历与动机</summary>
+          <div className="overview-section-body">
+            {(characterArcs ?? []).map((arc) => (
+              <article key={arc.personId}>
+                <h3>
+                  {people.find((person) => person.id === arc.personId)?.name ||
+                    arc.personId}
+                </h3>
+                <p>{arc.experience}</p>
+                <p><strong>动机：</strong>{arc.motivation}</p>
+              </article>
+            ))}
+            {(characterArcs?.length ?? 0) === 0 && <p>尚未完成人物经历分析。</p>}
+          </div>
+        </details>
+
+        <details>
+          <summary>05 · 开篇钩子</summary>
+          <div className="overview-section-body">
+            <p>{openingHook || "尚未完成开篇钩子分析。"}</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>06 · 关键线索安排</summary>
+          <div className="overview-card-grid">
+            {clues.map((clue) => (
+              <article key={clue.id}>
+                <span>{clue.importance}</span>
+                <h3>{clue.name}</h3>
+                <p>{clue.summary}</p>
+                <small>{clue.acquisition || clue.source}</small>
+              </article>
+            ))}
+            {clues.length === 0 && <p>尚未完成关键线索分析。</p>}
+          </div>
+        </details>
       </div>
-      {(overview.externalDependencies.length > 0 ||
-        overview.conflicts.length > 0) && (
-        <section className="findings-section">
-          <h3>需要 KP 注意</h3>
-          {overview.externalDependencies.map((item, index) => (
-            <div className="finding-row warning" key={`dependency-${index}`}>
-              <span>外部资料</span>
-              <p>{item}</p>
-            </div>
-          ))}
-          {overview.conflicts.map((item, index) => (
-            <div className="finding-row critical" key={`conflict-${index}`}>
-              <span>原作矛盾</span>
-              <div>
-                <p>{item.summary}</p>
-                {item.sources.map((source, sourceIndex) => (
-                  <SourceButton
-                    key={sourceIndex}
-                    source={source}
-                    onOpen={onOpenSource}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
     </div>
   );
 }

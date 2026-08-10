@@ -3842,6 +3842,57 @@ button:disabled {
   white-space: normal;
 }
 
+.overview-sections {
+  display: grid;
+  gap: 12px;
+}
+
+.overview-sections > details {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  padding: 0 18px;
+}
+
+.overview-sections > details > summary {
+  cursor: pointer;
+  padding: 17px 0;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.overview-section-body,
+.overview-card-grid {
+  border-top: 1px solid var(--line-soft);
+  padding: 16px 0 20px;
+}
+
+.overview-section-body {
+  display: grid;
+  gap: 10px;
+}
+
+.overview-section-body > article,
+.overview-card-grid > article {
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: var(--panel-2);
+  padding: 14px;
+}
+
+.overview-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.overview-card-grid article > span {
+  color: var(--accent);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
 @media (max-width: 640px) {
   .person-gallery-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
