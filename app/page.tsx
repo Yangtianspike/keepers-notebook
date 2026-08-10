@@ -1422,6 +1422,7 @@ export default function Home() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [activeStage, setActiveStage] = useState<AnalysisStage | null>(null);
   const [wizardStage, setWizardStage] = useState<AnalysisStage | null>(null);
+  const [isContinuing, setIsContinuing] = useState(false);
   const [streamPreview, setStreamPreview] = useState("");
   const analysisAbortRef = useRef<AbortController | null>(null);
   const [modelConfig, setModelConfig] = useState<ModelConfig>(() => {
@@ -2282,6 +2283,8 @@ export default function Home() {
   ) => {
     const pending = activeProject?.analysis.pendingAskUserCall;
     if (!activeProject || !pending) return;
+    setWizardStage(null);
+    setIsContinuing(true);
     if (
       analysisAbortRef.current &&
       !analysisAbortRef.current.signal.aborted
@@ -2367,7 +2370,6 @@ export default function Home() {
           },
         },
       };
-      setWizardStage(null);
       await runStage(pending.stage, resumedProject, payload.data);
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
@@ -2376,6 +2378,7 @@ export default function Home() {
       }
       setError(caught instanceof Error ? caught.message : "继续分析失败。");
     } finally {
+      setIsContinuing(false);
       if (
         analysisAbortRef.current === controller &&
         !controller.signal.aborted
@@ -2903,7 +2906,7 @@ export default function Home() {
           onClose={() => setSourceRef(null)}
         />
       )}
-      {realtimeAskUserCall ? (
+      {wizardStage && realtimeAskUserCall ? (
         <ConfirmWizard
           key={realtimeAskUserCall.callId}
           askUserCall={realtimeAskUserCall}
@@ -2931,6 +2934,14 @@ export default function Home() {
           }
         />
       ) : null}
+      {isContinuing && (
+        <div className="analysis-loading-overlay" role="status" aria-live="polite">
+          <div>
+            <span className="analysis-loading-spinner" />
+            <strong>继续分析中...</strong>
+          </div>
+        </div>
+      )}
       {toast && <div className="toast">{toast}</div>}
       {error && (
         <div className="error-toast">
