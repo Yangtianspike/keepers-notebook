@@ -157,16 +157,20 @@ export function stageQuery(
   analysis: ProjectAnalysis,
 ): string {
   switch (stage) {
-    case "overview":
+    case "background":
       return "故事 背景 起因 阴谋 历史 结局";
-    case "people":
+    case "timeplace":
+      return "时间 日期 先后 地点 场景 区域 方位";
+    case "characters":
       return "人物 角色 姓名 身份 动机 组织";
-    case "relations":
-      return `人物 关系 联盟 敌对 秘密 刺杀 谋杀 阴谋 计划 意图 勒索 跟踪 背叛 献祭 威胁 监视 仇恨 保护 利用 ${analysis.people.map((person) => person.name).join(" ")}`;
-    case "timeline":
-      return "时间 日期 先后 发生 历史 事件";
+    case "characterArcs":
+      return `人物 经历 动机 目标 行动 变化 秘密 ${analysis.people.map((person) => person.name).join(" ")}`;
+    case "openingHook":
+      return "开篇 开场 委托 邀请 失踪 事件 调查员 钩子";
     case "clues":
       return "线索 物品 发现 指向 地点 场景";
+    case "acts":
+      return `场景 章节 事件 分支 结局 人物 线索 地点 ${analysis.people.map((person) => person.name).join(" ")}`;
   }
 }
 

@@ -24,7 +24,7 @@ import {
 import dagre from "dagre";
 import "@xyflow/react/dist/style.css";
 import { parseScenarioFile } from "@/lib/parser";
-import { hybridSearch, relationSearch, stageQuery } from "@/lib/retrieval";
+import { hybridSearch, stageQuery } from "@/lib/retrieval";
 import { ensureVectorIndex, probeEmbedding } from "@/lib/embedding";
 import {
   flagUnverifiedSourceRefs,
@@ -49,15 +49,17 @@ import {
 import {
   emptyAnalysis,
   type AnalysisStage,
+  type Act,
+  type CharacterArc,
   type Clue,
   type ModelConfig,
   type Person,
   type Project,
   type Provenance,
-  type Relation,
   type ReviewItem,
   type SourceRef,
   type TimelineEvent,
+  type TimePlace,
 } from "@/lib/types";
 
 type View =
@@ -75,21 +77,25 @@ type View =
 type PortalView = "gallery" | "ego";
 
 const stageLabels: Record<AnalysisStage, string> = {
-  overview: "故事概览",
-  people: "人物识别",
-  relations: "关系梳理",
-  timeline: "分支时间线",
-  clues: "线索网络",
+  background: "故事背景",
+  timeplace: "时间地点",
+  characters: "核心人物",
+  characterArcs: "人物经历与动机",
+  openingHook: "开篇钩子",
+  clues: "关键线索安排",
+  acts: "幕",
 };
 
 const STAGE_ORDER: AnalysisStage[] = [
-  "overview",
-  "people",
-  "relations",
-  "timeline",
+  "background",
+  "timeplace",
+  "characters",
+  "characterArcs",
+  "openingHook",
   "clues",
+  "acts",
 ];
-const PAUSE_STAGES: AnalysisStage[] = ["people", "clues"];
+const PAUSE_STAGES: AnalysisStage[] = ["characters", "clues"];
 
 function pausedStageFor(project: Project): AnalysisStage | null {
   return (
@@ -491,36 +497,53 @@ function AnalysisView({
       target: View;
     }
   > = {
-    overview: {
-      id: "overview",
+    background: {
+      id: "background",
       number: "01",
       description: "梳理起因、历史真相、开局状态与各方计划。",
       target: "overview",
     },
-    people: {
-      id: "people",
+    timeplace: {
+      id: "timeplace",
       number: "02",
-      description: "识别人名、组织、公开身份与真实动机。",
-      target: "relations",
+      description: "汇总剧本的时间脉络、地点信息与区域提示。",
+      requires: "background",
+      target: "overview",
     },
-    relations: {
-      id: "relations",
-      number: "02",
-      description: "在已识别人物的基础上，梳理真实、公开与主观关系。",
-      requires: "people",
-      target: "relations",
-    },
-    timeline: {
-      id: "timeline",
+    characters: {
+      id: "characters",
       number: "03",
-      description: "建立固定历史、默认走向和关键干预分支。",
-      target: "timeline",
+      description: "识别人名、组织、公开身份与真实动机。",
+      requires: "timeplace",
+      target: "overview",
+    },
+    characterArcs: {
+      id: "characterArcs",
+      number: "04",
+      description: "梳理人物在故事中的经历、变化与深层动机。",
+      requires: "characters",
+      target: "overview",
+    },
+    openingHook: {
+      id: "openingHook",
+      number: "05",
+      description: "提取促使调查员入局并制造紧迫感的开篇钩子。",
+      requires: "characterArcs",
+      target: "overview",
     },
     clues: {
       id: "clues",
-      number: "04",
+      number: "06",
       description: "梳理调查线索、关键真相、替代入口与卡关风险。",
-      target: "clues",
+      requires: "openingHook",
+      target: "overview",
+    },
+    acts: {
+      id: "acts",
+      number: "07",
+      description: "基于前六阶段划分幕，并生成分支和关键事件。",
+      requires: "clues",
+      target: "overview",
     },
   };
   const stateLabel = (
@@ -587,16 +610,6 @@ function AnalysisView({
       </section>
     );
   };
-  const peopleStatus = project.analysis.stages.people.status;
-  const relationsStatus = project.analysis.stages.relations.status;
-  const characterGroupStatus =
-    peopleStatus === "running" || relationsStatus === "running"
-      ? "running"
-      : peopleStatus === "error" || relationsStatus === "error"
-        ? "error"
-        : peopleStatus === "complete" && relationsStatus === "complete"
-          ? "complete"
-          : "idle";
   return (
     <div className="content-stack">
       <header className="content-header">
@@ -638,72 +651,14 @@ function AnalysisView({
       )}
 
       <div className="pipeline pipeline-major">
-        <article
-          className={`pipeline-card pipeline-${project.analysis.stages.overview.status}`}
-        >
-          {renderStage(stages.overview)}
-        </article>
-        <article
-          className={`pipeline-card pipeline-character-group pipeline-${characterGroupStatus}`}
-        >
-          <header className="pipeline-group-header">
-            <div>
-              <span>02</span>
-              <h3>人物与关系</h3>
-            </div>
-            <div className="pipeline-group-meta">
-              <span
-                className={`pipeline-status status-${characterGroupStatus}`}
-              >
-                {characterGroupStatus === "complete"
-                  ? "已完成"
-                  : characterGroupStatus === "running"
-                    ? "分析中"
-                    : characterGroupStatus === "error"
-                      ? "需要处理"
-                      : peopleStatus === "complete"
-                        ? "人物已完成，关系待生成"
-                        : "未开始"}
-              </span>
-              <p>先确认人物，再依据同一份人物表建立关系图。</p>
-            </div>
-          </header>
-          <div className="pipeline-character-content">
-            <p>识别人名、身份与动机，然后基于确认的人物生成关系图。</p>
-            <div className="pipeline-actions">
-              <button
-                className="primary-button compact"
-                disabled={!configReady || activeStage !== null}
-                onClick={() => onRun("people")}
-              >
-                {activeStage === "people" || activeStage === "relations"
-                  ? "正在分析人物与关系…"
-                  : peopleStatus === "complete" &&
-                      relationsStatus === "complete"
-                    ? "重新分析人物与关系"
-                    : "分析人物与关系"}
-              </button>
-              {relationsStatus === "complete" && (
-                <button
-                  className="text-button"
-                  onClick={() => onNavigate("relations")}
-                >
-                  查看关系图
-                </button>
-              )}
-            </div>
-          </div>
-        </article>
-        <article
-          className={`pipeline-card pipeline-${project.analysis.stages.timeline.status}`}
-        >
-          {renderStage(stages.timeline)}
-        </article>
-        <article
-          className={`pipeline-card pipeline-${project.analysis.stages.clues?.status ?? "idle"}`}
-        >
-          {renderStage(stages.clues)}
-        </article>
+        {STAGE_ORDER.map((stage) => (
+          <article
+            className={`pipeline-card pipeline-${project.analysis.stages[stage]?.status ?? "idle"}`}
+            key={stage}
+          >
+            {renderStage(stages[stage])}
+          </article>
+        ))}
       </div>
       {activeStage && streamPreview && (
         <section className="stream-preview">
@@ -2656,16 +2611,13 @@ export default function Home() {
       let runningAnalysis = runningProject.analysis;
       let scenarioText = includedText(runningProject);
       try {
-        const chunks =
-          stage === "relations"
-            ? await relationSearch(runningProject)
-            : await hybridSearch(
-                runningProject,
-                stageQuery(stage, runningProject.analysis),
-                12,
-                modelConfig,
-                apiKey,
-              );
+        const chunks = await hybridSearch(
+          runningProject,
+          stageQuery(stage, runningProject.analysis),
+          12,
+          modelConfig,
+          apiKey,
+        );
         if (chunks.length) {
           scenarioText = chunks
             .sort((a, b) => a.chunk.startPage - b.chunk.startPage)
@@ -2738,6 +2690,7 @@ export default function Home() {
           apiKey,
           config: modelConfig,
           stage,
+          phase: stage === "acts" ? "skeleton" : undefined,
           confirmMode: modelConfig.confirmMode ?? "tier1",
           document: {
             name: runningProject.name,
@@ -2761,6 +2714,17 @@ export default function Home() {
                 description,
                 note: keeperNote,
               })),
+            priorAnalysis:
+              stage === "acts"
+                ? {
+                    overview: runningAnalysis.overview,
+                    timePlace: runningAnalysis.timePlace,
+                    people: runningAnalysis.people,
+                    characterArcs: runningAnalysis.characterArcs,
+                    openingHook: runningAnalysis.openingHook,
+                    clues: runningAnalysis.clues,
+                  }
+                : undefined,
           },
         }),
       });
@@ -2848,6 +2812,59 @@ export default function Home() {
         return;
       }
       }
+      if (
+        stage === "acts" &&
+        responseOk &&
+        payload.data &&
+        Array.isArray(payload.data.acts)
+      ) {
+        const detailResponse = await fetch("/api/model", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: analysisAbortRef.current.signal,
+          body: JSON.stringify({
+            action: "analyze",
+            apiKey,
+            config: modelConfig,
+            stage,
+            phase: "detail",
+            confirmMode: modelConfig.confirmMode ?? "tier1",
+            document: {
+              name: runningProject.name,
+              text: scenarioText,
+              chapters: runningProject.chapters
+                .filter((chapter) => chapter.included)
+                .map(({ title, startPage, endPage }) => ({
+                  title,
+                  startPage,
+                  endPage,
+                })),
+            },
+            context: {
+              people: runningAnalysis.people.map(
+                ({ id, name, aliases, role }) => ({ id, name, aliases, role }),
+              ),
+              priorAnalysis: {
+                overview: runningAnalysis.overview,
+                timePlace: runningAnalysis.timePlace,
+                characterArcs: runningAnalysis.characterArcs,
+                openingHook: runningAnalysis.openingHook,
+                clues: runningAnalysis.clues,
+              },
+              actSkeleton: payload.data.acts,
+            },
+          }),
+        });
+        const detailPayload = (await detailResponse.json()) as {
+          type?: "complete";
+          data?: Record<string, unknown>;
+          error?: string;
+        };
+        if (!detailResponse.ok || !detailPayload.data) {
+          throw new Error(detailPayload.error || "幕详情生成失败。");
+        }
+        payload = detailPayload;
+      }
       if (!responseOk || !payload.data) {
         throw new Error(payload.error || "分析失败。");
       }
@@ -2877,7 +2894,7 @@ export default function Home() {
           )
         : [];
 
-      if (stage === "overview" && data.overview) {
+      if (stage === "background" && data.overview) {
         const rawOverview = data.overview as Partial<
           NonNullable<Project["analysis"]["overview"]>
         >;
@@ -2924,7 +2941,7 @@ export default function Home() {
           });
         });
       }
-      if (stage === "people" && Array.isArray(data.people)) {
+      if (stage === "characters" && Array.isArray(data.people)) {
         const people = (data.people as Person[]).map((person) => ({
           ...person,
           id: person.id || crypto.randomUUID(),
@@ -2964,70 +2981,33 @@ export default function Home() {
           });
         }
       }
-      if (stage === "relations" && Array.isArray(data.relations)) {
-        const validPeople = new Set(
-          nextAnalysis.people.map((person) => person.id),
-        );
-        const rawRelations = data.relations as Relation[];
-        const unresolved = rawRelations.filter(
-          (relation) =>
-            !validPeople.has(relation.sourceId) ||
-            !validPeople.has(relation.targetId),
-        );
-        const relationCandidates = rawRelations.filter(
-          (relation) =>
-            validPeople.has(relation.sourceId) &&
-            validPeople.has(relation.targetId) &&
-            relation.sourceId !== relation.targetId,
-        );
-        relationCandidates.forEach((relation) => {
-          relation.id ||= crypto.randomUUID();
-          relation.label = String(relation.label ?? "关系待确认");
-          relation.type = relation.type === "hidden" ? "hidden" : "real";
-          relation.confidence = 1;
-          relation.sources = Array.isArray(relation.sources)
-            ? relation.sources
-            : [];
-        });
-        const relationKeys = new Set<string>();
-        const relations = relationCandidates.filter((relation) => {
-          const key = `${relation.sourceId}\u0000${relation.targetId}\u0000${relation.type}`;
-          if (relationKeys.has(key)) return false;
-          relationKeys.add(key);
-          return true;
-        });
+      if (stage === "timeplace" && data.timePlace) {
+        const raw = data.timePlace as Partial<TimePlace>;
+        const timePlace: TimePlace = {
+          timeline: String(raw.timeline ?? ""),
+          places: Array.isArray(raw.places) ? raw.places : [],
+        };
         nextAnalysis = {
           ...nextAnalysis,
-          relations,
-          unresolvedRelationCount: unresolved.length,
-          activityLog:
-            unresolved.length > 0
-              ? [
-                  ...nextAnalysis.activityLog,
-                  {
-                    id: crypto.randomUUID(),
-                    stage,
-                    kind: "progress",
-                    message: `${unresolved.length} 条关系因端点未识别被搁置。`,
-                    createdAt: new Date().toISOString(),
-                  },
-                ]
-              : nextAnalysis.activityLog,
+          timePlace,
+          places: timePlace.places,
         };
       }
-      if (stage === "timeline" && Array.isArray(data.timeline)) {
-        const timeline = (data.timeline as TimelineEvent[]).map((event) => ({
-          ...event,
-          id: event.id || crypto.randomUUID(),
-          title: String(event.title ?? "未命名事件"),
-          date: String(event.date ?? "时间不明"),
-          summary: String(event.summary ?? ""),
-          kind: event.kind || "history",
-          sources: Array.isArray(event.sources) ? event.sources : [],
-          confidence: Number(event.confidence ?? 0.5),
-          provenance: event.provenance || "source",
-        }));
-        nextAnalysis = { ...nextAnalysis, timeline };
+      if (stage === "characterArcs" && Array.isArray(data.characterArcs)) {
+        const characterArcs = (data.characterArcs as CharacterArc[]).map(
+          (arc) => ({
+            personId: String(arc.personId ?? ""),
+            experience: String(arc.experience ?? ""),
+            motivation: String(arc.motivation ?? ""),
+          }),
+        );
+        nextAnalysis = { ...nextAnalysis, characterArcs };
+      }
+      if (stage === "openingHook" && data.openingHook !== undefined) {
+        nextAnalysis = {
+          ...nextAnalysis,
+          openingHook: String(data.openingHook ?? ""),
+        };
       }
       if (stage === "clues" && Array.isArray(data.clues)) {
         const clues = (data.clues as Clue[]).map((clue) => ({
@@ -3122,6 +3102,33 @@ export default function Home() {
             });
         });
       }
+      if (stage === "acts" && Array.isArray(data.acts)) {
+        const acts = (data.acts as Act[])
+          .map((act, index) => ({
+            ...act,
+            id: String(act.id || crypto.randomUUID()),
+            title: String(act.title || `第 ${index + 1} 幕`),
+            sequence: Number(act.sequence || index + 1),
+            placeId: act.placeId ? String(act.placeId) : undefined,
+            placeText: act.placeText ? String(act.placeText) : undefined,
+            time: String(act.time || "时间不明"),
+            personIds: Array.isArray(act.personIds)
+              ? act.personIds.map(String)
+              : [],
+            clueIds: Array.isArray(act.clueIds) ? act.clueIds.map(String) : [],
+            branches: Array.isArray(act.branches)
+              ? act.branches.map((branch) => ({
+                  ...branch,
+                  id: String(branch.id || crypto.randomUUID()),
+                  condition: String(branch.condition || "条件待补充"),
+                }))
+              : [],
+            keyEvents: Array.isArray(act.keyEvents) ? act.keyEvents : [],
+            description: String(act.description || ""),
+          }))
+          .sort((left, right) => left.sequence - right.sequence);
+        nextAnalysis = { ...nextAnalysis, acts };
+      }
 
       const stageReviews = [...returnedReviews, ...generatedReviews].map(
         (item) => ({
@@ -3141,9 +3148,7 @@ export default function Home() {
             (item) =>
               item.status !== "pending" ||
               !(
-                (stage === "people" && item.type === "merge") ||
-                (stage === "relations" && item.type === "relation") ||
-                (stage === "timeline" && item.type === "event") ||
+                (stage === "characters" && item.type === "merge") ||
                 (stage === "clues" &&
                   (item.proposal?.kind === "clueTruth" ||
                     item.proposal?.kind === "placeConfirm"))

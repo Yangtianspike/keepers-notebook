@@ -19,11 +19,13 @@ type ConfirmWizardProps = {
 };
 
 const stageNames: Record<AnalysisStage, string> = {
-  overview: "故事概览",
-  people: "人物识别",
-  relations: "关系梳理",
-  timeline: "时间线",
-  clues: "线索与地点",
+  background: "故事背景",
+  timeplace: "时间地点",
+  characters: "核心人物",
+  characterArcs: "人物经历与动机",
+  openingHook: "开篇钩子",
+  clues: "关键线索安排",
+  acts: "幕",
 };
 
 export function ConfirmWizard({

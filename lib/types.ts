@@ -255,10 +255,16 @@ export type ProjectAnalysis = {
   overview?: StoryOverview;
   timePlace?: TimePlace;
   people: Person[];
+  /** @deprecated Removed after the v0.4 migration completes. */
+  relations: Relation[];
   unresolvedRelationCount: number;
+  /** @deprecated Removed after the v0.4 migration completes. */
+  timeline: TimelineEvent[];
   characterArcs?: CharacterArc[];
   openingHook?: string;
   clues: Clue[];
+  /** @deprecated Removed with the legacy clue canvas. */
+  clueLayout: Record<string, { x: number; y: number }>;
   acts: Act[];
   chapterSummaries: ChapterSummary[];
   places: Place[];
@@ -321,10 +327,13 @@ export type ModelCapabilities = {
 
 export const emptyAnalysis = (): ProjectAnalysis => ({
   people: [],
+  relations: [],
   unresolvedRelationCount: 0,
+  timeline: [],
   characterArcs: [],
   openingHook: "",
   clues: [],
+  clueLayout: {},
   acts: [],
   chapterSummaries: [],
   places: [],
