@@ -1,13 +1,111 @@
 "use client";
 
-import type { Project, TextChunk } from "./types";
+import type {
+  Act,
+  AnalysisStage,
+  Project,
+  StageState,
+  TextChunk,
+} from "./types";
 
 const DB_NAME = "keeper-atlas";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const PROJECTS = "projects";
 const FILES = "files";
 const CHUNKS = "chunks";
 const VECTORS = "vectors";
+
+type LegacyAnalysis = Record<string, unknown> & {
+  relations?: Array<Record<string, unknown>>;
+  timeline?: Array<Record<string, unknown>>;
+  places?: Project["analysis"]["places"];
+  acts?: Act[];
+};
+
+function idleStages(): Record<AnalysisStage, StageState> {
+  return {
+    background: { status: "idle" },
+    timeplace: { status: "idle" },
+    characters: { status: "idle" },
+    characterArcs: { status: "idle" },
+    openingHook: { status: "idle" },
+    clues: { status: "idle" },
+    acts: { status: "idle" },
+  };
+}
+
+export function migrateAnalysisToV4(analysis: LegacyAnalysis): LegacyAnalysis {
+  const acts = [...(analysis.acts ?? [])];
+  const relations = analysis.relations ?? [];
+  const timeline = analysis.timeline ?? [];
+
+  if (relations.length > 0) {
+    const personIds = Array.from(
+      new Set(
+        relations.flatMap((relation) =>
+          [relation.sourceId, relation.targetId].filter(
+            (value): value is string => typeof value === "string",
+          ),
+        ),
+      ),
+    );
+    acts.push({
+      id: crypto.randomUUID(),
+      title: "迁移幕",
+      sequence: acts.length + 1,
+      time: "未知",
+      personIds,
+      clueIds: [],
+      branches: [],
+      keyEvents: [],
+      description: `从 v0.4 迁移的 ${relations.length} 条人物关系`,
+    });
+  }
+
+  timeline.forEach((event) => {
+    const title = typeof event.title === "string" ? event.title : "迁移事件";
+    const summary = typeof event.summary === "string" ? event.summary : "";
+    acts.push({
+      id: crypto.randomUUID(),
+      title,
+      sequence: acts.length + 1,
+      time: typeof event.date === "string" && event.date ? event.date : "未知",
+      personIds: [],
+      clueIds: [],
+      branches: [],
+      keyEvents: [
+        {
+          title,
+          type: "checkpoint",
+          description: summary,
+        },
+      ],
+      description: summary,
+    });
+  });
+
+  analysis.acts = acts;
+  analysis.chapterSummaries = Array.isArray(analysis.chapterSummaries)
+    ? analysis.chapterSummaries
+    : [];
+  analysis.timePlace = analysis.timePlace ?? {
+    timeline: "",
+    places: analysis.places ?? [],
+  };
+  analysis.characterArcs = Array.isArray(analysis.characterArcs)
+    ? analysis.characterArcs
+    : [];
+  analysis.openingHook =
+    typeof analysis.openingHook === "string" ? analysis.openingHook : "";
+  analysis.stages = idleStages();
+
+  delete analysis.relations;
+  delete analysis.timeline;
+  delete analysis.relationshipLayout;
+  delete analysis.clueLayout;
+
+  return analysis;
+}
 
 export type ChunkIndexMeta = {
   id: string;
@@ -37,35 +135,33 @@ function openDatabase(): Promise<IDBDatabase> {
         db.createObjectStore(VECTORS);
       }
 
-      if (event.oldVersion < 3 && request.transaction) {
+      if (event.oldVersion < 4 && request.transaction) {
         const projects = request.transaction.objectStore(PROJECTS);
         const cursorRequest = projects.openCursor();
         cursorRequest.onsuccess = () => {
           const cursor = cursorRequest.result;
           if (!cursor) return;
 
-          const project = cursor.value as unknown as {
-            analysis: {
-              relationshipLayout?: Record<string, { x: number; y: number }>;
-              relations: Array<Record<string, unknown>>;
-            };
-          };
+          const project = cursor.value as { analysis: LegacyAnalysis };
 
-          project.analysis.relations = project.analysis.relations.map(
-            (relation) => {
-              const layer = relation.layer;
-              relation.type =
-                layer === "belief" || layer === "inferred"
-                  ? "hidden"
-                  : "real";
-              relation.confidence = 1;
-              delete relation.layer;
-              delete relation.provenance;
-              delete relation.source;
-              return relation;
-            },
-          );
-          delete project.analysis.relationshipLayout;
+          if (event.oldVersion < 3 && project.analysis.relations) {
+            project.analysis.relations = project.analysis.relations.map(
+              (relation) => {
+                const layer = relation.layer;
+                relation.type =
+                  layer === "belief" || layer === "inferred"
+                    ? "hidden"
+                    : "real";
+                relation.confidence = 1;
+                delete relation.layer;
+                delete relation.provenance;
+                delete relation.source;
+                return relation;
+              },
+            );
+          }
+
+          migrateAnalysisToV4(project.analysis);
           cursor.update(project);
           cursor.continue();
         };
