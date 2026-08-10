@@ -143,6 +143,73 @@ export type Clue = {
   sources: SourceRef[];
 };
 
+export type TimePlace = {
+  timeline: string;
+  places: Place[];
+};
+
+export type CharacterArc = {
+  personId: string;
+  experience: string;
+  motivation: string;
+};
+
+export type CoCStats = {
+  str?: number;
+  con?: number;
+  dex?: number;
+  int?: number;
+  pow?: number;
+  hp?: number;
+  sanLoss?: string;
+  mp?: number;
+};
+
+export type KeyEvent = {
+  title: string;
+  type: "boss" | "death" | "revelation" | "checkpoint";
+  description: string;
+  stats?: CoCStats;
+};
+
+export type ActBranch = {
+  id: string;
+  condition: string;
+  nextActId?: string;
+  isEnding?: boolean;
+  endingType?: "good" | "bad" | "neutral";
+};
+
+export type Act = {
+  id: string;
+  title: string;
+  sequence: number;
+  placeId?: string;
+  placeText?: string;
+  time: string;
+  personIds: string[];
+  clueIds: string[];
+  branches: ActBranch[];
+  keyEvents: KeyEvent[];
+  description: string;
+};
+
+export type ChapterSummary = {
+  chapterId: string;
+  background: string;
+  timeAndPlace: string;
+  coreCharacters: string;
+  characterArcs: string;
+  openingHook: string;
+  clueArrangements: Array<{
+    name: string;
+    acquisition: string;
+    leadsTo: string;
+  }>;
+  acts: Array<{ actId: string; title: string; summary: string }>;
+  keyEvents: KeyEvent[];
+};
+
 export type ReviewItem = {
   id: string;
   type: "merge" | "relation" | "event" | "conflict" | "external" | "quote" | "place";
@@ -161,7 +228,14 @@ export type ReviewItem = {
   stage?: AnalysisStage;
 };
 
-export type AnalysisStage = "overview" | "people" | "relations" | "timeline" | "clues";
+export type AnalysisStage =
+  | "background"
+  | "timeplace"
+  | "characters"
+  | "characterArcs"
+  | "openingHook"
+  | "clues"
+  | "acts";
 
 export type StageState = {
   status: "idle" | "running" | "paused" | "complete" | "error";
@@ -179,12 +253,14 @@ export type AnalysisLogEntry = {
 
 export type ProjectAnalysis = {
   overview?: StoryOverview;
+  timePlace?: TimePlace;
   people: Person[];
-  relations: Relation[];
   unresolvedRelationCount: number;
-  timeline: TimelineEvent[];
+  characterArcs?: CharacterArc[];
+  openingHook?: string;
   clues: Clue[];
-  clueLayout: Record<string, { x: number; y: number }>;
+  acts: Act[];
+  chapterSummaries: ChapterSummary[];
   places: Place[];
   maps: AtlasMap[];
   markers: MapMarker[];
@@ -245,21 +321,24 @@ export type ModelCapabilities = {
 
 export const emptyAnalysis = (): ProjectAnalysis => ({
   people: [],
-  relations: [],
   unresolvedRelationCount: 0,
-  timeline: [],
+  characterArcs: [],
+  openingHook: "",
   clues: [],
-  clueLayout: {},
+  acts: [],
+  chapterSummaries: [],
   places: [],
   maps: [],
   markers: [],
   reviewItems: [],
   activityLog: [],
   stages: {
-    overview: { status: "idle" },
-    people: { status: "idle" },
-    relations: { status: "idle" },
-    timeline: { status: "idle" },
+    background: { status: "idle" },
+    timeplace: { status: "idle" },
+    characters: { status: "idle" },
+    characterArcs: { status: "idle" },
+    openingHook: { status: "idle" },
     clues: { status: "idle" },
+    acts: { status: "idle" },
   },
 });
