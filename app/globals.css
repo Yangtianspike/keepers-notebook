@@ -3333,6 +3333,11 @@ button:disabled {
   transition: 160ms ease;
 }
 
+.nav-group {
+  display: flex;
+  flex-direction: column;
+}
+
 .person-portrait:hover {
   transform: translateY(-1px) scale(1.02);
 }
@@ -3970,6 +3975,36 @@ button:disabled {
   border-color: rgba(123, 33, 30, 0.34);
   background: rgba(255, 252, 239, 0.74);
   color: #2c1810;
+}
+
+.act-stage-pagination {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 0 0 14px;
+}
+
+.act-stage-pagination > div {
+  display: grid;
+  gap: 3px;
+  text-align: center;
+}
+
+.act-stage-pagination small {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.act-stage-pagination button {
+  width: max-content;
+  border: 0;
+  background: transparent;
+  color: var(--teal-bright);
+  font: inherit;
+  font-weight: 700;
 }
 
 @media (max-width: 640px) {

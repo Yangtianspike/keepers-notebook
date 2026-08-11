@@ -35,7 +35,6 @@ import {
   type ModelConfig,
   type Person,
   type Project,
-  type Provenance,
   type ReviewItem,
   type SourceRef,
   type TimePlace,
@@ -98,13 +97,6 @@ function pausedStageFor(project: Project): AnalysisStage | null {
   );
 }
 
-const provenanceLabels: Record<Provenance, string> = {
-  source: "原作事实",
-  inference: "AI 推断",
-  keeper: "KP 设定",
-  conflict: "原作矛盾",
-};
-
 const navGroups: Array<{
   label: string;
   items: Array<{ view: View; label: string; short: string }>;
@@ -165,14 +157,6 @@ function sourcePageLabel(source: SourceRef) {
   return source.printedPage
     ? `PDF ${source.page} 页 · 书内 ${source.printedPage} 页`
     : `PDF ${source.page} 页`;
-}
-
-function Badge({ provenance }: { provenance: Provenance }) {
-  return (
-    <span className={`badge badge-${provenance}`}>
-      {provenanceLabels[provenance]}
-    </span>
-  );
 }
 
 function EmptyState({
@@ -2756,6 +2740,14 @@ export default function Home() {
           )}
           {view === "acts" && (
             <div className="content-stack">
+              <nav className="act-stage-pagination" aria-label="分析阶段翻页">
+                <button onClick={() => navigateStage(-1)}>← 上一页</button>
+                <div>
+                  <small>07 / 07</small>
+                  <strong>幕</strong>
+                </div>
+                <span />
+              </nav>
               <header className="content-header">
                 <div>
                   <p className="eyebrow">ACT STRUCTURE</p>
