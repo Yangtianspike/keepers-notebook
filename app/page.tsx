@@ -76,6 +76,16 @@ const STAGE_ORDER: AnalysisStage[] = [
 ];
 const PAUSE_STAGES: AnalysisStage[] = ["characters", "clues"];
 
+const STAGE_VIEWS: View[] = [
+  "stage-background",
+  "stage-timeplace",
+  "stage-characters",
+  "stage-characterArcs",
+  "stage-openingHook",
+  "stage-clues",
+  "acts",
+];
+
 function pausedStageFor(project: Project): AnalysisStage | null {
   return (
     STAGE_ORDER.find(
@@ -1359,6 +1369,30 @@ export default function Home() {
   const [testState, setTestState] = useState<
     "idle" | "testing" | "success" | "error"
   >("idle");
+
+  const navigateStage = useCallback((direction: -1 | 1) => {
+    setView((current) => {
+      const currentIndex = STAGE_VIEWS.indexOf(current);
+      if (currentIndex < 0) return current;
+      return STAGE_VIEWS[currentIndex + direction] ?? current;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleStageKey = (event: KeyboardEvent) => {
+      if (!STAGE_VIEWS.includes(view)) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.matches("input, textarea, select, [contenteditable='true']")
+      ) {
+        return;
+      }
+      if (event.key === "ArrowLeft") navigateStage(-1);
+      if (event.key === "ArrowRight") navigateStage(1);
+    };
+    window.addEventListener("keydown", handleStageKey);
+    return () => window.removeEventListener("keydown", handleStageKey);
+  }, [navigateStage, view]);
 
   useEffect(() => {
     listProjects()
