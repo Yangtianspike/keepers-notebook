@@ -3671,28 +3671,45 @@ button:disabled {
 .stage-view {
   position: relative;
   display: flex;
-  width: min(900px, 100%);
+  width: min(1100px, 100%);
   height: clamp(520px, calc(100vh - 132px), 760px);
   overflow: hidden;
-  flex-direction: column;
   margin: 0 auto;
+  color: #2c1810;
+  font-family: "Noto Serif SC", "SimSun", Georgia, serif;
+  filter: drop-shadow(0 26px 46px rgba(0, 0, 0, 0.42));
+}
+
+.book-leaves {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.book-page {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  flex: 1 1 50%;
   border: 1px solid #9a7b58;
-  border-radius: 3px 10px 10px 3px;
   background-color: #f5f0e1;
   background-image: url("/book-page-bg.png");
   background-position: center;
   background-size: cover;
-  color: #2c1810;
-  font-family: "Noto Serif SC", "SimSun", Georgia, serif;
-  padding: clamp(16px, 2.4vw, 28px);
-  box-shadow: inset 18px 0 26px rgba(0, 0, 0, 0.18);
-  filter: drop-shadow(0 26px 46px rgba(0, 0, 0, 0.42));
 }
 
-.stage-view::before,
-.book-page-content::before {
+.book-page.even {
+  border-radius: 10px 0 0 10px;
+  box-shadow: inset -18px 0 26px rgba(0, 0, 0, 0.16);
+}
+
+.book-page.odd {
+  border-radius: 0 10px 10px 0;
+  box-shadow: inset 18px 0 26px rgba(0, 0, 0, 0.18);
+}
+
+.book-page::before {
   position: absolute;
-  z-index: 2;
   inset: 0;
   border-radius: inherit;
   background: linear-gradient(
@@ -3704,6 +3721,16 @@ button:disabled {
   );
   content: "";
   pointer-events: none;
+}
+
+.book-spread-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  padding: clamp(16px, 2.4vw, 28px);
 }
 
 .stage-page-heading {
@@ -3727,19 +3754,61 @@ button:disabled {
 
 .stage-view-content {
   width: 100%;
-  max-width: 820px;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   flex: 1 1 auto;
   margin: 0 auto;
-  padding: clamp(16px, 2vw, 28px);
-  scrollbar-color: rgba(123, 82, 50, 0.46) transparent;
+  padding: clamp(16px, 2vw, 24px) 0;
+}
+
+.paginated-flow {
+  width: 100%;
+  height: 100%;
+  column-count: 2;
+  column-fill: auto;
+  column-gap: 0;
+  transition: none;
+}
+
+.paginated-flow .stage-document,
+.paginated-flow .book-page-body {
+  display: block;
+}
+
+.paginated-flow .stage-document > header,
+.paginated-flow .stage-document > section,
+.paginated-flow .book-page-body > .act-detail-section,
+.paginated-flow > .act-editor {
+  break-inside: avoid;
+  margin-right: clamp(22px, 3vw, 38px);
+  margin-bottom: 28px;
+  margin-left: clamp(22px, 3vw, 38px);
+}
+
+.paginated-flow .stage-card-grid,
+.paginated-flow .act-card-grid {
+  display: block;
+}
+
+.paginated-flow .stage-inset-card,
+.paginated-flow .act-person-card,
+.paginated-flow .act-clue-card,
+.paginated-flow .act-event-list article,
+.paginated-flow .act-branch-list button {
+  break-inside: avoid;
+  margin-bottom: 14px;
+}
+
+.paginated-flow .stage-document h2,
+.paginated-flow .stage-document h3,
+.paginated-flow .act-detail-section h3,
+.paginated-flow .act-tier h4 {
+  break-after: avoid;
 }
 
 .stage-pagination {
   display: grid;
   width: 100%;
-  max-width: 820px;
   flex: 0 0 auto;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
@@ -3963,22 +4032,13 @@ button:disabled {
 .book-page-content {
   position: relative;
   display: flex;
-  width: min(960px, 100%);
+  width: min(1100px, 100%);
   height: clamp(560px, calc(100vh - 118px), 800px);
   min-height: 0;
   overflow: hidden;
-  flex-direction: column;
   margin: 0 auto;
-  border: 1px solid #9a7b58;
-  border-radius: 3px 10px 10px 3px;
-  background-color: #f5f0e1;
-  background-image: url("/book-page-bg.png");
-  background-position: center;
-  background-size: cover;
   color: #2c1810;
   font-family: "Noto Serif SC", "SimSun", Georgia, serif;
-  padding: clamp(18px, 2.8vw, 32px);
-  box-shadow: inset 18px 0 26px rgba(0, 0, 0, 0.18);
   filter: drop-shadow(0 26px 46px rgba(0, 0, 0, 0.42));
 }
 
@@ -4036,11 +4096,15 @@ button:disabled {
 
 .book-page-body,
 .act-text-view > .act-editor {
+  padding: 0;
+}
+
+.act-page-viewport {
+  width: 100%;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   flex: 1 1 auto;
-  padding: 18px 5px 18px 0;
-  scrollbar-color: rgba(123, 82, 50, 0.46) transparent;
+  padding: 18px 0;
 }
 
 .act-text-view .act-detail-section,
@@ -4174,11 +4238,27 @@ button:disabled {
   color: #2c1810;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 760px) {
   .stage-view,
   .book-page-content {
     height: calc(100vh - 96px);
+  }
+
+  .book-page.even {
+    display: none;
+  }
+
+  .book-page.odd {
+    flex-basis: 100%;
+    border-radius: 8px;
+  }
+
+  .book-spread-content {
     padding: 14px;
+  }
+
+  .paginated-flow {
+    column-count: 1;
   }
 
   .book-page-header {

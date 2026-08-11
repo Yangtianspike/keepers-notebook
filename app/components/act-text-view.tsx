@@ -1,7 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Act, Clue, Person, Place } from "@/lib/types";
+import {
+  BookPages,
+  useBookPagination,
+} from "@/app/components/stage-view";
 
 export type ActTextViewProps = {
   acts: Act[];
@@ -84,6 +88,83 @@ export function ActTextView({
   const [editing, setEditing] = useState(false);
   const act = orderedActs[index] ?? orderedActs[0];
   const [draft, setDraft] = useState<Act | null>(act ?? null);
+  const {
+    viewportRef,
+    flowRef,
+    previousSpread,
+    nextSpread,
+    hasPrevious,
+    hasNext,
+    preparePreviousStageEntry,
+    currentSpread,
+    totalSpreads,
+  } = useBookPagination(
+    JSON.stringify({ act, editing, people, clues, places }),
+  );
+
+  const actPeople = act
+    ? people.filter((person) => act.personIds.includes(person.id))
+    : [];
+  const actClues = act
+    ? clues.filter((clue) => act.clueIds.includes(clue.id))
+    : [];
+  const place = act
+    ? places.find((item) => item.id === act.placeId)
+    : undefined;
+
+  const goPreviousAct = useCallback(() => {
+    if (index > 0) {
+      setIndex(index - 1);
+      setEditing(false);
+    }
+  }, [index]);
+
+  const goNextAct = useCallback(() => {
+    if (index < orderedActs.length - 1) {
+      setIndex(index + 1);
+      setEditing(false);
+    }
+  }, [index, orderedActs.length]);
+
+  const goPrevious = useCallback(() => {
+    if (!previousSpread()) goPreviousAct();
+  }, [goPreviousAct, previousSpread]);
+
+  const goNext = useCallback(() => {
+    if (!nextSpread()) goNextAct();
+  }, [goNextAct, nextSpread]);
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      const canHandle =
+        event.key === "ArrowLeft"
+          ? hasPrevious || index > 0
+          : hasNext || index < orderedActs.length - 1;
+      if (!canHandle) {
+        if (event.key === "ArrowLeft") preparePreviousStageEntry();
+        return;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.key === "ArrowLeft") goPrevious();
+      if (event.key === "ArrowRight") goNext();
+    };
+    window.addEventListener("keydown", handleKey, true);
+    return () => window.removeEventListener("keydown", handleKey, true);
+  }, [
+    goNext,
+    goPrevious,
+    hasNext,
+    hasPrevious,
+    index,
+    orderedActs.length,
+    preparePreviousStageEntry,
+  ]);
 
   if (!act) {
     return (
@@ -96,24 +177,6 @@ export function ActTextView({
       </div>
     );
   }
-
-  const actPeople = people.filter((person) => act.personIds.includes(person.id));
-  const actClues = clues.filter((clue) => act.clueIds.includes(clue.id));
-  const place = places.find((item) => item.id === act.placeId);
-
-  const goPrevious = () => {
-    if (index > 0) {
-      setIndex(index - 1);
-      setEditing(false);
-    }
-  };
-
-  const goNext = () => {
-    if (index < orderedActs.length - 1) {
-      setIndex(index + 1);
-      setEditing(false);
-    }
-  };
 
   const beginEdit = () => {
     setDraft(act);
@@ -152,33 +215,38 @@ export function ActTextView({
   };
 
   return (
-    <div className="book-page-content act-text-view">
-      <div className="book-page-header">
-        <div className="book-page-meta">
-          <span>第 {act.sequence} 幕</span>
-          <h2>{act.title}</h2>
-          <p>
-            {place?.name || act.placeText || "地点未定"} · {act.time || "时间未定"}
-          </p>
-        </div>
-        <div className="book-page-actions">
-          <button
-            className="icon-button tree-button"
-            onClick={onOpenTree}
-            title="幕结构树"
-          >
-            <NetworkIcon />
-            <span>幕树</span>
-          </button>
-          {!editing && (
-            <button className="ghost-button compact" onClick={beginEdit}>
-              编辑
+    <div className="book-page-content act-text-view flipbook">
+      <BookPages />
+      <div className="book-spread-content">
+        <div className="book-page-header">
+          <div className="book-page-meta">
+            <span>第 {act.sequence} 幕</span>
+            <h2>{act.title}</h2>
+            <p>
+              {place?.name || act.placeText || "地点未定"} ·{" "}
+              {act.time || "时间未定"}
+            </p>
+          </div>
+          <div className="book-page-actions">
+            <button
+              className="icon-button tree-button"
+              onClick={onOpenTree}
+              title="幕结构树"
+            >
+              <NetworkIcon />
+              <span>幕树</span>
             </button>
-          )}
+            {!editing && (
+              <button className="ghost-button compact" onClick={beginEdit}>
+                编辑
+              </button>
+            )}
+          </div>
         </div>
-      </div>
 
-      {editing && draft ? (
+        <div className="act-page-viewport" ref={viewportRef}>
+          <div className="paginated-flow act-page-flow" ref={flowRef}>
+            {editing && draft ? (
         <section className="act-editor">
           <label className="field">
             <span>幕标题</span>
@@ -354,28 +422,31 @@ export function ActTextView({
             <p className="act-description">{act.description || "尚无幕描述。"}</p>
           </section>
         </div>
-      )}
+            )}
+          </div>
+        </div>
 
-      <div className="book-page-footer">
-        <button
-          className="page-turn"
-          onClick={goPrevious}
-          disabled={index === 0}
-          aria-label="上一页"
-        >
-          ‹
-        </button>
-        <span className="page-number">
-          {index + 1} / {orderedActs.length}
-        </span>
-        <button
-          className="page-turn"
-          onClick={goNext}
-          disabled={index === orderedActs.length - 1}
-          aria-label="下一页"
-        >
-          ›
-        </button>
+        <div className="book-page-footer">
+          <button
+            className="page-turn"
+            onClick={goPrevious}
+            disabled={!hasPrevious && index === 0}
+            aria-label="上一页"
+          >
+            ‹
+          </button>
+          <span className="page-number">
+            {currentSpread} / {totalSpreads}
+          </span>
+          <button
+            className="page-turn"
+            onClick={goNext}
+            disabled={!hasNext && index === orderedActs.length - 1}
+            aria-label="下一页"
+          >
+            ›
+          </button>
+        </div>
       </div>
     </div>
   );
