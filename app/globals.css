@@ -451,11 +451,8 @@ button:disabled {
   display: flex;
   width: 218px;
   flex-direction: column;
-  border-right: 1px solid #2f1c17;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035), transparent 20%),
-    #4a3028;
-  box-shadow: inset -8px 0 18px rgba(26, 13, 10, 0.28);
+  border-right: 1px solid var(--line-soft);
+  background: rgba(20, 28, 35, 0.96);
 }
 
 .sidebar-brand {
@@ -463,7 +460,7 @@ button:disabled {
   align-items: center;
   gap: 11px;
   width: 100%;
-  border-bottom: 1px solid rgba(245, 226, 188, 0.22);
+  border-bottom: 1px solid var(--line-soft);
   background: transparent;
   padding: 17px 18px;
   text-align: left;
@@ -486,14 +483,13 @@ button:disabled {
 }
 
 .sidebar-brand strong {
-  color: #f5e6c8;
   font-family: var(--serif);
   font-size: 16px;
 }
 
 .sidebar-brand small {
   margin-top: 3px;
-  color: #c5a98f;
+  color: var(--faint);
   font-size: 12px;
   letter-spacing: 0.12em;
 }
@@ -507,7 +503,7 @@ button:disabled {
 
 .nav-label {
   padding: 0 11px 8px;
-  color: #c7aa8e;
+  color: var(--faint);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.15em;
@@ -524,37 +520,22 @@ button:disabled {
   gap: 11px;
   width: 100%;
   border: 1px solid transparent;
-  border-radius: 0 5px 5px 0;
+  border-radius: 5px;
   background: transparent;
   padding: 9px 10px;
-  color: #dfcbb0;
+  color: var(--muted);
   text-align: left;
 }
 
-.sidebar nav button::before {
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: -10px;
-  width: 4px;
-  border-radius: 0 3px 3px 0;
-  background: transparent;
-  content: "";
-}
-
 .sidebar nav button:hover {
-  background: rgba(250, 232, 196, 0.1);
-  color: #fff4dc;
+  background: #262c31;
+  color: var(--text);
 }
 
 .sidebar nav button.active {
-  border-color: rgba(245, 219, 170, 0.42);
-  background: linear-gradient(90deg, rgba(245, 219, 170, 0.22), rgba(245, 219, 170, 0.06));
-  color: #fff1cf;
-}
-
-.sidebar nav button.active::before {
-  background: #d5a64b;
+  border-color: #b9d8d1;
+  background: linear-gradient(90deg, rgba(83, 180, 160, 0.13), rgba(83, 180, 160, 0.03));
+  color: var(--teal-bright);
 }
 
 .sidebar nav button i {
@@ -562,7 +543,7 @@ button:disabled {
   width: 22px;
   height: 22px;
   place-items: center;
-  border: 1px solid rgba(245, 226, 188, 0.58);
+  border: 1px solid #cbd4d8;
   border-radius: 4px;
   font-style: normal;
   font-size: 12px;
@@ -3688,6 +3669,7 @@ button:disabled {
 }
 
 .stage-view {
+  position: relative;
   display: flex;
   width: min(900px, 100%);
   height: clamp(520px, calc(100vh - 132px), 760px);
@@ -3696,15 +3678,32 @@ button:disabled {
   margin: 0 auto;
   border: 1px solid #9a7b58;
   border-radius: 3px 10px 10px 3px;
-  background:
-    radial-gradient(circle at 16% 12%, rgba(132, 92, 48, 0.06), transparent 28%),
-    linear-gradient(90deg, #e7dcc4 0, #f5f0e1 3%, #f7f2e5 97%, #e5d7ba 100%);
+  background-color: #f5f0e1;
+  background-image: url("/book-page-bg.png");
+  background-position: center;
+  background-size: cover;
   color: #2c1810;
   font-family: "Noto Serif SC", "SimSun", Georgia, serif;
   padding: clamp(16px, 2.4vw, 28px);
-  box-shadow:
-    0 18px 48px rgba(10, 16, 22, 0.28),
-    inset 16px 0 24px rgba(83, 55, 30, 0.08);
+  box-shadow: inset 18px 0 26px rgba(0, 0, 0, 0.18);
+  filter: drop-shadow(0 26px 46px rgba(0, 0, 0, 0.42));
+}
+
+.stage-view::before,
+.book-page-content::before {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.08),
+    transparent 18%,
+    transparent 82%,
+    rgba(0, 0, 0, 0.1)
+  );
+  content: "";
+  pointer-events: none;
 }
 
 .stage-page-heading {
@@ -3962,6 +3961,7 @@ button:disabled {
 }
 
 .book-page-content {
+  position: relative;
   display: flex;
   width: min(960px, 100%);
   height: clamp(560px, calc(100vh - 118px), 800px);
@@ -3971,15 +3971,15 @@ button:disabled {
   margin: 0 auto;
   border: 1px solid #9a7b58;
   border-radius: 3px 10px 10px 3px;
-  background:
-    radial-gradient(circle at 82% 18%, rgba(132, 92, 48, 0.055), transparent 25%),
-    linear-gradient(90deg, #e7dcc4 0, #f5f0e1 3%, #f7f2e5 97%, #e5d7ba 100%);
+  background-color: #f5f0e1;
+  background-image: url("/book-page-bg.png");
+  background-position: center;
+  background-size: cover;
   color: #2c1810;
   font-family: "Noto Serif SC", "SimSun", Georgia, serif;
   padding: clamp(18px, 2.8vw, 32px);
-  box-shadow:
-    0 18px 48px rgba(10, 16, 22, 0.28),
-    inset 16px 0 24px rgba(83, 55, 30, 0.08);
+  box-shadow: inset 18px 0 26px rgba(0, 0, 0, 0.18);
+  filter: drop-shadow(0 26px 46px rgba(0, 0, 0, 0.42));
 }
 
 .book-page-content.empty {
