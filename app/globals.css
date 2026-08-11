@@ -3797,6 +3797,124 @@ button:disabled {
   line-height: 2;
 }
 
+.person-detail-backdrop {
+  position: fixed;
+  z-index: 1150;
+  inset: 0;
+  background: rgba(4, 7, 12, 0.42);
+}
+
+.person-detail-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(470px, 94vw);
+  height: 100%;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  padding: 24px;
+  box-shadow: -24px 0 80px rgba(0, 0, 0, 0.46);
+  animation: person-panel-in 180ms ease-out;
+}
+
+@keyframes person-panel-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+.person-detail-panel > header,
+.person-detail-identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.person-detail-panel > header {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 18px;
+}
+
+.person-detail-panel > section {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 18px 0;
+}
+
+.person-detail-panel h2,
+.person-detail-panel h3,
+.person-detail-panel p {
+  margin-top: 0;
+}
+
+.person-detail-portrait {
+  width: 82px;
+  height: 82px;
+  overflow: hidden;
+  flex: 0 0 82px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 30px;
+}
+
+.person-detail-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.person-detail-panel dl {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 10px;
+}
+
+.person-detail-panel dt {
+  color: var(--muted);
+}
+
+.person-detail-panel dd {
+  margin: 0;
+}
+
+.person-detail-links {
+  display: grid;
+  gap: 8px;
+}
+
+.person-detail-links button {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 11px;
+  text-align: left;
+}
+
+.person-detail-links span,
+.person-detail-panel li span {
+  color: var(--muted);
+}
+
+.person-detail-panel ul {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.person-detail-panel li {
+  display: grid;
+  gap: 4px;
+}
+
 @media (max-width: 640px) {
   .stage-view {
     padding: 14px;

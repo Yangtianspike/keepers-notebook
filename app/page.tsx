@@ -18,6 +18,7 @@ import { ActTreeView } from "@/app/components/act-tree-view";
 import { ActDetailView } from "@/app/components/act-detail-view";
 import { SettingsModal } from "@/app/components/settings-modal";
 import { StageView } from "@/app/components/stage-view";
+import { PersonDetailPanel } from "@/app/components/person-detail-panel";
 import {
   deleteProject,
   listProjects,
@@ -2540,6 +2541,9 @@ export default function Home() {
   const selectedAct = activeProject?.analysis.acts.find(
     (act) => act.id === selectedActId,
   );
+  const selectedActPerson = activeProject?.analysis.people.find(
+    (person) => person.id === selectedActPersonId,
+  );
 
   if (!activeProject) {
     if (view === "settings") {
@@ -2809,19 +2813,6 @@ export default function Home() {
                   }}
                 />
               )}
-              {selectedActPersonId && (
-                <aside className="notice neutral">
-                  <strong>人物在其他幕中的记录</strong>
-                  <p>
-                    {activeProject.analysis.acts
-                      .filter((act) =>
-                        act.personIds.includes(selectedActPersonId),
-                      )
-                      .map((act) => act.title)
-                      .join("、") || "仅在当前幕出现"}
-                  </p>
-                </aside>
-              )}
             </div>
           )}
           {view === "settings" && (
@@ -2892,6 +2883,31 @@ export default function Home() {
             onTest={testConnection}
           />
         </SettingsModal>
+      )}
+      {selectedActPerson && (
+        <PersonDetailPanel
+          person={selectedActPerson}
+          acts={activeProject.analysis.acts}
+          clues={activeProject.analysis.clues}
+          onClose={() => setSelectedActPersonId(null)}
+          onSelectAct={(actId) => {
+            setSelectedActId(actId);
+            setActView("detail");
+            setSelectedActPersonId(null);
+          }}
+          onUpdatePerson={(person) =>
+            void persistProject({
+              ...activeProject,
+              updatedAt: new Date().toISOString(),
+              analysis: {
+                ...activeProject.analysis,
+                people: activeProject.analysis.people.map((candidate) =>
+                  candidate.id === person.id ? person : candidate,
+                ),
+              },
+            })
+          }
+        />
       )}
       {toast && <div className="toast">{toast}</div>}
       {error && (
