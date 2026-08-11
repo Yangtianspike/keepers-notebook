@@ -18,6 +18,7 @@ import { ActTreeView } from "@/app/components/act-tree-view";
 import { ActDetailView } from "@/app/components/act-detail-view";
 import { ChapterSummaryView } from "@/app/components/chapter-summary-view";
 import { SettingsModal } from "@/app/components/settings-modal";
+import { StageView } from "@/app/components/stage-view";
 import {
   deleteProject,
   listProjects,
@@ -870,147 +871,230 @@ function AnalysisView({
   );
 }
 
-function OverviewView({
+function BackgroundStageView({
   project,
   onOpenSource,
 }: {
   project: Project;
   onOpenSource: (source: SourceRef) => void;
 }) {
-  const { overview, timePlace, people, characterArcs, openingHook, clues } =
-    project.analysis;
-  const hasResults =
-    overview ||
-    timePlace ||
-    people.length > 0 ||
-    (characterArcs?.length ?? 0) > 0 ||
-    openingHook ||
-    clues.length > 0;
-
-  if (!hasResults) {
-    return (
-      <EmptyState
-        title="尚未生成幕后真相"
-        description="完成分析流程的前六个阶段后，这里会集中展示全局结果。"
-      />
-    );
+  const overview = project.analysis.overview;
+  if (!overview) {
+    return <EmptyState title="尚无故事背景" description="请先完成故事背景分析。" />;
   }
-
   return (
-    <div className="content-stack">
-      <header className="content-header">
-        <div>
-          <p className="eyebrow">THE TRUTH BEHIND THE CASE</p>
-          <h2>幕后真相</h2>
-          <p>前六个全局分析阶段的结果汇总。</p>
-        </div>
-        <Badge provenance="source" />
+    <article className="stage-document">
+      <header>
+        <span>故事核心</span>
+        <h1>{overview.oneLine}</h1>
       </header>
-
-      <div className="overview-sections">
-        <details open>
-          <summary>01 · 故事背景</summary>
-          {overview ? (
-            <div className="overview-section-body">
-              <h3>{overview.oneLine}</h3>
-              <p><strong>起因：</strong>{overview.cause}</p>
-              <p><strong>历史：</strong>{overview.history}</p>
-              <p><strong>现状：</strong>{overview.currentState}</p>
-              {overview.plans.map((plan, index) => (
-                <p key={`${plan.faction}-${index}`}>
-                  <strong>{plan.faction}：</strong>{plan.plan}
-                </p>
+      <section>
+        <h2>起因</h2>
+        <p>{overview.cause}</p>
+      </section>
+      <section>
+        <h2>开团前的历史</h2>
+        <p>{overview.history}</p>
+      </section>
+      <section>
+        <h2>当前状态</h2>
+        <p>{overview.currentState}</p>
+      </section>
+      <section>
+        <h2>各方计划</h2>
+        {overview.plans.map((plan, index) => (
+          <article className="stage-inset-card" key={`${plan.faction}-${index}`}>
+            <h3>{plan.faction}</h3>
+            <p>{plan.plan}</p>
+          </article>
+        ))}
+      </section>
+      {overview.endings.length > 0 && (
+        <section>
+          <h2>可能结局</h2>
+          <ul>{overview.endings.map((ending) => <li key={ending}>{ending}</li>)}</ul>
+        </section>
+      )}
+      {overview.conflicts.length > 0 && (
+        <section>
+          <h2>原作矛盾</h2>
+          {overview.conflicts.map((conflict, index) => (
+            <article className="stage-inset-card" key={`conflict-${index}`}>
+              <p>{conflict.summary}</p>
+              {conflict.sources.map((source, sourceIndex) => (
+                <SourceButton
+                  key={sourceIndex}
+                  source={source}
+                  onOpen={onOpenSource}
+                />
               ))}
-              {overview.conflicts.map((conflict, index) => (
-                <div className="finding-row critical" key={`conflict-${index}`}>
-                  <span>原作矛盾</span>
-                  <div>
-                    <p>{conflict.summary}</p>
-                    {conflict.sources.map((source, sourceIndex) => (
-                      <SourceButton
-                        key={sourceIndex}
-                        source={source}
-                        onOpen={onOpenSource}
-                      />
-                    ))}
-                  </div>
-                </div>
+            </article>
+          ))}
+        </section>
+      )}
+    </article>
+  );
+}
+
+function TimePlaceStageView({ project }: { project: Project }) {
+  const timePlace = project.analysis.timePlace;
+  if (!timePlace) {
+    return <EmptyState title="尚无时间地点" description="请先完成时间地点分析。" />;
+  }
+  return (
+    <article className="stage-document">
+      <header>
+        <span>时间概要</span>
+        <h1>时间与地点</h1>
+        <p>{timePlace.timeline}</p>
+      </header>
+      <section>
+        <h2>地点档案</h2>
+        <div className="stage-card-grid">
+          {timePlace.places.map((place) => (
+            <article className="stage-inset-card" key={place.id}>
+              <h3>{place.name}</h3>
+              <p>{place.description || place.summary}</p>
+              {place.regionHint && <small>{place.regionHint}</small>}
+            </article>
+          ))}
+        </div>
+      </section>
+    </article>
+  );
+}
+
+function CharactersStageView({ project }: { project: Project }) {
+  const groups: Array<{ key: Person["importance"]; label: string }> = [
+    { key: "core", label: "核心人物" },
+    { key: "important", label: "重要人物" },
+    { key: "minor", label: "次要人物" },
+  ];
+  return (
+    <article className="stage-document">
+      <header>
+        <span>角色名录</span>
+        <h1>核心人物</h1>
+      </header>
+      {groups.map((group) => {
+        const members = project.analysis.people.filter(
+          (person) => person.importance === group.key,
+        );
+        if (members.length === 0) return null;
+        return (
+          <section key={group.key}>
+            <h2>{group.label}</h2>
+            <div className="stage-card-grid">
+              {members.map((person) => (
+                <article className="stage-inset-card" key={person.id}>
+                  <h3>{person.name}</h3>
+                  <p>{person.role}</p>
+                  <dl>
+                    <dt>公开身份</dt>
+                    <dd>{person.publicIdentity || "未知"}</dd>
+                    <dt>真实身份</dt>
+                    <dd>{person.trueIdentity || "未知"}</dd>
+                    <dt>动机</dt>
+                    <dd>{person.motivation || "未知"}</dd>
+                  </dl>
+                </article>
               ))}
             </div>
-          ) : (
-            <p>尚未完成故事背景分析。</p>
-          )}
-        </details>
+          </section>
+        );
+      })}
+      {project.analysis.people.length === 0 && (
+        <EmptyState title="尚无人物" description="请先完成核心人物分析。" />
+      )}
+    </article>
+  );
+}
 
-        <details>
-          <summary>02 · 时间地点</summary>
-          <div className="overview-section-body">
-            <p>{timePlace?.timeline || "尚未完成时间地点分析。"}</p>
-            {(timePlace?.places ?? []).map((place) => (
-              <article key={place.id}>
-                <strong>{place.name}</strong>
-                <p>{place.description || place.summary}</p>
-                {place.regionHint && <small>{place.regionHint}</small>}
-              </article>
-            ))}
-          </div>
-        </details>
+function CharacterArcsStageView({ project }: { project: Project }) {
+  const arcs = project.analysis.characterArcs ?? [];
+  return (
+    <article className="stage-document">
+      <header>
+        <span>人物轨迹</span>
+        <h1>人物经历与动机</h1>
+      </header>
+      {arcs.map((arc) => (
+        <section className="stage-inset-card" key={arc.personId}>
+          <h2>
+            {project.analysis.people.find((person) => person.id === arc.personId)
+              ?.name || arc.personId}
+          </h2>
+          <h3>经历</h3>
+          <p>{arc.experience}</p>
+          <h3>动机</h3>
+          <p>{arc.motivation}</p>
+        </section>
+      ))}
+      {arcs.length === 0 && (
+        <EmptyState title="尚无人物经历" description="请先完成人物经历与动机分析。" />
+      )}
+    </article>
+  );
+}
 
-        <details>
-          <summary>03 · 核心人物</summary>
-          <div className="overview-card-grid">
-            {people.map((person) => (
-              <article key={person.id}>
-                <span>{person.importance}</span>
-                <h3>{person.name}</h3>
-                <p>{person.role}</p>
-                <small>{person.publicIdentity}</small>
-              </article>
-            ))}
-            {people.length === 0 && <p>尚未完成核心人物分析。</p>}
-          </div>
-        </details>
+function OpeningHookStageView({ project }: { project: Project }) {
+  return (
+    <article className="stage-document stage-prose">
+      <header>
+        <span>调查员入局</span>
+        <h1>开篇钩子</h1>
+      </header>
+      <p>{project.analysis.openingHook || "请先完成开篇钩子分析。"}</p>
+    </article>
+  );
+}
 
-        <details>
-          <summary>04 · 人物经历与动机</summary>
-          <div className="overview-section-body">
-            {(characterArcs ?? []).map((arc) => (
-              <article key={arc.personId}>
-                <h3>
-                  {people.find((person) => person.id === arc.personId)?.name ||
-                    arc.personId}
-                </h3>
-                <p>{arc.experience}</p>
-                <p><strong>动机：</strong>{arc.motivation}</p>
-              </article>
-            ))}
-            {(characterArcs?.length ?? 0) === 0 && <p>尚未完成人物经历分析。</p>}
-          </div>
-        </details>
-
-        <details>
-          <summary>05 · 开篇钩子</summary>
-          <div className="overview-section-body">
-            <p>{openingHook || "尚未完成开篇钩子分析。"}</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>06 · 关键线索安排</summary>
-          <div className="overview-card-grid">
-            {clues.map((clue) => (
-              <article key={clue.id}>
-                <span>{clue.importance}</span>
-                <h3>{clue.name}</h3>
-                <p>{clue.summary}</p>
-                <small>{clue.acquisition || clue.source}</small>
-              </article>
-            ))}
-            {clues.length === 0 && <p>尚未完成关键线索分析。</p>}
-          </div>
-        </details>
-      </div>
-    </div>
+function CluesStageView({ project }: { project: Project }) {
+  const groups: Array<{ key: Clue["importance"]; label: string }> = [
+    { key: "key", label: "关键线索" },
+    { key: "secondary", label: "次要线索" },
+    { key: "other", label: "其他线索" },
+  ];
+  return (
+    <article className="stage-document">
+      <header>
+        <span>调查路径</span>
+        <h1>关键线索安排</h1>
+      </header>
+      {groups.map((group) => {
+        const clues = project.analysis.clues.filter(
+          (clue) => clue.importance === group.key,
+        );
+        if (clues.length === 0) return null;
+        return (
+          <section key={group.key}>
+            <h2>{group.label}</h2>
+            <div className="stage-card-grid">
+              {clues.map((clue) => (
+                <article className="stage-inset-card" key={clue.id}>
+                  <h3>{clue.name}</h3>
+                  <p>{clue.summary}</p>
+                  <dl>
+                    <dt>来源</dt>
+                    <dd>{clue.source}</dd>
+                    <dt>获取方式</dt>
+                    <dd>{clue.acquisition || "待补充"}</dd>
+                    <dt>指向</dt>
+                    <dd>
+                      {clue.targets.map((target) => target.label).join("、") ||
+                        "待补充"}
+                    </dd>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+      {project.analysis.clues.length === 0 && (
+        <EmptyState title="尚无线索" description="请先完成关键线索分析。" />
+      )}
+    </article>
   );
 }
 
@@ -2729,7 +2813,67 @@ export default function Home() {
             />
           )}
           {view === "stage-background" && (
-            <OverviewView project={activeProject} onOpenSource={setSourceRef} />
+            <StageView
+              stageIndex={0}
+              stageName="故事背景"
+              onPrev={() => navigateStage(-1)}
+              onNext={() => navigateStage(1)}
+            >
+              <BackgroundStageView
+                project={activeProject}
+                onOpenSource={setSourceRef}
+              />
+            </StageView>
+          )}
+          {view === "stage-timeplace" && (
+            <StageView
+              stageIndex={1}
+              stageName="时间地点"
+              onPrev={() => navigateStage(-1)}
+              onNext={() => navigateStage(1)}
+            >
+              <TimePlaceStageView project={activeProject} />
+            </StageView>
+          )}
+          {view === "stage-characters" && (
+            <StageView
+              stageIndex={2}
+              stageName="核心人物"
+              onPrev={() => navigateStage(-1)}
+              onNext={() => navigateStage(1)}
+            >
+              <CharactersStageView project={activeProject} />
+            </StageView>
+          )}
+          {view === "stage-characterArcs" && (
+            <StageView
+              stageIndex={3}
+              stageName="人物经历与动机"
+              onPrev={() => navigateStage(-1)}
+              onNext={() => navigateStage(1)}
+            >
+              <CharacterArcsStageView project={activeProject} />
+            </StageView>
+          )}
+          {view === "stage-openingHook" && (
+            <StageView
+              stageIndex={4}
+              stageName="开篇钩子"
+              onPrev={() => navigateStage(-1)}
+              onNext={() => navigateStage(1)}
+            >
+              <OpeningHookStageView project={activeProject} />
+            </StageView>
+          )}
+          {view === "stage-clues" && (
+            <StageView
+              stageIndex={5}
+              stageName="关键线索安排"
+              onPrev={() => navigateStage(-1)}
+              onNext={() => navigateStage(1)}
+            >
+              <CluesStageView project={activeProject} />
+            </StageView>
           )}
           {view === "acts" && (
             <div className="content-stack">

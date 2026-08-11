@@ -3723,6 +3723,80 @@ button:disabled {
   padding: clamp(12px, 2vw, 28px);
 }
 
+.stage-document {
+  display: grid;
+  gap: 28px;
+  line-height: 1.85;
+}
+
+.stage-document > header {
+  border-bottom: 2px solid rgba(123, 33, 30, 0.42);
+  padding-bottom: 18px;
+  text-align: center;
+}
+
+.stage-document > header > span {
+  color: #7b211e;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+}
+
+.stage-document h1,
+.stage-document h2,
+.stage-document h3,
+.stage-document p,
+.stage-document dl,
+.stage-document ul {
+  color: #2c1810;
+}
+
+.stage-document h1 {
+  margin: 8px 0;
+  font-size: clamp(28px, 4vw, 46px);
+}
+
+.stage-document h2 {
+  border-bottom: 1px solid rgba(123, 33, 30, 0.24);
+  padding-bottom: 7px;
+}
+
+.stage-document p {
+  white-space: pre-wrap;
+}
+
+.stage-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.stage-inset-card {
+  border: 1px solid rgba(123, 33, 30, 0.28);
+  border-radius: 5px;
+  background: rgba(255, 252, 239, 0.6);
+  padding: 16px;
+}
+
+.stage-inset-card dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 5px 12px;
+}
+
+.stage-inset-card dt {
+  color: #7b211e;
+  font-weight: 700;
+}
+
+.stage-inset-card dd {
+  margin: 0;
+}
+
+.stage-prose > p {
+  font-size: 18px;
+  line-height: 2;
+}
+
 @media (max-width: 640px) {
   .stage-view {
     padding: 14px;
