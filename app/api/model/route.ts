@@ -78,14 +78,14 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
 
   const stages: Record<AnalysisStage, string> = {
     background: `${common}
-分析整个剧本的故事背景，提炼故事核心、起因、历史、当前状态和可能结局。
+分析整个剧本的故事背景，提炼故事核心、起因、历史、当前状态和可能结局。oneLine、cause、history、currentState 合计应为 300-500 字，其中 cause 约 100 字、history 约 150 字、currentState 约 100 字。
 返回：
 {
   "overview": {
     "oneLine": "一句话故事核心",
-    "cause": "起因",
-    "history": "开团前真实经过",
-    "currentState": "开局状态",
+    "cause": "起因（100字左右）",
+    "history": "开团前真实经过（150字左右）",
+    "currentState": "开局状态（100字左右）",
     "plans": [{"faction":"势力","plan":"无人干预时的计划"}],
     "endings": ["原作明确或清楚标记为推演的结局"],
     "externalDependencies": ["原文引用但当前文档未包含的外部资料"],
@@ -132,10 +132,10 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
   "reviewItems":[]
 }`,
     characterArcs: `${common}
-基于已确认的人物列表，逐一分析人物在故事中的经历、行动变化和深层动机。personId 必须引用已确认人物 id。
+基于已确认的人物列表，逐一分析人物在故事中的经历、行动变化和深层动机。personId 必须引用已确认人物 id。每人的 experience 写 150-200 字，motivation 写 100 字左右。
 返回：
 {
-  "characterArcs":[{"personId":"人物id","experience":"经历概述","motivation":"动机详解"}],
+  "characterArcs":[{"personId":"人物id","experience":"经历概述（150-200字）","motivation":"动机详解（100字左右）"}],
   "reviewItems":[]
 }`,
     openingHook: `${common}
