@@ -15,7 +15,7 @@ import {
 } from "@/lib/quote-check";
 import { ConfirmWizard } from "@/app/components/confirm-wizard";
 import { ActTreeView } from "@/app/components/act-tree-view";
-import { ActDetailView } from "@/app/components/act-detail-view";
+import { ActTextView } from "@/app/components/act-text-view";
 import { SettingsModal } from "@/app/components/settings-modal";
 import { StageView } from "@/app/components/stage-view";
 import { PersonDetailPanel } from "@/app/components/person-detail-panel";
@@ -1271,7 +1271,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  const [actView, setActView] = useState<"tree" | "detail">("tree");
+  const [actView, setActView] = useState<"tree" | "detail">("detail");
   const [selectedActId, setSelectedActId] = useState<string | null>(null);
   const [selectedActPersonId, setSelectedActPersonId] = useState<string | null>(
     null,
@@ -1322,12 +1322,13 @@ export default function Home() {
   >("idle");
 
   const navigateStage = useCallback((direction: -1 | 1) => {
-    setView((current) => {
-      const currentIndex = STAGE_VIEWS.indexOf(current);
-      if (currentIndex < 0) return current;
-      return STAGE_VIEWS[currentIndex + direction] ?? current;
-    });
-  }, []);
+    const currentIndex = STAGE_VIEWS.indexOf(view);
+    if (currentIndex < 0) return;
+    const nextView = STAGE_VIEWS[currentIndex + direction];
+    if (!nextView) return;
+    if (nextView === "acts") setActView("detail");
+    setView(nextView);
+  }, [view]);
 
   useEffect(() => {
     const handleStageKey = (event: KeyboardEvent) => {
@@ -2522,9 +2523,6 @@ export default function Home() {
   const configReady = Boolean(
     modelConfig.baseUrl.trim() && modelConfig.model.trim() && apiKey.trim(),
   );
-  const selectedAct = activeProject?.analysis.acts.find(
-    (act) => act.id === selectedActId,
-  );
   const selectedActPerson = activeProject?.analysis.people.find(
     (person) => person.id === selectedActPersonId,
   );
@@ -2597,7 +2595,10 @@ export default function Home() {
                 <button
                   key={item.view}
                   className={view === item.view ? "active" : ""}
-                  onClick={() => setView(item.view)}
+                  onClick={() => {
+                    if (item.view === "acts") setActView("detail");
+                    setView(item.view);
+                  }}
                 >
                   <i>{item.short}</i>
                   <span>{item.label}</span>
@@ -2740,36 +2741,15 @@ export default function Home() {
           )}
           {view === "acts" && (
             <div className="content-stack">
-              <nav className="act-stage-pagination" aria-label="分析阶段翻页">
-                <button onClick={() => navigateStage(-1)}>← 上一页</button>
-                <div>
-                  <small>07 / 07</small>
-                  <strong>幕</strong>
-                </div>
-                <span />
-              </nav>
-              <header className="content-header">
-                <div>
-                  <p className="eyebrow">ACT STRUCTURE</p>
-                  <h2>幕</h2>
-                  <p>{activeProject.analysis.acts.length} 个剧情幕</p>
-                </div>
-              </header>
-              {actView === "detail" && selectedAct ? (
-                <ActDetailView
-                  act={selectedAct}
+              {actView === "detail" ? (
+                <ActTextView
+                  key={selectedActId ?? "first-act"}
                   acts={activeProject.analysis.acts}
+                  initialActId={selectedActId ?? undefined}
                   people={activeProject.analysis.people}
                   clues={activeProject.analysis.clues}
                   places={activeProject.analysis.places}
-                  onBack={() => {
-                    setActView("tree");
-                    setSelectedActPersonId(null);
-                  }}
-                  onSelectAct={(actId) => {
-                    setSelectedActId(actId);
-                    setSelectedActPersonId(null);
-                  }}
+                  onOpenTree={() => setActView("tree")}
                   onSelectPerson={setSelectedActPersonId}
                   onUpdateAct={(act) =>
                     void persistProject({
@@ -2797,13 +2777,27 @@ export default function Home() {
                   }
                 />
               ) : (
-                <ActTreeView
-                  acts={activeProject.analysis.acts}
-                  onSelectAct={(actId) => {
-                    setSelectedActId(actId);
-                    setActView("detail");
-                  }}
-                />
+                <div className="act-tree-reader">
+                  <div className="act-tree-reader-toolbar">
+                    <div>
+                      <span className="eyebrow">ACT STRUCTURE</span>
+                      <h2>幕树</h2>
+                    </div>
+                    <button
+                      className="ghost-button compact"
+                      onClick={() => setActView("detail")}
+                    >
+                      返回文本
+                    </button>
+                  </div>
+                  <ActTreeView
+                    acts={activeProject.analysis.acts}
+                    onSelectAct={(actId) => {
+                      setSelectedActId(actId);
+                      setActView("detail");
+                    }}
+                  />
+                </div>
               )}
             </div>
           )}

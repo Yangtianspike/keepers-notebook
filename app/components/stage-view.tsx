@@ -19,25 +19,26 @@ export function StageView({
 }) {
   return (
     <section className="stage-view">
+      <header className="stage-page-heading">
+        <small>
+          {String(stageIndex + 1).padStart(2, "0")} / {STAGE_COUNT}
+        </small>
+        <strong>{stageName}</strong>
+      </header>
+      <div className="stage-view-content">{children}</div>
       <nav className="stage-pagination" aria-label="分析阶段翻页">
         {stageIndex > 0 ? (
           <button onClick={onPrev}>← 上一页</button>
         ) : (
           <span />
         )}
-        <div>
-          <small>
-            {String(stageIndex + 1).padStart(2, "0")} / {STAGE_COUNT}
-          </small>
-          <strong>{stageName}</strong>
-        </div>
+        <span className="stage-page-number">— {stageIndex + 1} —</span>
         {stageIndex < STAGE_COUNT - 1 ? (
           <button onClick={onNext}>下一页 →</button>
         ) : (
           <span />
         )}
       </nav>
-      <div className="stage-view-content">{children}</div>
     </section>
   );
 }
