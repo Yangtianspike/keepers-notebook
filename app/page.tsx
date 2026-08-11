@@ -17,6 +17,7 @@ import { ConfirmWizard } from "@/app/components/confirm-wizard";
 import { ActTreeView } from "@/app/components/act-tree-view";
 import { ActDetailView } from "@/app/components/act-detail-view";
 import { ChapterSummaryView } from "@/app/components/chapter-summary-view";
+import { SettingsModal } from "@/app/components/settings-modal";
 import {
   deleteProject,
   listProjects,
@@ -1308,6 +1309,7 @@ export default function Home() {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
   const [actView, setActView] = useState<"tree" | "detail">("tree");
   const [selectedActId, setSelectedActId] = useState<string | null>(null);
   const [selectedActPersonId, setSelectedActPersonId] = useState<string | null>(
@@ -2649,6 +2651,14 @@ export default function Home() {
             >
               {activeStage ? "分析进行中…" : "分析剧本"}
             </button>
+            <button
+              className="icon-button settings-trigger"
+              aria-label="打开模型连接设置"
+              title="模型连接设置"
+              onClick={() => setShowSettings(true)}
+            >
+              ⚙
+            </button>
           </div>
         </header>
 
@@ -2817,6 +2827,18 @@ export default function Home() {
             <strong>继续分析中...</strong>
           </div>
         </div>
+      )}
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)}>
+          <SettingsView
+            config={modelConfig}
+            apiKey={apiKey}
+            testState={testState}
+            onConfig={setModelConfig}
+            onApiKey={setApiKey}
+            onTest={testConnection}
+          />
+        </SettingsModal>
       )}
       {toast && <div className="toast">{toast}</div>}
       {error && (

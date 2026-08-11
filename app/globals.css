@@ -3619,6 +3619,50 @@ button:disabled {
   backdrop-filter: blur(3px);
 }
 
+.settings-modal-backdrop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 7, 12, 0.72);
+  padding: 24px;
+  backdrop-filter: blur(4px);
+}
+
+.settings-modal {
+  position: relative;
+  width: min(920px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 22px;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.5);
+}
+
+.settings-modal-close {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  float: right;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 22px;
+}
+
+.settings-trigger {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  font-size: 18px;
+}
+
 .analysis-loading-overlay > div {
   display: flex;
   align-items: center;
