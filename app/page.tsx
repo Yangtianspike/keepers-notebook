@@ -45,9 +45,13 @@ type View =
   | "dashboard"
   | "structure"
   | "analysis"
-  | "overview"
+  | "stage-background"
+  | "stage-timeplace"
+  | "stage-characters"
+  | "stage-characterArcs"
+  | "stage-openingHook"
+  | "stage-clues"
   | "acts"
-  | "review"
   | "settings";
 
 const stageLabels: Record<AnalysisStage, string> = {
@@ -91,13 +95,34 @@ const provenanceLabels: Record<Provenance, string> = {
   conflict: "原作矛盾",
 };
 
-const navigation: Array<{ view: View; label: string; short: string }> = [
-  { view: "dashboard", label: "项目仪表盘", short: "总" },
-  { view: "structure", label: "文档结构", short: "章" },
-  { view: "analysis", label: "分析流程", short: "析" },
-  { view: "overview", label: "幕后真相", short: "真" },
-  { view: "acts", label: "幕", short: "幕" },
-  { view: "review", label: "待确认", short: "核" },
+const navGroups: Array<{
+  label: string;
+  items: Array<{ view: View; label: string; short: string }>;
+}> = [
+  {
+    label: "前期准备",
+    items: [
+      { view: "dashboard", label: "项目仪表盘", short: "总" },
+      { view: "structure", label: "文档结构", short: "章" },
+      { view: "analysis", label: "分析流程", short: "析" },
+    ],
+  },
+  {
+    label: "剧本解析",
+    items: [
+      { view: "stage-background", label: "故事背景", short: "景" },
+      { view: "stage-timeplace", label: "时间地点", short: "时" },
+      { view: "stage-characters", label: "核心人物", short: "人" },
+      {
+        view: "stage-characterArcs",
+        label: "人物经历与动机",
+        short: "历",
+      },
+      { view: "stage-openingHook", label: "开篇钩子", short: "钩" },
+      { view: "stage-clues", label: "关键线索安排", short: "索" },
+      { view: "acts", label: "幕", short: "幕" },
+    ],
+  },
 ];
 
 function parseModelJson(content: string): Record<string, unknown> {
@@ -587,49 +612,49 @@ function AnalysisView({
       id: "background",
       number: "01",
       description: "梳理起因、历史真相、开局状态与各方计划。",
-      target: "overview",
+      target: "stage-background",
     },
     timeplace: {
       id: "timeplace",
       number: "02",
       description: "汇总剧本的时间脉络、地点信息与区域提示。",
       requires: "background",
-      target: "overview",
+      target: "stage-timeplace",
     },
     characters: {
       id: "characters",
       number: "03",
       description: "识别人名、组织、公开身份与真实动机。",
       requires: "timeplace",
-      target: "overview",
+      target: "stage-characters",
     },
     characterArcs: {
       id: "characterArcs",
       number: "04",
       description: "梳理人物在故事中的经历、变化与深层动机。",
       requires: "characters",
-      target: "overview",
+      target: "stage-characterArcs",
     },
     openingHook: {
       id: "openingHook",
       number: "05",
       description: "提取促使调查员入局并制造紧迫感的开篇钩子。",
       requires: "characterArcs",
-      target: "overview",
+      target: "stage-openingHook",
     },
     clues: {
       id: "clues",
       number: "06",
       description: "梳理调查线索、关键真相、替代入口与卡关风险。",
       requires: "openingHook",
-      target: "overview",
+      target: "stage-clues",
     },
     acts: {
       id: "acts",
       number: "07",
       description: "基于前六阶段划分幕，并生成分支和关键事件。",
       requires: "clues",
-      target: "overview",
+      target: "acts",
     },
   };
   const stateLabel = (
@@ -978,135 +1003,6 @@ function OverviewView({
   );
 }
 
-function ReviewView({
-  items,
-  onResolve,
-  onEdit,
-  onOpenSource,
-}: {
-  items: ReviewItem[];
-  onResolve: (item: ReviewItem, accepted: boolean) => void;
-  onEdit: (item: ReviewItem, changes: Partial<ReviewItem>) => void;
-  onOpenSource: (source: SourceRef) => void;
-}) {
-  const pending = items.filter((item) => item.status === "pending");
-  return (
-    <div className="content-stack">
-      <header className="content-header">
-        <div>
-          <p className="eyebrow">KEEPER REVIEW</p>
-          <h2>待确认</h2>
-          <p>
-            这里会列出需要你判断的具体问题：原文冲突会标出两处说法，模型推断会标出推断内容与依据。
-          </p>
-        </div>
-        <div className="review-counter">
-          <strong>{pending.length}</strong>
-          <span>项待处理</span>
-        </div>
-      </header>
-      {items.length === 0 ? (
-        <EmptyState
-          title="目前没有待确认内容"
-          description="完成分析后，疑似别名、模型推断和原作矛盾会集中出现在这里，并附上对应原文页码。"
-        />
-      ) : (
-        <div className="review-list">
-          {items.map((item) => (
-            <article
-              className={`review-card severity-${item.severity} status-${item.status}`}
-              key={item.id}
-            >
-              <div className="review-icon">
-                {item.severity === "critical" ? "!" : "?"}
-              </div>
-              <div className="review-body">
-                <div className="review-title">
-                  <div>
-                    <span>
-                      {item.type === "merge"
-                        ? "人物合并建议"
-                        : item.type === "conflict"
-                          ? "原作矛盾"
-                          : item.type === "external"
-                            ? "外部资料"
-                            : "模型推断（待核对）"}
-                    </span>
-                    <h3>{item.title}</h3>
-                  </div>
-                  {item.status !== "pending" && (
-                    <span className={`decision decision-${item.status}`}>
-                      {item.status === "accepted" ? "已接受" : "已拒绝"}
-                    </span>
-                  )}
-                </div>
-                {item.status === "pending" ? (
-                  <div className="review-edit-fields">
-                    <label>
-                      <span>KP 采用的结论</span>
-                      <input
-                        value={item.title}
-                        onChange={(event) =>
-                          onEdit(item, { title: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>理由与处理说明</span>
-                      <textarea
-                        value={item.description}
-                        onChange={(event) =>
-                          onEdit(item, { description: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>KP 备注（会带入后续分析）</span>
-                      <textarea
-                        value={item.keeperNote ?? ""}
-                        onChange={(event) =>
-                          onEdit(item, { keeperNote: event.target.value })
-                        }
-                      />
-                    </label>
-                  </div>
-                ) : (
-                  <p>{item.description}</p>
-                )}
-                <div className="source-row">
-                  {item.sources.slice(0, 3).map((source, index) => (
-                    <SourceButton
-                      key={index}
-                      source={source}
-                      onOpen={onOpenSource}
-                    />
-                  ))}
-                </div>
-                {item.status === "pending" && (
-                  <div className="review-actions">
-                    <button
-                      className="primary-button compact"
-                      onClick={() => onResolve(item, true)}
-                    >
-                      {item.type === "merge" ? "确认是同一对象" : "接受"}
-                    </button>
-                    <button
-                      className="ghost-button compact"
-                      onClick={() => onResolve(item, false)}
-                    >
-                      {item.type === "merge" ? "保持分开" : "拒绝"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SettingsView({
   config,
   apiKey,
@@ -1275,7 +1171,7 @@ function DashboardView({
           <strong>{project.pages.length}</strong>
           <small>页 · {project.chapters.length} 个章节</small>
         </button>
-        <button onClick={() => onNavigate("overview")}>
+        <button onClick={() => onNavigate("stage-characters")}>
           <span>人物</span>
           <strong>{project.analysis.people.length}</strong>
           <small>核心人物</small>
@@ -1285,7 +1181,7 @@ function DashboardView({
           <strong>{project.analysis.acts.length}</strong>
           <small>剧情幕</small>
         </button>
-        <button onClick={() => onNavigate("review")}>
+        <button onClick={() => onNavigate("analysis")}>
           <span>核对</span>
           <strong className={pending > 0 ? "warning-text" : ""}>
             {pending}
@@ -1303,7 +1199,7 @@ function DashboardView({
         <div className="action-grid">
           <button
             className="action-card truth"
-            onClick={() => onNavigate("overview")}
+            onClick={() => onNavigate("stage-background")}
           >
             <span>01</span>
             <div>
@@ -2635,10 +2531,6 @@ export default function Home() {
     }
   };
 
-  const pendingCount =
-    activeProject?.analysis.reviewItems.filter(
-      (item) => item.status === "pending",
-    ).length ?? 0;
   const wizardItems =
     activeProject && wizardStage
       ? activeProject.analysis.reviewItems.filter(
@@ -2711,28 +2603,25 @@ export default function Home() {
           </div>
         </button>
         <nav>
-          <span className="nav-label">项目</span>
-          {navigation.map((item) => (
-            <button
-              key={item.view}
-              className={view === item.view ? "active" : ""}
-              onClick={() => setView(item.view)}
-            >
-              <i>{item.short}</i>
-              <span>{item.label}</span>
-              {item.view === "review" && pendingCount > 0 && (
-                <b>{pendingCount}</b>
-              )}
-            </button>
+          {navGroups.map((group, groupIndex) => (
+            <div className="nav-group" key={group.label}>
+              <span
+                className={`nav-label ${groupIndex > 0 ? "nav-second" : ""}`}
+              >
+                {group.label}
+              </span>
+              {group.items.map((item) => (
+                <button
+                  key={item.view}
+                  className={view === item.view ? "active" : ""}
+                  onClick={() => setView(item.view)}
+                >
+                  <i>{item.short}</i>
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
           ))}
-          <span className="nav-label nav-second">系统</span>
-          <button
-            className={view === "settings" ? "active" : ""}
-            onClick={() => setView("settings")}
-          >
-            <i>设</i>
-            <span>模型连接</span>
-          </button>
         </nav>
         <div className="sidebar-foot">
           <span className="local-dot" />
@@ -2795,7 +2684,7 @@ export default function Home() {
               onNavigate={setView}
             />
           )}
-          {view === "overview" && (
+          {view === "stage-background" && (
             <OverviewView project={activeProject} onOpenSource={setSourceRef} />
           )}
           {view === "acts" && (
@@ -2871,14 +2760,6 @@ export default function Home() {
                 </aside>
               )}
             </div>
-          )}
-          {view === "review" && (
-            <ReviewView
-              items={activeProject.analysis.reviewItems}
-              onResolve={resolveReview}
-              onEdit={editReview}
-              onOpenSource={setSourceRef}
-            />
           )}
           {view === "settings" && (
             <SettingsView
