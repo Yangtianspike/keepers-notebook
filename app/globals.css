@@ -3915,6 +3915,63 @@ button:disabled {
   gap: 4px;
 }
 
+.act-detail-view {
+  min-height: calc(100vh - 160px);
+  border: 1px solid #9b2c2c;
+  border-radius: 10px;
+  background-color: #f5f0e1;
+  background-image: url("/book-page-bg.png");
+  background-position: center top;
+  background-size: cover;
+  color: #2c1810;
+  font-family: "Noto Serif SC", "SimSun", Georgia, serif;
+  padding: clamp(18px, 3vw, 36px);
+  box-shadow: inset 0 0 60px rgba(85, 48, 25, 0.12);
+}
+
+.act-detail-view .act-detail-header,
+.act-detail-view .act-detail-section,
+.act-detail-view .act-editor,
+.act-detail-view .act-person-card,
+.act-detail-view .act-clue-card,
+.act-detail-view .act-event-list article,
+.act-detail-view .act-branch-list button {
+  border-color: rgba(123, 33, 30, 0.28);
+  background: rgba(255, 252, 239, 0.64);
+  color: #2c1810;
+}
+
+.act-detail-view h2,
+.act-detail-view h3,
+.act-detail-view h4,
+.act-detail-view p,
+.act-detail-view strong,
+.act-detail-view .act-card-copy {
+  color: #2c1810;
+}
+
+.act-detail-view .act-detail-header p,
+.act-detail-view .act-card-copy span,
+.act-detail-view .act-clue-card span {
+  color: #765346;
+}
+
+.act-detail-view .act-detail-header > span,
+.act-detail-view .act-tier h4,
+.act-detail-view .act-event-list article > span,
+.act-detail-view .act-event-list code {
+  color: #7b211e;
+}
+
+.act-detail-view .act-branch-editor input,
+.act-detail-view .act-branch-editor select,
+.act-detail-view .field input,
+.act-detail-view .field textarea {
+  border-color: rgba(123, 33, 30, 0.34);
+  background: rgba(255, 252, 239, 0.74);
+  color: #2c1810;
+}
+
 @media (max-width: 640px) {
   .stage-view {
     padding: 14px;

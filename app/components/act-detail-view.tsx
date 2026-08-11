@@ -100,7 +100,7 @@ export function ActDetailView({
   };
 
   return (
-    <div className="content-stack act-detail">
+    <div className="content-stack act-detail act-detail-view">
       <div className="act-detail-toolbar">
         <button className="ghost-button compact" onClick={onBack}>
           ← 返回幕树
