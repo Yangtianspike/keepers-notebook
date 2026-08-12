@@ -6,6 +6,7 @@ import { useTurnBook } from "@/app/components/stage-view";
 
 export type ActTextViewProps = {
   acts: Act[];
+  embedded?: boolean;
   initialActId?: string;
   people: Person[];
   clues: Clue[];
@@ -64,6 +65,7 @@ function NetworkIcon() {
 
 export function ActTextView({
   acts,
+  embedded = false,
   initialActId,
   people,
   clues,
@@ -73,6 +75,56 @@ export function ActTextView({
   onUpdatePerson,
   onUpdateAct,
 }: ActTextViewProps) {
+  if (embedded) {
+    return (
+      <ActBookContent
+        acts={acts}
+        initialActId={initialActId}
+        people={people}
+        clues={clues}
+        places={places}
+        onOpenTree={onOpenTree}
+        onSelectPerson={onSelectPerson}
+        onUpdatePerson={onUpdatePerson}
+        onUpdateAct={onUpdateAct}
+      />
+    );
+  }
+  return (
+    <StandaloneActTextView
+      acts={acts}
+      initialActId={initialActId}
+      people={people}
+      clues={clues}
+      places={places}
+      onOpenTree={onOpenTree}
+      onSelectPerson={onSelectPerson}
+      onUpdatePerson={onUpdatePerson}
+      onUpdateAct={onUpdateAct}
+    />
+  );
+}
+
+function ActBookContent(props: Omit<ActTextViewProps, "embedded">) {
+  return <ActTextViewContent {...props} embeddedContentOnly />;
+}
+
+function StandaloneActTextView(props: Omit<ActTextViewProps, "embedded">) {
+  return <ActTextViewContent {...props} embeddedContentOnly={false} />;
+}
+
+function ActTextViewContent({
+  acts,
+  initialActId,
+  people,
+  clues,
+  places,
+  onOpenTree,
+  onSelectPerson,
+  onUpdatePerson,
+  onUpdateAct,
+  embeddedContentOnly = false,
+}: Omit<ActTextViewProps, "embedded"> & { embeddedContentOnly: boolean }) {
   const orderedActs = useMemo(
     () => [...acts].sort((a, b) => a.sequence - b.sequence),
     [acts],
@@ -144,7 +196,7 @@ export function ActTextView({
         </div>
       </header>
       {editing && draft ? (
-          <section className="act-editor">
+        <section className="act-editor">
             <label className="field">
               <span>幕标题</span>
               <input
@@ -214,9 +266,9 @@ export function ActTextView({
                 保存修改
               </button>
             </div>
-          </section>
-        ) : (
-          <>
+        </section>
+      ) : (
+        <>
             <section className="act-detail-section">
               <h3>人物</h3>
               {personGroups.map((group) => {
@@ -320,8 +372,8 @@ export function ActTextView({
                 {act.description || "尚无幕描述。"}
               </p>
             </section>
-          </>
-        )}
+        </>
+      )}
     </article>
   ) : null;
 
@@ -337,12 +389,14 @@ export function ActTextView({
     displayTotalPages,
   } = useTurnBook(bookContent, {
     contentKey: JSON.stringify({ act, editing, people, clues, places }),
+    enabled: !embeddedContentOnly,
     onBoundaryPrev: index > 0 ? goPreviousAct : undefined,
     onBoundaryNext:
       index < orderedActs.length - 1 ? goNextAct : undefined,
   });
 
   useEffect(() => {
+    if (embeddedContentOnly) return;
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
@@ -359,6 +413,7 @@ export function ActTextView({
     window.addEventListener("keydown", handleKey, true);
     return () => window.removeEventListener("keydown", handleKey, true);
   }, [
+    embeddedContentOnly,
     hasNext,
     hasPrevious,
     nextPage,
@@ -409,6 +464,10 @@ export function ActTextView({
     };
     input.click();
   };
+
+  if (embeddedContentOnly) {
+    return bookContent;
+  }
 
   return (
     <div className="book-reader act-text-view">

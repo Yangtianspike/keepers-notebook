@@ -201,6 +201,7 @@ function loadTurnJs() {
 
 type TurnBookOptions = {
   contentKey?: unknown;
+  enabled?: boolean;
   onBoundaryPrev?: () => void;
   onBoundaryNext?: () => void;
 };
@@ -214,14 +215,35 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
   const [resizeVersion, setResizeVersion] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const totalPages = pages.length;
+  const enabled = options.enabled ?? true;
 
   useEffect(() => {
+    if (!enabled) return;
     const resize = () => setResizeVersion((version) => version + 1);
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
-  }, []);
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const measure = measureRef.current;
+    if (!measure || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        setResizeVersion((version) => version + 1);
+      });
+    });
+    observer.observe(measure);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [enabled]);
 
   useLayoutEffect(() => {
+    if (!enabled) return;
     const measure = measureRef.current;
     if (!measure) return;
     measure.style.width = `${PAGE_WIDTH}px`;
@@ -244,9 +266,10 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
     // itself would loop because callers construct a fresh ReactNode per render,
     // while this effect updates pagination state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.contentKey, resizeVersion]);
+  }, [enabled, options.contentKey, resizeVersion]);
 
   useEffect(() => {
+    if (!enabled) return;
     const element = flipbookRef.current;
     if (!element || pages.length === 0) return;
     let disposed = false;
@@ -289,9 +312,10 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
         // The plugin may already have removed its generated wrappers.
       }
     };
-  }, [pages]);
+  }, [enabled, pages]);
 
   useEffect(() => {
+    if (!enabled) return;
     const book = turnRef.current;
     if (!book) return;
     const containerWidth =
@@ -304,7 +328,7 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
     book.turn("display", display);
     book.turn("page", 1);
     setCurrentPage(1);
-  }, [resizeVersion]);
+  }, [enabled, resizeVersion]);
 
   const previousPage = useCallback(() => {
     if (isAnimating) return;

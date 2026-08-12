@@ -2595,7 +2595,9 @@ export default function Home() {
 
         <main
           className={`workspace-main${
-            STAGE_VIEWS.slice(0, 6).includes(view) ? " book-workspace-main" : ""
+            STAGE_VIEWS.includes(view) && actView === "detail"
+              ? " book-workspace-main"
+              : ""
           }`}
         >
           {view === "dashboard" && (
@@ -2629,7 +2631,7 @@ export default function Home() {
               onNavigate={setView}
             />
           )}
-          {STAGE_VIEWS.slice(0, 6).includes(view) && (
+          {STAGE_VIEWS.includes(view) && actView === "detail" && (
             <StageView
               sections={[
                 {
@@ -2665,72 +2667,76 @@ export default function Home() {
                   name: "关键线索安排",
                   content: CluesStageView({ project: activeProject }),
                 },
+                {
+                  key: "acts",
+                  name: "幕",
+                  content: (
+                    <ActTextView
+                      embedded
+                      key={selectedActId ?? "first-act"}
+                      acts={activeProject.analysis.acts}
+                      initialActId={selectedActId ?? undefined}
+                      people={activeProject.analysis.people}
+                      clues={activeProject.analysis.clues}
+                      places={activeProject.analysis.places}
+                      onOpenTree={() => setActView("tree")}
+                      onSelectPerson={setSelectedActPersonId}
+                      onUpdateAct={(act) =>
+                        void persistProject({
+                          ...activeProject,
+                          updatedAt: new Date().toISOString(),
+                          analysis: {
+                            ...activeProject.analysis,
+                            acts: activeProject.analysis.acts.map((candidate) =>
+                              candidate.id === act.id ? act : candidate,
+                            ),
+                          },
+                        })
+                      }
+                      onUpdatePerson={(person) =>
+                        void persistProject({
+                          ...activeProject,
+                          updatedAt: new Date().toISOString(),
+                          analysis: {
+                            ...activeProject.analysis,
+                            people: activeProject.analysis.people.map((candidate) =>
+                              candidate.id === person.id ? person : candidate,
+                            ),
+                          },
+                        })
+                      }
+                    />
+                  ),
+                },
               ]}
               activeSectionKey={view}
               contentKey={`${activeProject.id}:${activeProject.updatedAt}`}
               onActiveSectionChange={(sectionKey) => setView(sectionKey as View)}
             />
           )}
-          {view === "acts" && (
+          {view === "acts" && actView === "tree" && (
             <div className="content-stack">
-              {actView === "detail" ? (
-                <ActTextView
-                  key={selectedActId ?? "first-act"}
-                  acts={activeProject.analysis.acts}
-                  initialActId={selectedActId ?? undefined}
-                  people={activeProject.analysis.people}
-                  clues={activeProject.analysis.clues}
-                  places={activeProject.analysis.places}
-                  onOpenTree={() => setActView("tree")}
-                  onSelectPerson={setSelectedActPersonId}
-                  onUpdateAct={(act) =>
-                    void persistProject({
-                      ...activeProject,
-                      updatedAt: new Date().toISOString(),
-                      analysis: {
-                        ...activeProject.analysis,
-                        acts: activeProject.analysis.acts.map((candidate) =>
-                          candidate.id === act.id ? act : candidate,
-                        ),
-                      },
-                    })
-                  }
-                  onUpdatePerson={(person) =>
-                    void persistProject({
-                      ...activeProject,
-                      updatedAt: new Date().toISOString(),
-                      analysis: {
-                        ...activeProject.analysis,
-                        people: activeProject.analysis.people.map((candidate) =>
-                          candidate.id === person.id ? person : candidate,
-                        ),
-                      },
-                    })
-                  }
-                />
-              ) : (
-                <div className="act-tree-reader">
-                  <div className="act-tree-reader-toolbar">
-                    <div>
-                      <span className="eyebrow">ACT STRUCTURE</span>
-                      <h2>幕树</h2>
-                    </div>
-                    <button
-                      className="ghost-button compact"
-                      onClick={() => setActView("detail")}
-                    >
-                      返回文本
-                    </button>
+              <div className="act-tree-reader">
+                <div className="act-tree-reader-toolbar">
+                  <div>
+                    <span className="eyebrow">ACT STRUCTURE</span>
+                    <h2>幕树</h2>
                   </div>
-                  <ActTreeView
-                    acts={activeProject.analysis.acts}
-                    onSelectAct={(actId) => {
-                      setSelectedActId(actId);
-                      setActView("detail");
-                    }}
-                  />
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => setActView("detail")}
+                  >
+                    返回文本
+                  </button>
                 </div>
-              )}
+                <ActTreeView
+                  acts={activeProject.analysis.acts}
+                  onSelectAct={(actId) => {
+                    setSelectedActId(actId);
+                    setActView("detail");
+                  }}
+                />
+              </div>
             </div>
           )}
           {view === "settings" && (

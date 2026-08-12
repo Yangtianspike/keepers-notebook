@@ -3784,6 +3784,8 @@ button:disabled {
 }
 
 .stage-pagination {
+  position: relative;
+  z-index: 30;
   display: grid;
   width: 100%;
   flex: 0 0 auto;
@@ -3793,6 +3795,7 @@ button:disabled {
   margin: 0 auto;
   padding-top: 16px;
   padding-bottom: 16px;
+  pointer-events: auto;
 }
 
 .stage-page-number {
@@ -3802,6 +3805,8 @@ button:disabled {
 }
 
 .stage-pagination button {
+  position: relative;
+  z-index: 31;
   width: max-content;
   border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: 4px;
@@ -3812,6 +3817,7 @@ button:disabled {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .stage-pagination button:disabled {
