@@ -19,11 +19,13 @@
     "dagre": "^0.8.5",
     "drizzle-orm": "0.45.2",
     "elkjs": "^0.12.0",
+    "jquery": "3.7.1",
     "mammoth": "^1.12.0",
     "next": "16.2.6",
     "pdfjs-dist": "^6.1.200",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "turn.js": "1.0.5"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
@@ -42,6 +44,11 @@
     "vinext": "0.0.50",
     "vite": "8.0.13",
     "wrangler": "4.92.0"
+  },
+  "overrides": {
+    "turn.js": {
+      "jquery": "3.7.1"
+    }
   },
   "type": "module"
 }
