@@ -3798,7 +3798,7 @@ button:disabled {
   line-height: 1.85;
 }
 
-.stage-document > header {
+.stage-document > header:not(.stage-page-heading) {
   border-bottom: 2px solid rgba(123, 33, 30, 0.42);
   padding-bottom: 18px;
   text-align: center;
@@ -3828,7 +3828,7 @@ button:disabled {
 }
 
 .stage-document h2,
-.book-page-body h2 {
+.act-book-document h2 {
   margin: 20px 0 12px;
   border-bottom: 1px solid rgba(123, 33, 30, 0.24);
   padding-bottom: 7px;
@@ -3838,14 +3838,14 @@ button:disabled {
 }
 
 .stage-document h3,
-.book-page-body h3 {
+.act-book-document h3 {
   margin: 16px 0 8px;
   font-size: 17px;
   font-weight: 700;
 }
 
 .stage-document p,
-.book-page-body p {
+.act-book-document p {
   margin: 0 0 12px;
   font-size: 15px;
   line-height: 1.8;
@@ -4066,7 +4066,7 @@ button:disabled {
   font-size: 17px;
 }
 
-.book-page-body,
+.act-book-document,
 .act-book-document > .act-editor {
   padding: 0;
 }

@@ -143,8 +143,7 @@ export function ActTextView({
           )}
         </div>
       </header>
-      <div className="book-page-body">
-        {editing && draft ? (
+      {editing && draft ? (
           <section className="act-editor">
             <label className="field">
               <span>幕标题</span>
@@ -323,7 +322,6 @@ export function ActTextView({
             </section>
           </>
         )}
-      </div>
     </article>
   ) : null;
 

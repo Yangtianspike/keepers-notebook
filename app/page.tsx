@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useRef,
@@ -741,20 +742,24 @@ function AnalysisView({
 function BackgroundStageView({
   project,
   onOpenSource,
+  children,
 }: {
   project: Project;
   onOpenSource: (source: SourceRef) => void;
+  children?: ReactNode;
 }) {
   const overview = project.analysis.overview;
   if (!overview) {
-    return <EmptyState title="尚无故事背景" description="请先完成故事背景分析。" />;
+    return (
+      <article className="stage-document">
+        {children}
+        <EmptyState title="尚无故事背景" description="请先完成故事背景分析。" />
+      </article>
+    );
   }
   return (
     <article className="stage-document">
-      <header>
-        <span>故事核心</span>
-        <h1>{overview.oneLine}</h1>
-      </header>
+      {children}
       <section>
         <h2>起因</h2>
         <p>{overview.cause}</p>
@@ -803,18 +808,25 @@ function BackgroundStageView({
   );
 }
 
-function TimePlaceStageView({ project }: { project: Project }) {
+function TimePlaceStageView({
+  project,
+  children,
+}: {
+  project: Project;
+  children?: ReactNode;
+}) {
   const timePlace = project.analysis.timePlace;
   if (!timePlace) {
-    return <EmptyState title="尚无时间地点" description="请先完成时间地点分析。" />;
+    return (
+      <article className="stage-document">
+        {children}
+        <EmptyState title="尚无时间地点" description="请先完成时间地点分析。" />
+      </article>
+    );
   }
   return (
     <article className="stage-document">
-      <header>
-        <span>时间概要</span>
-        <h1>时间与地点</h1>
-        <p>{timePlace.timeline}</p>
-      </header>
+      {children}
       <section>
         <h2>地点档案</h2>
         <div className="stage-card-grid">
@@ -831,7 +843,13 @@ function TimePlaceStageView({ project }: { project: Project }) {
   );
 }
 
-function CharactersStageView({ project }: { project: Project }) {
+function CharactersStageView({
+  project,
+  children,
+}: {
+  project: Project;
+  children?: ReactNode;
+}) {
   const groups: Array<{ key: Person["importance"]; label: string }> = [
     { key: "core", label: "核心人物" },
     { key: "important", label: "重要人物" },
@@ -839,10 +857,7 @@ function CharactersStageView({ project }: { project: Project }) {
   ];
   return (
     <article className="stage-document">
-      <header>
-        <span>角色名录</span>
-        <h1>核心人物</h1>
-      </header>
+      {children}
       {groups.map((group) => {
         const members = project.analysis.people.filter(
           (person) => person.importance === group.key,
@@ -877,14 +892,17 @@ function CharactersStageView({ project }: { project: Project }) {
   );
 }
 
-function CharacterArcsStageView({ project }: { project: Project }) {
+function CharacterArcsStageView({
+  project,
+  children,
+}: {
+  project: Project;
+  children?: ReactNode;
+}) {
   const arcs = project.analysis.characterArcs ?? [];
   return (
     <article className="stage-document">
-      <header>
-        <span>人物轨迹</span>
-        <h1>人物经历与动机</h1>
-      </header>
+      {children}
       {arcs.map((arc) => (
         <section className="stage-inset-card" key={arc.personId}>
           <h2>
@@ -904,19 +922,28 @@ function CharacterArcsStageView({ project }: { project: Project }) {
   );
 }
 
-function OpeningHookStageView({ project }: { project: Project }) {
+function OpeningHookStageView({
+  project,
+  children,
+}: {
+  project: Project;
+  children?: ReactNode;
+}) {
   return (
     <article className="stage-document stage-prose">
-      <header>
-        <span>调查员入局</span>
-        <h1>开篇钩子</h1>
-      </header>
+      {children}
       <p>{project.analysis.openingHook || "请先完成开篇钩子分析。"}</p>
     </article>
   );
 }
 
-function CluesStageView({ project }: { project: Project }) {
+function CluesStageView({
+  project,
+  children,
+}: {
+  project: Project;
+  children?: ReactNode;
+}) {
   const groups: Array<{ key: Clue["importance"]; label: string }> = [
     { key: "key", label: "关键线索" },
     { key: "secondary", label: "次要线索" },
@@ -924,10 +951,7 @@ function CluesStageView({ project }: { project: Project }) {
   ];
   return (
     <article className="stage-document">
-      <header>
-        <span>调查路径</span>
-        <h1>关键线索安排</h1>
-      </header>
+      {children}
       {groups.map((group) => {
         const clues = project.analysis.clues.filter(
           (clue) => clue.importance === group.key,
