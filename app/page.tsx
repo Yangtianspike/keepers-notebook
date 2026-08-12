@@ -16,7 +16,9 @@ import {
 } from "@/lib/quote-check";
 import { ConfirmWizard } from "@/app/components/confirm-wizard";
 import { ActTreeView } from "@/app/components/act-tree-view";
-import { ActTextView } from "@/app/components/act-text-view";
+import {
+  ActBookContentView,
+} from "@/app/components/act-text-view";
 import { SettingsModal } from "@/app/components/settings-modal";
 import { StageView } from "@/app/components/stage-view";
 import { PersonDetailPanel } from "@/app/components/person-detail-panel";
@@ -2667,51 +2669,74 @@ export default function Home() {
                   name: "关键线索安排",
                   content: CluesStageView({ project: activeProject }),
                 },
-                {
-                  key: "acts",
-                  name: "幕",
-                  content: (
-                    <ActTextView
-                      embedded
-                      key={selectedActId ?? "first-act"}
-                      acts={activeProject.analysis.acts}
-                      initialActId={selectedActId ?? undefined}
-                      people={activeProject.analysis.people}
-                      clues={activeProject.analysis.clues}
-                      places={activeProject.analysis.places}
-                      onOpenTree={() => setActView("tree")}
-                      onSelectPerson={setSelectedActPersonId}
-                      onUpdateAct={(act) =>
-                        void persistProject({
-                          ...activeProject,
-                          updatedAt: new Date().toISOString(),
-                          analysis: {
-                            ...activeProject.analysis,
-                            acts: activeProject.analysis.acts.map((candidate) =>
-                              candidate.id === act.id ? act : candidate,
-                            ),
-                          },
-                        })
-                      }
-                      onUpdatePerson={(person) =>
-                        void persistProject({
-                          ...activeProject,
-                          updatedAt: new Date().toISOString(),
-                          analysis: {
-                            ...activeProject.analysis,
-                            people: activeProject.analysis.people.map((candidate) =>
-                              candidate.id === person.id ? person : candidate,
-                            ),
-                          },
-                        })
-                      }
-                    />
-                  ),
-                },
+                ...activeProject.analysis.acts
+                  .slice()
+                  .sort((left, right) => left.sequence - right.sequence)
+                  .map((act, _index, orderedActs) => ({
+                    key: `acts:${act.id}`,
+                    name: `第 ${act.sequence} 幕 · ${act.title}`,
+                    content: (
+                      <ActBookContentView
+                        key={act.id}
+                        act={act}
+                        acts={orderedActs}
+                        people={activeProject.analysis.people}
+                        clues={activeProject.analysis.clues}
+                        places={activeProject.analysis.places}
+                        onOpenTree={() => setActView("tree")}
+                        onSelectPerson={setSelectedActPersonId}
+                        onUpdateAct={(updatedAct) =>
+                          void persistProject({
+                            ...activeProject,
+                            updatedAt: new Date().toISOString(),
+                            analysis: {
+                              ...activeProject.analysis,
+                              acts: activeProject.analysis.acts.map((candidate) =>
+                                candidate.id === updatedAct.id
+                                  ? updatedAct
+                                  : candidate,
+                              ),
+                            },
+                          })
+                        }
+                        onUpdatePerson={(person) =>
+                          void persistProject({
+                            ...activeProject,
+                            updatedAt: new Date().toISOString(),
+                            analysis: {
+                              ...activeProject.analysis,
+                              people: activeProject.analysis.people.map(
+                                (candidate) =>
+                                  candidate.id === person.id ? person : candidate,
+                              ),
+                            },
+                          })
+                        }
+                      />
+                    ),
+                  })),
+                ...(activeProject.analysis.acts.length === 0
+                  ? [{
+                      key: "acts",
+                      name: "幕",
+                      content: <p>暂无幕内容，请先运行幕阶段分析。</p>,
+                    }]
+                  : []),
               ]}
-              activeSectionKey={view}
+              activeSectionKey={
+                view === "acts" && selectedActId
+                  ? `acts:${selectedActId}`
+                  : view
+              }
               contentKey={`${activeProject.id}:${activeProject.updatedAt}`}
-              onActiveSectionChange={(sectionKey) => setView(sectionKey as View)}
+              onActiveSectionChange={(sectionKey) => {
+                if (sectionKey.startsWith("acts:")) {
+                  setSelectedActId(sectionKey.slice("acts:".length));
+                  setView("acts");
+                  return;
+                }
+                setView(sectionKey as View);
+              }}
             />
           )}
           {view === "acts" && actView === "tree" && (

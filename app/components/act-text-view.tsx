@@ -17,6 +17,10 @@ export type ActTextViewProps = {
   onUpdateAct: (act: Act) => void;
 };
 
+export type ActBookContentProps = Omit<ActTextViewProps, "embedded"> & {
+  act: Act;
+};
+
 const personGroups: Array<{ key: Person["importance"]; label: string }> = [
   { key: "core", label: "核心人物" },
   { key: "important", label: "重要人物" },
@@ -107,6 +111,21 @@ export function ActTextView({
 
 function ActBookContent(props: Omit<ActTextViewProps, "embedded">) {
   return <ActTextViewContent {...props} embeddedContentOnly />;
+}
+
+export function ActBookContentView({
+  act,
+  acts,
+  ...props
+}: ActBookContentProps) {
+  return (
+    <ActTextViewContent
+      {...props}
+      acts={acts}
+      initialActId={act.id}
+      embeddedContentOnly
+    />
+  );
 }
 
 function StandaloneActTextView(props: Omit<ActTextViewProps, "embedded">) {
@@ -466,7 +485,7 @@ function ActTextViewContent({
   };
 
   if (embeddedContentOnly) {
-    return bookContent;
+    return <div className="act-text-view embedded-act-content">{bookContent}</div>;
   }
 
   return (

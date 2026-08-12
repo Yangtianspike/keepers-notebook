@@ -371,6 +371,10 @@ export type StageBookSection = {
   content: ReactNode;
 };
 
+function sectionNavigationKey(sectionKey: string) {
+  return sectionKey.startsWith("acts:") ? "acts" : sectionKey;
+}
+
 export function StageView({
   sections,
   activeSectionKey,
@@ -383,7 +387,9 @@ export function StageView({
   onActiveSectionChange: (sectionKey: string) => void;
 }) {
   const activeSectionChangeRef = useRef(onActiveSectionChange);
-  activeSectionChangeRef.current = onActiveSectionChange;
+  useEffect(() => {
+    activeSectionChangeRef.current = onActiveSectionChange;
+  }, [onActiveSectionChange]);
   const content = (
     <div className="stage-book-document">
       {sections.map((section, index) => (
@@ -424,21 +430,39 @@ export function StageView({
     );
   });
   const pageSectionsKey = pageSections.join("|");
+  const lastRequestedSectionRef = useRef(activeSectionKey);
+  const pageNavigationSections = pageSections.map(sectionNavigationKey);
 
   const activeSectionIndex = sections.findIndex(
-    (section) => section.key === activeSectionKey,
+    (section) =>
+      section.key === activeSectionKey ||
+      sectionNavigationKey(section.key) === activeSectionKey,
   );
-  const targetPage = Math.max(1, pageSections.indexOf(activeSectionKey) + 1);
+  const exactTargetPage = pageSections.indexOf(activeSectionKey);
+  const targetPage = Math.max(1, (
+    exactTargetPage >= 0
+      ? exactTargetPage
+      : pageNavigationSections.indexOf(activeSectionKey)
+  ) + 1);
 
   useEffect(() => {
-    if (!turnRef.current || targetPage < 1) return;
+    if (
+      lastRequestedSectionRef.current === activeSectionKey ||
+      !turnRef.current ||
+      targetPage < 1
+    ) {
+      return;
+    }
+    lastRequestedSectionRef.current = activeSectionKey;
     turnRef.current.turn("page", targetPage);
   }, [activeSectionKey, targetPage, turnRef]);
 
   useEffect(() => {
-    const pageSection = pageSections[Math.max(0, currentPage - 1)];
-    if (pageSection && pageSection !== activeSectionKey) {
-      activeSectionChangeRef.current(pageSection);
+    const pageSection = pageNavigationSections[Math.max(0, currentPage - 1)];
+    const exactPageSection = pageSections[Math.max(0, currentPage - 1)];
+    if (pageSection && exactPageSection !== activeSectionKey) {
+      lastRequestedSectionRef.current = exactPageSection;
+      activeSectionChangeRef.current(exactPageSection);
     }
     // pageSectionsKey is the stable representation of the generated page map.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -470,6 +494,7 @@ export function StageView({
       </section>
       <nav className="stage-pagination" aria-label="书页翻页">
         <button
+          type="button"
           onClick={previousPage}
           disabled={!hasPrevious && activeSectionIndex === 0}
         >
@@ -479,6 +504,7 @@ export function StageView({
           {displayCurrentPage} / {displayTotalPages}
         </span>
         <button
+          type="button"
           onClick={nextPage}
           disabled={!hasNext && activeSectionIndex === sections.length - 1}
         >

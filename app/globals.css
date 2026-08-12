@@ -4139,6 +4139,44 @@ button:disabled {
   color: #765346;
 }
 
+.embedded-act-content .act-detail-section,
+.embedded-act-content .act-person-card,
+.embedded-act-content .act-clue-card,
+.embedded-act-content .act-event-list article,
+.embedded-act-content .act-branch-list button,
+.embedded-act-content .act-editor {
+  border-color: rgba(123, 33, 30, 0.3);
+  background: rgba(255, 252, 239, 0.62);
+  color: #2c1810;
+  box-shadow: none;
+}
+
+.embedded-act-content h2,
+.embedded-act-content h3,
+.embedded-act-content h4,
+.embedded-act-content p,
+.embedded-act-content strong,
+.embedded-act-content .act-card-copy {
+  color: #2c1810;
+}
+
+.embedded-act-content .act-card-copy span,
+.embedded-act-content .act-clue-card span,
+.embedded-act-content .act-detail-header p {
+  color: #765346;
+}
+
+.embedded-act-content .act-portrait {
+  border-color: rgba(123, 33, 30, 0.36);
+  background: rgba(123, 33, 30, 0.08);
+  color: #7b211e;
+}
+
+.embedded-act-content .act-detail-section,
+.embedded-act-content .act-editor {
+  border-radius: 5px;
+}
+
 .book-page-footer {
   display: grid;
   width: 100%;
