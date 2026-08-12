@@ -3743,13 +3743,16 @@ button:disabled {
 }
 
 .stage-page-heading small {
-  color: #765346;
-  font-size: 11px;
+  color: #8b7355;
+  font-size: 14px;
   letter-spacing: 0.12em;
+  text-align: center;
 }
 
 .stage-page-heading strong {
-  font-size: 20px;
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .stage-view-content {
@@ -3851,8 +3854,9 @@ button:disabled {
 
 .stage-document > header > span {
   color: #7b211e;
-  font-size: 12px;
+  font-size: 20px;
   letter-spacing: 0.2em;
+  text-align: center;
 }
 
 .stage-document h1,
@@ -3865,16 +3869,36 @@ button:disabled {
 }
 
 .stage-document h1 {
-  margin: 8px 0;
-  font-size: clamp(28px, 4vw, 46px);
+  margin: 8px 0 12px;
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
 }
 
-.stage-document h2 {
+.stage-document h2,
+.book-page-body h2 {
+  margin: 20px 0 12px;
   border-bottom: 1px solid rgba(123, 33, 30, 0.24);
   padding-bottom: 7px;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: left;
 }
 
-.stage-document p {
+.stage-document h3,
+.book-page-body h3 {
+  margin: 16px 0 8px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.stage-document p,
+.book-page-body p {
+  margin: 0 0 12px;
+  font-size: 15px;
+  line-height: 1.8;
+  text-align: left;
+  text-indent: 2em;
   white-space: pre-wrap;
 }
 
@@ -3906,9 +3930,10 @@ button:disabled {
   margin: 0;
 }
 
-.stage-prose > p {
-  font-size: 18px;
-  line-height: 2;
+.stage-inset-card p,
+.stage-inset-card dd,
+.act-detail-section p {
+  text-indent: 0;
 }
 
 .person-detail-backdrop {
@@ -4060,8 +4085,9 @@ button:disabled {
 
 .book-page-meta > span {
   color: #7b211e;
-  font-size: 12px;
+  font-size: 20px;
   letter-spacing: 0.12em;
+  text-align: center;
 }
 
 .book-page-meta h2,
