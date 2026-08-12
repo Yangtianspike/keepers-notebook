@@ -599,8 +599,11 @@ button:disabled {
 
 .workspace {
   width: calc(100% - 218px);
+  min-width: 0;
   min-height: 100vh;
   margin-left: 218px;
+  padding: 0;
+  overflow-x: auto;
 }
 
 .workspace-topbar {
@@ -670,6 +673,11 @@ button:disabled {
   min-height: calc(100vh - 70px);
   padding: 34px clamp(24px, 3.8vw, 60px) 60px;
   transition: margin 180ms ease;
+}
+
+.workspace-main.book-workspace-main {
+  padding-right: 0;
+  padding-left: 0;
 }
 
 .workspace-main.has-detail {
@@ -3670,18 +3678,18 @@ button:disabled {
 
 .book-reader {
   display: flex;
-  width: 100%;
-  max-width: 1750px;
+  width: 1750px;
+  max-width: 100%;
   flex-direction: column;
   align-items: center;
   margin: 0 auto;
 }
 
-.stage-view {
-  width: 100%;
-  max-width: 1750px;
-  max-height: 1200px;
-  aspect-ratio: 1750 / 1200;
+.stage-view,
+.book-page-content {
+  width: 1750px;
+  height: 1200px;
+  max-width: 100%;
 }
 
 .flipbook {
@@ -3737,37 +3745,16 @@ button:disabled {
 }
 
 .book-page-inner {
-  width: 77.7142857%;
-  height: 95.8333333%;
+  width: 680px;
+  height: 1150px;
+  margin: 25px 97.5px;
   overflow: hidden;
   padding: 0;
-}
-
-.flipbook .even .book-page-inner {
-  margin: 2.0833333% 0 0 4.5714286%;
-}
-
-.flipbook .odd .book-page-inner {
-  margin: 2.0833333% 0 0 17.7142857%;
-}
-
-.book-cover-blank {
-  border: 0;
-  background: transparent;
+  box-sizing: border-box;
 }
 
 .book-block-slice {
   overflow: hidden;
-}
-
-.flipbook .book-cover-page {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.flipbook .book-cover-page::before {
-  display: none;
 }
 
 .flipbook .page-wrapper {

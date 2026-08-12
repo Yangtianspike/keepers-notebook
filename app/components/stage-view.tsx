@@ -13,7 +13,6 @@ import {
   useState,
 } from "react";
 
-const STAGE_COUNT = 7;
 const MOBILE_BREAKPOINT = 760;
 const TURN_DURATION = 800;
 const BOOK_WIDTH = 1750;
@@ -53,42 +52,6 @@ export type PageSliceResult = {
   pageBreaks: number[];
 };
 
-export type PageNumberOffset = {
-  current: number;
-  total: number;
-};
-
-export type BookPageCountRecord = Record<string, number>;
-
-export function pageNumberOffsetFor(
-  orderedKeys: string[],
-  pageCounts: BookPageCountRecord,
-  currentKey: string,
-): PageNumberOffset {
-  const currentIndex = orderedKeys.indexOf(currentKey);
-  const fallbackIndex = Math.max(0, currentIndex);
-  const allMeasured = orderedKeys.every((key) => pageCounts[key] !== undefined);
-  if (!allMeasured) {
-    return {
-      current: orderedKeys.slice(0, fallbackIndex).reduce(
-        (total, key) => total + (pageCounts[key] ?? 1),
-        0,
-      ),
-      total: orderedKeys.reduce(
-        (total, key) => total + (pageCounts[key] ?? 1),
-        0,
-      ),
-    };
-  }
-  return {
-    current: orderedKeys.slice(0, fallbackIndex).reduce(
-      (total, key) => total + pageCounts[key],
-      0,
-    ),
-    total: orderedKeys.reduce((total, key) => total + pageCounts[key], 0),
-  };
-}
-
 type ElementWithChildren = ReactElement<{ children?: ReactNode }>;
 
 function contentBlocks(content: ReactNode) {
@@ -125,8 +88,25 @@ export function measureAndSlice(
     accumulatedHeight = 0;
   };
 
+  const stageKeyFor = (block: ReactNode) =>
+    isValidElement(block)
+      ? (block.props as { "data-stage-key"?: string })["data-stage-key"]
+      : undefined;
+
   blocks.forEach((block, index) => {
     const blockHeight = measuredHeights[index] ?? pageHeight;
+    const blockStageKey = stageKeyFor(block);
+    const previousStageKey = stageKeyFor(currentBlocks[0]);
+
+    if (
+      currentBlocks.length > 0 &&
+      blockStageKey &&
+      previousStageKey &&
+      blockStageKey !== previousStageKey
+    ) {
+      finishPage();
+      currentStart = index;
+    }
 
     if (blockHeight > pageHeight) {
       finishPage();
@@ -138,6 +118,7 @@ export function measureAndSlice(
         pageGroups.push([
           <div
             className="book-block-slice"
+            data-stage-key={blockStageKey}
             key={`${index}-${sliceIndex}`}
             style={{ height: sliceHeight }}
           >
@@ -162,10 +143,20 @@ export function measureAndSlice(
   finishPage();
 
   const pages = pageGroups.map((pageBlocks, pageIndex) => {
+    const stageKey = pageBlocks.reduce<string | undefined>((found, block) => {
+      if (found || !isValidElement(block)) return found;
+      return String(
+        (block.props as { "data-stage-key"?: string })["data-stage-key"] ?? "",
+      ) || undefined;
+    }, undefined);
     const sliced = root
       ? cloneElement(root as ElementWithChildren, { key: pageIndex }, pageBlocks)
       : pageBlocks;
-    return <div className="book-page-inner" key={pageIndex}>{sliced}</div>;
+    return (
+      <div className="book-page-inner" data-stage-key={stageKey} key={pageIndex}>
+        {sliced}
+      </div>
+    );
   });
 
   return { pages, pageBreaks };
@@ -210,11 +201,8 @@ function loadTurnJs() {
 
 type TurnBookOptions = {
   contentKey?: unknown;
-  heightOffset?: number;
   onBoundaryPrev?: () => void;
   onBoundaryNext?: () => void;
-  onPageCount?: (pageCount: number) => void;
-  pageNumberOffset?: PageNumberOffset;
 };
 
 export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
@@ -222,11 +210,10 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
   const measureRef = useRef<HTMLDivElement>(null);
   const turnRef = useRef<TurnCollection | null>(null);
   const [pages, setPages] = useState<ReactNode[]>([]);
-  const [currentPage, setCurrentPage] = useState(2);
+  const [currentPage, setCurrentPage] = useState(1);
   const [resizeVersion, setResizeVersion] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const totalPages = pages.length;
-  const heightOffset = options.heightOffset ?? 132;
 
   useEffect(() => {
     const resize = () => setResizeVersion((version) => version + 1);
@@ -251,21 +238,13 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
         Number.parseFloat(styles.marginBottom || "0");
     });
     const result = measureAndSlice(content, PAGE_HEIGHT, PAGE_WIDTH, heights);
-    const coverPage = (
-      <div className="book-page-inner book-cover-blank" key="blank-cover" />
-    );
-    setPages([coverPage, ...result.pages]);
-    setCurrentPage(2);
+    setPages(result.pages);
+    setCurrentPage(1);
     // contentKey is the explicit invalidation signal. Depending on `content`
     // itself would loop because callers construct a fresh ReactNode per render,
     // while this effect updates pagination state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.contentKey, resizeVersion]);
-
-  const onPageCount = options.onPageCount;
-  useEffect(() => {
-    onPageCount?.(Math.max(1, totalPages - 1));
-  }, [onPageCount, totalPages]);
 
   useEffect(() => {
     const element = flipbookRef.current;
@@ -289,7 +268,7 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
         acceleration: true,
         duration: TURN_DURATION,
         display,
-        page: 2,
+        page: 1,
       });
       book.on("turning.keeperAtlas", () => setIsAnimating(true));
       book.on("turned.keeperAtlas", (_event, page) => {
@@ -310,7 +289,7 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
         // The plugin may already have removed its generated wrappers.
       }
     };
-  }, [heightOffset, pages]);
+  }, [pages]);
 
   useEffect(() => {
     const book = turnRef.current;
@@ -323,13 +302,13 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
     const display = window.innerWidth <= MOBILE_BREAKPOINT ? "single" : "double";
     book.turn("size", width, height);
     book.turn("display", display);
-    book.turn("page", 2);
-    setCurrentPage(2);
+    book.turn("page", 1);
+    setCurrentPage(1);
   }, [resizeVersion]);
 
   const previousPage = useCallback(() => {
     if (isAnimating) return;
-    if (currentPage <= 2) {
+    if (currentPage <= 1) {
       options.onBoundaryPrev?.();
       return;
     }
@@ -348,56 +327,62 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
   return {
     flipbookRef,
     measureRef,
+    turnRef,
     pages,
     currentPage,
     totalPages,
     previousPage,
     nextPage,
-    hasPrevious: currentPage > 2,
+    hasPrevious: currentPage > 1,
     hasNext: currentPage < totalPages,
     isAnimating,
-    displayCurrentPage:
-      (options.pageNumberOffset?.current ?? 0) + Math.max(1, currentPage - 1),
-    displayTotalPages:
-      options.pageNumberOffset?.total ?? Math.max(1, totalPages - 1),
+    displayCurrentPage: currentPage,
+    displayTotalPages: totalPages,
   };
 }
 
+export type StageBookSection = {
+  key: string;
+  name: string;
+  content: ReactNode;
+};
+
 export function StageView({
-  stageIndex,
-  stageName,
+  sections,
+  activeSectionKey,
   contentKey,
-  onPageCount,
-  pageNumberOffset,
-  onPrev,
-  onNext,
-  children,
+  onActiveSectionChange,
 }: {
-  stageIndex: number;
-  stageName: string;
+  sections: StageBookSection[];
+  activeSectionKey: string;
   contentKey?: unknown;
-  onPageCount?: (pageCount: number) => void;
-  pageNumberOffset?: PageNumberOffset;
-  onPrev: () => void;
-  onNext: () => void;
-  children: ReactNode;
+  onActiveSectionChange: (sectionKey: string) => void;
 }) {
-  const heading = (
-    <header className="stage-page-heading">
-      <small>{String(stageIndex + 1).padStart(2, "0")} / {STAGE_COUNT}</small>
-      <strong>{stageName}</strong>
-    </header>
-  );
+  const activeSectionChangeRef = useRef(onActiveSectionChange);
+  activeSectionChangeRef.current = onActiveSectionChange;
   const content = (
-    <article className="stage-document">
-      {heading}
-      {children}
-    </article>
+    <div className="stage-book-document">
+      {sections.map((section, index) => (
+        <section
+          className="stage-document stage-book-section"
+          data-stage-key={section.key}
+          key={section.key}
+        >
+          <header className="stage-page-heading">
+            <small>{String(index + 1).padStart(2, "0")} / {sections.length}</small>
+            <strong>{section.name}</strong>
+          </header>
+          {section.content}
+        </section>
+      ))}
+    </div>
   );
   const {
     flipbookRef,
     measureRef,
+    turnRef,
     pages,
+    currentPage,
     previousPage,
     nextPage,
     hasPrevious,
@@ -406,11 +391,34 @@ export function StageView({
     displayTotalPages,
   } = useTurnBook(content, {
     contentKey,
-    onPageCount,
-    pageNumberOffset,
-    onBoundaryPrev: stageIndex > 0 ? onPrev : undefined,
-    onBoundaryNext: stageIndex < STAGE_COUNT - 1 ? onNext : undefined,
   });
+
+  const pageSections = pages.map((page) => {
+    if (!isValidElement(page)) return "";
+    return String(
+      (page.props as { "data-stage-key"?: string })["data-stage-key"] ?? "",
+    );
+  });
+  const pageSectionsKey = pageSections.join("|");
+
+  const activeSectionIndex = sections.findIndex(
+    (section) => section.key === activeSectionKey,
+  );
+  const targetPage = Math.max(1, pageSections.indexOf(activeSectionKey) + 1);
+
+  useEffect(() => {
+    if (!turnRef.current || targetPage < 1) return;
+    turnRef.current.turn("page", targetPage);
+  }, [activeSectionKey, targetPage, turnRef]);
+
+  useEffect(() => {
+    const pageSection = pageSections[Math.max(0, currentPage - 1)];
+    if (pageSection && pageSection !== activeSectionKey) {
+      activeSectionChangeRef.current(pageSection);
+    }
+    // pageSectionsKey is the stable representation of the generated page map.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSectionKey, currentPage, pageSectionsKey]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -431,10 +439,7 @@ export function StageView({
       <div className="book-measure" ref={measureRef}>{content}</div>
       <section className="stage-view flipbook" ref={flipbookRef}>
         {pages.map((page, index) => (
-          <div
-            className={`book-page${index === 0 ? " book-cover-page" : ""}`}
-            key={index}
-          >
+          <div className="book-page" key={index}>
             {page}
           </div>
         ))}
@@ -442,7 +447,7 @@ export function StageView({
       <nav className="stage-pagination" aria-label="书页翻页">
         <button
           onClick={previousPage}
-          disabled={!hasPrevious && stageIndex === 0}
+          disabled={!hasPrevious && activeSectionIndex === 0}
         >
           ← 上一页
         </button>
@@ -451,7 +456,7 @@ export function StageView({
         </span>
         <button
           onClick={nextPage}
-          disabled={!hasNext && stageIndex === STAGE_COUNT - 1}
+          disabled={!hasNext && activeSectionIndex === sections.length - 1}
         >
           下一页 →
         </button>

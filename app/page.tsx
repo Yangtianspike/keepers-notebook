@@ -4,7 +4,6 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -19,11 +18,7 @@ import { ConfirmWizard } from "@/app/components/confirm-wizard";
 import { ActTreeView } from "@/app/components/act-tree-view";
 import { ActTextView } from "@/app/components/act-text-view";
 import { SettingsModal } from "@/app/components/settings-modal";
-import {
-  pageNumberOffsetFor,
-  StageView,
-  type PageNumberOffset,
-} from "@/app/components/stage-view";
+import { StageView } from "@/app/components/stage-view";
 import { PersonDetailPanel } from "@/app/components/person-detail-panel";
 import {
   deleteProject,
@@ -1255,9 +1250,6 @@ export default function Home() {
   const [selectedActPersonId, setSelectedActPersonId] = useState<string | null>(
     null,
   );
-  const [stagePageCounts, setStagePageCounts] = useState<
-    Partial<Record<View, number>>
-  >({});
   const [sourceRef, setSourceRef] = useState<SourceRef | null>(null);
   const [sourceUrl, setSourceUrl] = useState("");
   const [activeStage, setActiveStage] = useState<AnalysisStage | null>(null);
@@ -1302,72 +1294,6 @@ export default function Home() {
   const [testState, setTestState] = useState<
     "idle" | "testing" | "success" | "error"
   >("idle");
-
-  const stagePageNumberOffset = useCallback(
-    (stageView: View): PageNumberOffset => {
-      const counts = Object.fromEntries(
-        Object.entries(stagePageCounts).filter(
-          (entry): entry is [string, number] => entry[1] !== undefined,
-        ),
-      );
-      return pageNumberOffsetFor(STAGE_VIEWS, counts, stageView);
-    },
-    [stagePageCounts],
-  );
-
-  const updateStagePageCount = useCallback(
-    (stageView: View, pageCount: number) => {
-      setStagePageCounts((counts) =>
-        counts[stageView] === pageCount
-          ? counts
-          : { ...counts, [stageView]: pageCount },
-      );
-    },
-    [],
-  );
-
-  const stagePageCountHandlers = useMemo(
-    () => ({
-      "stage-background": (pageCount: number) =>
-        updateStagePageCount("stage-background", pageCount),
-      "stage-timeplace": (pageCount: number) =>
-        updateStagePageCount("stage-timeplace", pageCount),
-      "stage-characters": (pageCount: number) =>
-        updateStagePageCount("stage-characters", pageCount),
-      "stage-characterArcs": (pageCount: number) =>
-        updateStagePageCount("stage-characterArcs", pageCount),
-      "stage-openingHook": (pageCount: number) =>
-        updateStagePageCount("stage-openingHook", pageCount),
-      "stage-clues": (pageCount: number) =>
-        updateStagePageCount("stage-clues", pageCount),
-    }),
-    [updateStagePageCount],
-  );
-
-  const navigateStage = useCallback((direction: -1 | 1) => {
-    const currentIndex = STAGE_VIEWS.indexOf(view);
-    if (currentIndex < 0) return;
-    const nextView = STAGE_VIEWS[currentIndex + direction];
-    if (!nextView) return;
-    if (nextView === "acts") setActView("detail");
-    setView(nextView);
-  }, [view]);
-
-  useEffect(() => {
-    const handleStageKey = (event: KeyboardEvent) => {
-      if (!STAGE_VIEWS.includes(view)) return;
-      const target = event.target as HTMLElement | null;
-      if (
-        target?.matches("input, textarea, select, [contenteditable='true']")
-      ) {
-        return;
-      }
-      if (event.key === "ArrowLeft") navigateStage(-1);
-      if (event.key === "ArrowRight") navigateStage(1);
-    };
-    window.addEventListener("keydown", handleStageKey);
-    return () => window.removeEventListener("keydown", handleStageKey);
-  }, [navigateStage, view]);
 
   useEffect(() => {
     listProjects()
@@ -2667,7 +2593,11 @@ export default function Home() {
           </div>
         </header>
 
-        <main className="workspace-main">
+        <main
+          className={`workspace-main${
+            STAGE_VIEWS.slice(0, 6).includes(view) ? " book-workspace-main" : ""
+          }`}
+        >
           {view === "dashboard" && (
             <DashboardView project={activeProject} onNavigate={setView} />
           )}
@@ -2699,86 +2629,47 @@ export default function Home() {
               onNavigate={setView}
             />
           )}
-          {view === "stage-background" && (
+          {STAGE_VIEWS.slice(0, 6).includes(view) && (
             <StageView
-              stageIndex={0}
-              stageName="故事背景"
-              contentKey={`${activeProject.id}:stage-background`}
-              onPageCount={stagePageCountHandlers["stage-background"]}
-              pageNumberOffset={stagePageNumberOffset("stage-background")}
-              onPrev={() => navigateStage(-1)}
-              onNext={() => navigateStage(1)}
-            >
-              {BackgroundStageView({
-                project: activeProject,
-                onOpenSource: setSourceRef,
-              })}
-            </StageView>
-          )}
-          {view === "stage-timeplace" && (
-            <StageView
-              stageIndex={1}
-              stageName="时间地点"
-              contentKey={`${activeProject.id}:stage-timeplace`}
-              onPageCount={stagePageCountHandlers["stage-timeplace"]}
-              pageNumberOffset={stagePageNumberOffset("stage-timeplace")}
-              onPrev={() => navigateStage(-1)}
-              onNext={() => navigateStage(1)}
-            >
-              {TimePlaceStageView({ project: activeProject })}
-            </StageView>
-          )}
-          {view === "stage-characters" && (
-            <StageView
-              stageIndex={2}
-              stageName="核心人物"
-              contentKey={`${activeProject.id}:stage-characters`}
-              onPageCount={stagePageCountHandlers["stage-characters"]}
-              pageNumberOffset={stagePageNumberOffset("stage-characters")}
-              onPrev={() => navigateStage(-1)}
-              onNext={() => navigateStage(1)}
-            >
-              {CharactersStageView({ project: activeProject })}
-            </StageView>
-          )}
-          {view === "stage-characterArcs" && (
-            <StageView
-              stageIndex={3}
-              stageName="人物经历与动机"
-              contentKey={`${activeProject.id}:stage-characterArcs`}
-              onPageCount={stagePageCountHandlers["stage-characterArcs"]}
-              pageNumberOffset={stagePageNumberOffset("stage-characterArcs")}
-              onPrev={() => navigateStage(-1)}
-              onNext={() => navigateStage(1)}
-            >
-              {CharacterArcsStageView({ project: activeProject })}
-            </StageView>
-          )}
-          {view === "stage-openingHook" && (
-            <StageView
-              stageIndex={4}
-              stageName="开篇钩子"
-              contentKey={`${activeProject.id}:stage-openingHook`}
-              onPageCount={stagePageCountHandlers["stage-openingHook"]}
-              pageNumberOffset={stagePageNumberOffset("stage-openingHook")}
-              onPrev={() => navigateStage(-1)}
-              onNext={() => navigateStage(1)}
-            >
-              {OpeningHookStageView({ project: activeProject })}
-            </StageView>
-          )}
-          {view === "stage-clues" && (
-            <StageView
-              stageIndex={5}
-              stageName="关键线索安排"
-              contentKey={`${activeProject.id}:stage-clues`}
-              onPageCount={stagePageCountHandlers["stage-clues"]}
-              pageNumberOffset={stagePageNumberOffset("stage-clues")}
-              onPrev={() => navigateStage(-1)}
-              onNext={() => navigateStage(1)}
-            >
-              {CluesStageView({ project: activeProject })}
-            </StageView>
+              sections={[
+                {
+                  key: "stage-background",
+                  name: "故事背景",
+                  content: BackgroundStageView({
+                    project: activeProject,
+                    onOpenSource: setSourceRef,
+                  }),
+                },
+                {
+                  key: "stage-timeplace",
+                  name: "时间地点",
+                  content: TimePlaceStageView({ project: activeProject }),
+                },
+                {
+                  key: "stage-characters",
+                  name: "核心人物",
+                  content: CharactersStageView({ project: activeProject }),
+                },
+                {
+                  key: "stage-characterArcs",
+                  name: "人物经历与动机",
+                  content: CharacterArcsStageView({ project: activeProject }),
+                },
+                {
+                  key: "stage-openingHook",
+                  name: "开篇钩子",
+                  content: OpeningHookStageView({ project: activeProject }),
+                },
+                {
+                  key: "stage-clues",
+                  name: "关键线索安排",
+                  content: CluesStageView({ project: activeProject }),
+                },
+              ]}
+              activeSectionKey={view}
+              contentKey={`${activeProject.id}:${activeProject.updatedAt}`}
+              onActiveSectionChange={(sectionKey) => setView(sectionKey as View)}
+            />
           )}
           {view === "acts" && (
             <div className="content-stack">

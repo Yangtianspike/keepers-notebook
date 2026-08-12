@@ -337,7 +337,6 @@ export function ActTextView({
     displayTotalPages,
   } = useTurnBook(bookContent, {
     contentKey: JSON.stringify({ act, editing, people, clues, places }),
-    heightOffset: 118,
     onBoundaryPrev: index > 0 ? goPreviousAct : undefined,
     onBoundaryNext:
       index < orderedActs.length - 1 ? goNextAct : undefined,
@@ -416,10 +415,7 @@ export function ActTextView({
       <div className="book-measure" ref={measureRef}>{bookContent}</div>
       <div className="book-page-content flipbook" ref={flipbookRef}>
         {pages.map((page, pageIndex) => (
-          <div
-            className={`book-page${pageIndex === 0 ? " book-cover-page" : ""}`}
-            key={pageIndex}
-          >
+          <div className="book-page" key={pageIndex}>
             {page}
           </div>
         ))}
