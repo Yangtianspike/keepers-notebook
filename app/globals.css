@@ -3668,29 +3668,36 @@ button:disabled {
   font-size: 18px;
 }
 
-.stage-view {
-  position: relative;
-  display: flex;
+.book-reader {
   width: min(1100px, 100%);
-  height: calc(100vh - 132px);
-  overflow: hidden;
   margin: 0 auto;
+}
+
+.stage-view {
+  width: 100%;
+  height: calc(100vh - 132px);
+}
+
+.flipbook {
+  position: relative;
+  overflow: hidden;
   color: #2c1810;
   font-family: "Noto Serif SC", "SimSun", Georgia, serif;
   filter: drop-shadow(0 26px 46px rgba(0, 0, 0, 0.42));
 }
 
-.book-leaves {
+.book-measure {
   position: absolute;
-  inset: 0;
-  display: flex;
+  z-index: -1;
+  top: 0;
+  left: -100000px;
+  visibility: hidden;
+  pointer-events: none;
 }
 
-.book-page {
+.flipbook .book-page {
   position: relative;
-  min-width: 0;
   overflow: hidden;
-  flex: 1 1 50%;
   border: 1px solid #9a7b58;
   background-color: #f5f0e1;
   background-image: url("/book-page-bg.png");
@@ -3698,17 +3705,17 @@ button:disabled {
   background-size: cover;
 }
 
-.book-page.even {
+.flipbook .even {
   border-radius: 10px 0 0 10px;
   box-shadow: inset -18px 0 26px rgba(0, 0, 0, 0.16);
 }
 
-.book-page.odd {
+.flipbook .odd {
   border-radius: 0 10px 10px 0;
   box-shadow: inset 18px 0 26px rgba(0, 0, 0, 0.18);
 }
 
-.book-page::before {
+.flipbook .book-page::before {
   position: absolute;
   inset: 0;
   border-radius: inherit;
@@ -3723,14 +3730,14 @@ button:disabled {
   pointer-events: none;
 }
 
-.book-spread-content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  flex-direction: column;
+.book-page-inner {
+  height: 100%;
+  overflow: hidden;
   padding: clamp(16px, 2.4vw, 28px);
+}
+
+.flipbook .page-wrapper {
+  perspective: 2000px;
 }
 
 .stage-page-heading {
@@ -3755,60 +3762,6 @@ button:disabled {
   text-align: center;
 }
 
-.stage-view-content {
-  width: 100%;
-  min-height: 0;
-  overflow: hidden;
-  flex: 1 1 auto;
-  margin: 0 auto;
-  padding: clamp(16px, 2vw, 24px) 0;
-}
-
-.paginated-flow {
-  width: 100%;
-  height: 100%;
-  column-count: 2;
-  column-fill: auto;
-  column-gap: 0;
-  transition: none;
-}
-
-.paginated-flow .stage-document,
-.paginated-flow .book-page-body {
-  display: block;
-}
-
-.paginated-flow .stage-document > header,
-.paginated-flow .stage-document > section,
-.paginated-flow .book-page-body > .act-detail-section,
-.paginated-flow > .act-editor {
-  break-inside: avoid;
-  margin-right: clamp(22px, 3vw, 38px);
-  margin-bottom: 28px;
-  margin-left: clamp(22px, 3vw, 38px);
-}
-
-.paginated-flow .stage-card-grid,
-.paginated-flow .act-card-grid {
-  display: block;
-}
-
-.paginated-flow .stage-inset-card,
-.paginated-flow .act-person-card,
-.paginated-flow .act-clue-card,
-.paginated-flow .act-event-list article,
-.paginated-flow .act-branch-list button {
-  break-inside: avoid;
-  margin-bottom: 14px;
-}
-
-.paginated-flow .stage-document h2,
-.paginated-flow .stage-document h3,
-.paginated-flow .act-detail-section h3,
-.paginated-flow .act-tier h4 {
-  break-after: avoid;
-}
-
 .stage-pagination {
   display: grid;
   width: 100%;
@@ -3817,8 +3770,7 @@ button:disabled {
   align-items: center;
   gap: 16px;
   margin: 0 auto;
-  border-top: 1px solid rgba(111, 35, 30, 0.28);
-  padding-top: 12px;
+  padding-top: 10px;
 }
 
 .stage-page-number {
@@ -4055,16 +4007,10 @@ button:disabled {
 }
 
 .book-page-content {
-  position: relative;
-  display: flex;
-  width: min(1100px, 100%);
+  width: 100%;
   height: calc(100vh - 118px);
   min-height: 0;
   overflow: hidden;
-  margin: 0 auto;
-  color: #2c1810;
-  font-family: "Noto Serif SC", "SimSun", Georgia, serif;
-  filter: drop-shadow(0 26px 46px rgba(0, 0, 0, 0.42));
 }
 
 .book-page-content.empty {
@@ -4121,16 +4067,8 @@ button:disabled {
 }
 
 .book-page-body,
-.act-text-view > .act-editor {
+.act-book-document > .act-editor {
   padding: 0;
-}
-
-.act-page-viewport {
-  width: 100%;
-  min-height: 0;
-  overflow: hidden;
-  flex: 1 1 auto;
-  padding: 18px 0;
 }
 
 .act-text-view .act-detail-section,
@@ -4164,8 +4102,7 @@ button:disabled {
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 18px;
-  border-top: 1px solid rgba(111, 35, 30, 0.28);
-  padding-top: 12px;
+  padding-top: 10px;
 }
 
 .page-turn {
@@ -4270,21 +4207,12 @@ button:disabled {
     height: calc(100vh - 96px);
   }
 
-  .book-page.even {
-    display: none;
-  }
-
-  .book-page.odd {
-    flex-basis: 100%;
+  .flipbook .book-page {
     border-radius: 8px;
   }
 
-  .book-spread-content {
+  .book-page-inner {
     padding: 14px;
-  }
-
-  .paginated-flow {
-    column-count: 1;
   }
 
   .book-page-header {

@@ -13,7 +13,10 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "public/pdf.worker.min.mjs",
+    "public/jquery-3.7.1.min.js",
+    "public/turn.min.js",
     ".npm-cache/**",
+    ".npm-cache-v07/**",
   ]),
 ]);
 

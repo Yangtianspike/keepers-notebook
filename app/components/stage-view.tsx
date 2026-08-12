@@ -222,6 +222,21 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
     };
   }, [heightOffset, pages]);
 
+  useEffect(() => {
+    const book = turnRef.current;
+    if (!book) return;
+    const width = Math.min(
+      1100,
+      flipbookRef.current?.parentElement?.clientWidth ?? 1100,
+    );
+    const height = Math.max(480, window.innerHeight - heightOffset);
+    const display = window.innerWidth <= MOBILE_BREAKPOINT ? "single" : "double";
+    book.turn("size", width, height);
+    book.turn("display", display);
+    book.turn("page", 1);
+    setCurrentPage(1);
+  }, [heightOffset, resizeVersion]);
+
   const previousPage = useCallback(() => {
     if (isAnimating) return;
     if (currentPage <= 1) {
