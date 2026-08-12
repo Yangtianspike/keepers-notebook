@@ -177,7 +177,11 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
     const result = measureAndSlice(content, pageHeight, singleWidth, heights);
     setPages(result.pages);
     setCurrentPage(1);
-  }, [content, heightOffset, options.contentKey, resizeVersion]);
+    // contentKey is the explicit invalidation signal. Depending on `content`
+    // itself would loop because callers construct a fresh ReactNode per render,
+    // while this effect updates pagination state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heightOffset, options.contentKey, resizeVersion]);
 
   useEffect(() => {
     const element = flipbookRef.current;
