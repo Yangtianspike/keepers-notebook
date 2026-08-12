@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Act, Clue, Person, Place } from "@/lib/types";
-import { useTurnBook } from "@/app/components/stage-view";
+import {
+  TurnBookPages,
+  useTurnBook,
+} from "@/app/components/stage-view";
 
 export type ActTextViewProps = {
   acts: Act[];
@@ -491,13 +494,11 @@ function ActTextViewContent({
   return (
     <div className="book-reader act-text-view">
       <div className="book-measure" ref={measureRef}>{bookContent}</div>
-      <div className="book-page-content flipbook" ref={flipbookRef}>
-        {pages.map((page, pageIndex) => (
-          <div className="book-page" key={pageIndex}>
-            {page}
-          </div>
-        ))}
-      </div>
+      <TurnBookPages
+        className="book-page-content flipbook"
+        flipbookRef={flipbookRef}
+        pages={pages}
+      />
       <div className="book-page-footer">
         <button
           className="page-turn"

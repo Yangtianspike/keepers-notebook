@@ -4,8 +4,10 @@ import {
   Children,
   cloneElement,
   isValidElement,
+  memo,
   type ReactElement,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -39,6 +41,32 @@ type TurnCollection = {
 };
 
 type JQueryFactory = (element: HTMLElement) => TurnCollection;
+
+type TurnBookPagesProps = {
+  className: string;
+  flipbookRef: RefObject<HTMLDivElement | null>;
+  pages: ReactNode[];
+};
+
+export const TurnBookPages = memo(function TurnBookPages({
+  className,
+  flipbookRef,
+  pages,
+}: TurnBookPagesProps) {
+  return (
+    <div className={className} ref={flipbookRef}>
+      {pages.map((page, index) => (
+        <div className="book-page" key={index}>
+          {page}
+        </div>
+      ))}
+    </div>
+  );
+}, (previous, next) => (
+  previous.className === next.className &&
+  previous.flipbookRef === next.flipbookRef &&
+  previous.pages === next.pages
+));
 
 declare global {
   interface Window {
@@ -217,6 +245,18 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
   const totalPages = pages.length;
   const enabled = options.enabled ?? true;
 
+  const destroyTurnBook = useCallback(() => {
+    const book = turnRef.current;
+    turnRef.current = null;
+    if (!book) return;
+    book.off(".keeperAtlas");
+    try {
+      book.turn("destroy");
+    } catch {
+      // The plugin may already have removed its generated wrappers.
+    }
+  }, []);
+
   useEffect(() => {
     if (!enabled) return;
     const resize = () => setResizeVersion((version) => version + 1);
@@ -260,13 +300,14 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
         Number.parseFloat(styles.marginBottom || "0");
     });
     const result = measureAndSlice(content, PAGE_HEIGHT, PAGE_WIDTH, heights);
+    destroyTurnBook();
     setPages(result.pages);
     setCurrentPage(1);
     // contentKey is the explicit invalidation signal. Depending on `content`
     // itself would loop because callers construct a fresh ReactNode per render,
     // while this effect updates pagination state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, options.contentKey, resizeVersion]);
+  }, [destroyTurnBook, enabled, options.contentKey, resizeVersion]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -302,17 +343,9 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
 
     return () => {
       disposed = true;
-      const book = turnRef.current;
-      turnRef.current = null;
-      if (!book) return;
-      book.off(".keeperAtlas");
-      try {
-        book.turn("destroy");
-      } catch {
-        // The plugin may already have removed its generated wrappers.
-      }
+      destroyTurnBook();
     };
-  }, [enabled, pages]);
+  }, [destroyTurnBook, enabled, pages]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -485,13 +518,11 @@ export function StageView({
   return (
     <div className="book-reader">
       <div className="book-measure" ref={measureRef}>{content}</div>
-      <section className="stage-view flipbook" ref={flipbookRef}>
-        {pages.map((page, index) => (
-          <div className="book-page" key={index}>
-            {page}
-          </div>
-        ))}
-      </section>
+      <TurnBookPages
+        className="stage-view flipbook"
+        flipbookRef={flipbookRef}
+        pages={pages}
+      />
       <nav className="stage-pagination" aria-label="书页翻页">
         <button
           type="button"
