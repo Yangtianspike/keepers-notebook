@@ -2,10 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Act, Clue, Person, Place } from "@/lib/types";
-import {
-  BookPages,
-  useBookPagination,
-} from "@/app/components/stage-view";
+import { useTurnBook } from "@/app/components/stage-view";
 
 export type ActTextViewProps = {
   acts: Act[];
@@ -88,19 +85,6 @@ export function ActTextView({
   const [editing, setEditing] = useState(false);
   const act = orderedActs[index] ?? orderedActs[0];
   const [draft, setDraft] = useState<Act | null>(act ?? null);
-  const {
-    viewportRef,
-    flowRef,
-    previousSpread,
-    nextSpread,
-    hasPrevious,
-    hasNext,
-    preparePreviousStageEntry,
-    currentSpread,
-    totalSpreads,
-  } = useBookPagination(
-    JSON.stringify({ act, editing, people, clues, places }),
-  );
 
   const actPeople = act
     ? people.filter((person) => act.personIds.includes(person.id))
@@ -126,44 +110,264 @@ export function ActTextView({
     }
   }, [index, orderedActs.length]);
 
-  const goPrevious = useCallback(() => {
-    if (!previousSpread()) goPreviousAct();
-  }, [goPreviousAct, previousSpread]);
+  const bookContent = act ? (
+    <article className="act-book-document">
+      <header className="book-page-header">
+        <div className="book-page-meta">
+          <span>第 {act.sequence} 幕</span>
+          <h2>{act.title}</h2>
+          <p>
+            {place?.name || act.placeText || "地点未定"} ·{" "}
+            {act.time || "时间未定"}
+          </p>
+        </div>
+        <div className="book-page-actions">
+          <button
+            className="icon-button tree-button"
+            onClick={onOpenTree}
+            title="幕结构树"
+          >
+            <NetworkIcon />
+            <span>幕树</span>
+          </button>
+          {!editing && (
+            <button
+              className="ghost-button compact"
+              onClick={() => {
+                setDraft(act);
+                setEditing(true);
+              }}
+            >
+              编辑
+            </button>
+          )}
+        </div>
+      </header>
+      <div className="book-page-body">
+        {editing && draft ? (
+          <section className="act-editor">
+            <label className="field">
+              <span>幕标题</span>
+              <input
+                value={draft.title}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current ? { ...current, title: event.target.value } : current,
+                  )
+                }
+              />
+            </label>
+            <div className="act-editor-grid">
+              <label className="field">
+                <span>地点</span>
+                <input
+                  value={draft.placeText ?? ""}
+                  onChange={(event) =>
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            placeId: undefined,
+                            placeText: event.target.value,
+                          }
+                        : current,
+                    )
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>时间</span>
+                <input
+                  value={draft.time}
+                  onChange={(event) =>
+                    setDraft((current) =>
+                      current ? { ...current, time: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+            </div>
+            <label className="field">
+              <span>幕描述</span>
+              <textarea
+                rows={8}
+                value={draft.description}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? { ...current, description: event.target.value }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <div className="act-editor-actions">
+              <button className="ghost-button" onClick={() => setEditing(false)}>
+                取消
+              </button>
+              <button
+                className="primary-button"
+                onClick={() => {
+                  onUpdateAct(draft);
+                  setEditing(false);
+                }}
+              >
+                保存修改
+              </button>
+            </div>
+          </section>
+        ) : (
+          <>
+            <section className="act-detail-section">
+              <h3>人物</h3>
+              {personGroups.map((group) => {
+                const members = actPeople.filter(
+                  (person) => person.importance === group.key,
+                );
+                if (members.length === 0) return null;
+                return (
+                  <div className="act-tier" key={group.key}>
+                    <h4>{group.label}</h4>
+                    <div className="act-card-grid">
+                      {members.map((person) => (
+                        <article className="act-person-card" key={person.id}>
+                          <button
+                            className="act-portrait"
+                            onClick={() => uploadPortrait(person)}
+                            title="上传或更换肖像"
+                          >
+                            {person.portrait ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={person.portrait} alt={person.name} />
+                            ) : (
+                              <span>{person.name.slice(0, 1)}</span>
+                            )}
+                          </button>
+                          <button
+                            className="act-card-copy"
+                            onClick={() => onSelectPerson(person.id)}
+                          >
+                            <strong>{person.name}</strong>
+                            <span>{person.role || "该幕角色待补充"}</span>
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+            <section className="act-detail-section">
+              <h3>线索</h3>
+              {clueGroups.map((group) => {
+                const items = actClues.filter(
+                  (clue) => clue.importance === group.key,
+                );
+                if (items.length === 0) return null;
+                return (
+                  <div className="act-tier" key={group.key}>
+                    <h4>{group.label}</h4>
+                    <div className="act-card-grid">
+                      {items.map((clue) => (
+                        <article className="act-clue-card" key={clue.id}>
+                          <strong>{clue.name}</strong>
+                          <span>{clue.acquisition || clue.source}</span>
+                          <p>{clue.summary}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+            <section className="act-detail-section">
+              <h3>分支结局</h3>
+              <div className="act-branch-list">
+                {act.branches.map((branch) => {
+                  const next = orderedActs.find(
+                    (candidate) => candidate.id === branch.nextActId,
+                  );
+                  return (
+                    <button
+                      key={branch.id}
+                      disabled={!next}
+                      onClick={() => next && setIndex(orderedActs.indexOf(next))}
+                    >
+                      <span>{branch.condition}</span>
+                      <strong>{next ? `→ ${next.title}` : "→ 结局"}</strong>
+                    </button>
+                  );
+                })}
+                {act.branches.length === 0 && <p>本幕尚无分支。</p>}
+              </div>
+            </section>
+            <section className="act-detail-section">
+              <h3>阶段性重要事件点</h3>
+              <div className="act-event-list">
+                {act.keyEvents.map((event, eventIndex) => (
+                  <article key={`${event.title}-${eventIndex}`}>
+                    <span>{event.type.toUpperCase()}</span>
+                    <h4>{event.title}</h4>
+                    <p>{event.description}</p>
+                    {event.stats && <code>{statsText(event.stats)}</code>}
+                  </article>
+                ))}
+                {act.keyEvents.length === 0 && <p>本幕尚无关键事件。</p>}
+              </div>
+            </section>
+            <section className="act-detail-section">
+              <h3>幕描述</h3>
+              <p className="act-description">
+                {act.description || "尚无幕描述。"}
+              </p>
+            </section>
+          </>
+        )}
+      </div>
+    </article>
+  ) : null;
 
-  const goNext = useCallback(() => {
-    if (!nextSpread()) goNextAct();
-  }, [goNextAct, nextSpread]);
+  const {
+    flipbookRef,
+    measureRef,
+    pages,
+    currentPage,
+    totalPages,
+    previousPage,
+    nextPage,
+    hasPrevious,
+    hasNext,
+  } = useTurnBook(bookContent, {
+    contentKey: JSON.stringify({ act, editing, people, clues, places }),
+    heightOffset: 118,
+    onBoundaryPrev: index > 0 ? goPreviousAct : undefined,
+    onBoundaryNext:
+      index < orderedActs.length - 1 ? goNextAct : undefined,
+  });
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.matches("input, textarea, select, [contenteditable='true']")) {
-        return;
-      }
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-      const canHandle =
-        event.key === "ArrowLeft"
-          ? hasPrevious || index > 0
-          : hasNext || index < orderedActs.length - 1;
-      if (!canHandle) {
-        if (event.key === "ArrowLeft") preparePreviousStageEntry();
-        return;
-      }
+      const canHandle = event.key === "ArrowLeft"
+        ? hasPrevious || index > 0
+        : hasNext || index < orderedActs.length - 1;
+      if (!canHandle) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (event.key === "ArrowLeft") goPrevious();
-      if (event.key === "ArrowRight") goNext();
+      if (event.key === "ArrowLeft") previousPage();
+      if (event.key === "ArrowRight") nextPage();
     };
     window.addEventListener("keydown", handleKey, true);
     return () => window.removeEventListener("keydown", handleKey, true);
   }, [
-    goNext,
-    goPrevious,
     hasNext,
     hasPrevious,
+    nextPage,
+    previousPage,
     index,
     orderedActs.length,
-    preparePreviousStageEntry,
   ]);
 
   if (!act) {
@@ -177,11 +381,6 @@ export function ActTextView({
       </div>
     );
   }
-
-  const beginEdit = () => {
-    setDraft(act);
-    setEditing(true);
-  };
 
   const uploadPortrait = (person: Person) => {
     const input = document.createElement("input");
@@ -215,238 +414,33 @@ export function ActTextView({
   };
 
   return (
-    <div className="book-page-content act-text-view flipbook">
-      <BookPages />
-      <div className="book-spread-content">
-        <div className="book-page-header">
-          <div className="book-page-meta">
-            <span>第 {act.sequence} 幕</span>
-            <h2>{act.title}</h2>
-            <p>
-              {place?.name || act.placeText || "地点未定"} ·{" "}
-              {act.time || "时间未定"}
-            </p>
-          </div>
-          <div className="book-page-actions">
-            <button
-              className="icon-button tree-button"
-              onClick={onOpenTree}
-              title="幕结构树"
-            >
-              <NetworkIcon />
-              <span>幕树</span>
-            </button>
-            {!editing && (
-              <button className="ghost-button compact" onClick={beginEdit}>
-                编辑
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="act-page-viewport" ref={viewportRef}>
-          <div className="paginated-flow act-page-flow" ref={flowRef}>
-            {editing && draft ? (
-        <section className="act-editor">
-          <label className="field">
-            <span>幕标题</span>
-            <input
-              value={draft.title}
-              onChange={(event) =>
-                setDraft((current) =>
-                  current ? { ...current, title: event.target.value } : current,
-                )
-              }
-            />
-          </label>
-          <div className="act-editor-grid">
-            <label className="field">
-              <span>地点</span>
-              <input
-                value={draft.placeText ?? ""}
-                onChange={(event) =>
-                  setDraft((current) =>
-                    current
-                      ? {
-                          ...current,
-                          placeId: undefined,
-                          placeText: event.target.value,
-                        }
-                      : current,
-                  )
-                }
-              />
-            </label>
-            <label className="field">
-              <span>时间</span>
-              <input
-                value={draft.time}
-                onChange={(event) =>
-                  setDraft((current) =>
-                    current ? { ...current, time: event.target.value } : current,
-                  )
-                }
-              />
-            </label>
-          </div>
-          <label className="field">
-            <span>幕描述</span>
-            <textarea
-              rows={8}
-              value={draft.description}
-              onChange={(event) =>
-                setDraft((current) =>
-                  current
-                    ? { ...current, description: event.target.value }
-                    : current,
-                )
-              }
-            />
-          </label>
-          <div className="act-editor-actions">
-            <button className="ghost-button" onClick={() => setEditing(false)}>
-              取消
-            </button>
-            <button
-              className="primary-button"
-              onClick={() => {
-                onUpdateAct(draft);
-                setEditing(false);
-              }}
-            >
-              保存修改
-            </button>
-          </div>
-        </section>
-      ) : (
-        <div className="book-page-body">
-          <section className="act-detail-section">
-            <h3>人物</h3>
-            {personGroups.map((group) => {
-              const members = actPeople.filter(
-                (person) => person.importance === group.key,
-              );
-              if (members.length === 0) return null;
-              return (
-                <div className="act-tier" key={group.key}>
-                  <h4>{group.label}</h4>
-                  <div className="act-card-grid">
-                    {members.map((person) => (
-                      <article className="act-person-card" key={person.id}>
-                        <button
-                          className="act-portrait"
-                          onClick={() => uploadPortrait(person)}
-                          title="上传或更换肖像"
-                        >
-                          {person.portrait ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={person.portrait} alt={person.name} />
-                          ) : (
-                            <span>{person.name.slice(0, 1)}</span>
-                          )}
-                        </button>
-                        <button
-                          className="act-card-copy"
-                          onClick={() => onSelectPerson(person.id)}
-                        >
-                          <strong>{person.name}</strong>
-                          <span>{person.role || "该幕角色待补充"}</span>
-                        </button>
-                      </article>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </section>
-
-          <section className="act-detail-section">
-            <h3>线索</h3>
-            {clueGroups.map((group) => {
-              const items = actClues.filter((clue) => clue.importance === group.key);
-              if (items.length === 0) return null;
-              return (
-                <div className="act-tier" key={group.key}>
-                  <h4>{group.label}</h4>
-                  <div className="act-card-grid">
-                    {items.map((clue) => (
-                      <article className="act-clue-card" key={clue.id}>
-                        <strong>{clue.name}</strong>
-                        <span>{clue.acquisition || clue.source}</span>
-                        <p>{clue.summary}</p>
-                      </article>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </section>
-
-          <section className="act-detail-section">
-            <h3>分支结局</h3>
-            <div className="act-branch-list">
-              {act.branches.map((branch) => {
-                const next = orderedActs.find((item) => item.id === branch.nextActId);
-                return (
-                  <button
-                    key={branch.id}
-                    disabled={!next}
-                    onClick={() => next && setIndex(orderedActs.indexOf(next))}
-                  >
-                    <span>{branch.condition}</span>
-                    <strong>{next ? `→ ${next.title}` : "→ 结局"}</strong>
-                  </button>
-                );
-              })}
-              {act.branches.length === 0 && <p>本幕尚无分支。</p>}
-            </div>
-          </section>
-
-          <section className="act-detail-section">
-            <h3>阶段性重要事件点</h3>
-            <div className="act-event-list">
-              {act.keyEvents.map((event, idx) => (
-                <article key={`${event.title}-${idx}`}>
-                  <span>{event.type.toUpperCase()}</span>
-                  <h4>{event.title}</h4>
-                  <p>{event.description}</p>
-                  {event.stats && <code>{statsText(event.stats)}</code>}
-                </article>
-              ))}
-              {act.keyEvents.length === 0 && <p>本幕尚无关键事件。</p>}
-            </div>
-          </section>
-
-          <section className="act-detail-section">
-            <h3>幕描述</h3>
-            <p className="act-description">{act.description || "尚无幕描述。"}</p>
-          </section>
-        </div>
-            )}
-          </div>
-        </div>
-
-        <div className="book-page-footer">
-          <button
-            className="page-turn"
-            onClick={goPrevious}
-            disabled={!hasPrevious && index === 0}
-            aria-label="上一页"
-          >
-            ‹
-          </button>
-          <span className="page-number">
-            {currentSpread} / {totalSpreads}
-          </span>
-          <button
-            className="page-turn"
-            onClick={goNext}
-            disabled={!hasNext && index === orderedActs.length - 1}
-            aria-label="下一页"
-          >
-            ›
-          </button>
-        </div>
+    <div className="book-reader act-text-view">
+      <div className="book-measure" ref={measureRef}>{bookContent}</div>
+      <div className="book-page-content flipbook" ref={flipbookRef}>
+        {pages.map((page, pageIndex) => (
+          <div className="book-page" key={pageIndex}>{page}</div>
+        ))}
+      </div>
+      <div className="book-page-footer">
+        <button
+          className="page-turn"
+          onClick={previousPage}
+          disabled={!hasPrevious && index === 0}
+          aria-label="上一页"
+        >
+          ‹
+        </button>
+        <span className="page-number">
+          {currentPage} / {totalPages}
+        </span>
+        <button
+          className="page-turn"
+          onClick={nextPage}
+          disabled={!hasNext && index === orderedActs.length - 1}
+          aria-label="下一页"
+        >
+          ›
+        </button>
       </div>
     </div>
   );
