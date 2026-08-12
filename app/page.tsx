@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -18,7 +19,11 @@ import { ConfirmWizard } from "@/app/components/confirm-wizard";
 import { ActTreeView } from "@/app/components/act-tree-view";
 import { ActTextView } from "@/app/components/act-text-view";
 import { SettingsModal } from "@/app/components/settings-modal";
-import { StageView } from "@/app/components/stage-view";
+import {
+  pageNumberOffsetFor,
+  StageView,
+  type PageNumberOffset,
+} from "@/app/components/stage-view";
 import { PersonDetailPanel } from "@/app/components/person-detail-panel";
 import {
   deleteProject,
@@ -742,24 +747,16 @@ function AnalysisView({
 function BackgroundStageView({
   project,
   onOpenSource,
-  children,
 }: {
   project: Project;
   onOpenSource: (source: SourceRef) => void;
-  children?: ReactNode;
-}) {
+}): ReactNode {
   const overview = project.analysis.overview;
   if (!overview) {
-    return (
-      <article className="stage-document">
-        {children}
-        <EmptyState title="尚无故事背景" description="请先完成故事背景分析。" />
-      </article>
-    );
+    return <EmptyState title="尚无故事背景" description="请先完成故事背景分析。" />;
   }
   return (
-    <article className="stage-document">
-      {children}
+    <>
       <section>
         <h2>起因</h2>
         <p>{overview.cause}</p>
@@ -804,29 +801,17 @@ function BackgroundStageView({
           ))}
         </section>
       )}
-    </article>
+    </>
   );
 }
 
-function TimePlaceStageView({
-  project,
-  children,
-}: {
-  project: Project;
-  children?: ReactNode;
-}) {
+function TimePlaceStageView({ project }: { project: Project }): ReactNode {
   const timePlace = project.analysis.timePlace;
   if (!timePlace) {
-    return (
-      <article className="stage-document">
-        {children}
-        <EmptyState title="尚无时间地点" description="请先完成时间地点分析。" />
-      </article>
-    );
+    return <EmptyState title="尚无时间地点" description="请先完成时间地点分析。" />;
   }
   return (
-    <article className="stage-document">
-      {children}
+    <>
       <section>
         <h2>地点档案</h2>
         <div className="stage-card-grid">
@@ -839,25 +824,21 @@ function TimePlaceStageView({
           ))}
         </div>
       </section>
-    </article>
+    </>
   );
 }
 
-function CharactersStageView({
-  project,
-  children,
-}: {
-  project: Project;
-  children?: ReactNode;
-}) {
+function CharactersStageView({ project }: { project: Project }): ReactNode {
   const groups: Array<{ key: Person["importance"]; label: string }> = [
     { key: "core", label: "核心人物" },
     { key: "important", label: "重要人物" },
     { key: "minor", label: "次要人物" },
   ];
+  if (project.analysis.people.length === 0) {
+    return <EmptyState title="尚无人物" description="请先完成核心人物分析。" />;
+  }
   return (
-    <article className="stage-document">
-      {children}
+    <>
       {groups.map((group) => {
         const members = project.analysis.people.filter(
           (person) => person.importance === group.key,
@@ -885,24 +866,17 @@ function CharactersStageView({
           </section>
         );
       })}
-      {project.analysis.people.length === 0 && (
-        <EmptyState title="尚无人物" description="请先完成核心人物分析。" />
-      )}
-    </article>
+    </>
   );
 }
 
-function CharacterArcsStageView({
-  project,
-  children,
-}: {
-  project: Project;
-  children?: ReactNode;
-}) {
+function CharacterArcsStageView({ project }: { project: Project }): ReactNode {
   const arcs = project.analysis.characterArcs ?? [];
+  if (arcs.length === 0) {
+    return <EmptyState title="尚无人物经历" description="请先完成人物经历与动机分析。" />;
+  }
   return (
-    <article className="stage-document">
-      {children}
+    <>
       {arcs.map((arc) => (
         <section className="stage-inset-card" key={arc.personId}>
           <h2>
@@ -915,43 +889,27 @@ function CharacterArcsStageView({
           <p>{arc.motivation}</p>
         </section>
       ))}
-      {arcs.length === 0 && (
-        <EmptyState title="尚无人物经历" description="请先完成人物经历与动机分析。" />
-      )}
-    </article>
+    </>
   );
 }
 
-function OpeningHookStageView({
-  project,
-  children,
-}: {
-  project: Project;
-  children?: ReactNode;
-}) {
+function OpeningHookStageView({ project }: { project: Project }): ReactNode {
   return (
-    <article className="stage-document stage-prose">
-      {children}
-      <p>{project.analysis.openingHook || "请先完成开篇钩子分析。"}</p>
-    </article>
+    <p>{project.analysis.openingHook || "请先完成开篇钩子分析。"}</p>
   );
 }
 
-function CluesStageView({
-  project,
-  children,
-}: {
-  project: Project;
-  children?: ReactNode;
-}) {
+function CluesStageView({ project }: { project: Project }): ReactNode {
   const groups: Array<{ key: Clue["importance"]; label: string }> = [
     { key: "key", label: "关键线索" },
     { key: "secondary", label: "次要线索" },
     { key: "other", label: "其他线索" },
   ];
+  if (project.analysis.clues.length === 0) {
+    return <EmptyState title="尚无线索" description="请先完成关键线索分析。" />;
+  }
   return (
-    <article className="stage-document">
-      {children}
+    <>
       {groups.map((group) => {
         const clues = project.analysis.clues.filter(
           (clue) => clue.importance === group.key,
@@ -982,10 +940,7 @@ function CluesStageView({
           </section>
         );
       })}
-      {project.analysis.clues.length === 0 && (
-        <EmptyState title="尚无线索" description="请先完成关键线索分析。" />
-      )}
-    </article>
+    </>
   );
 }
 
@@ -1300,6 +1255,9 @@ export default function Home() {
   const [selectedActPersonId, setSelectedActPersonId] = useState<string | null>(
     null,
   );
+  const [stagePageCounts, setStagePageCounts] = useState<
+    Partial<Record<View, number>>
+  >({});
   const [sourceRef, setSourceRef] = useState<SourceRef | null>(null);
   const [sourceUrl, setSourceUrl] = useState("");
   const [activeStage, setActiveStage] = useState<AnalysisStage | null>(null);
@@ -1344,6 +1302,47 @@ export default function Home() {
   const [testState, setTestState] = useState<
     "idle" | "testing" | "success" | "error"
   >("idle");
+
+  const stagePageNumberOffset = useCallback(
+    (stageView: View): PageNumberOffset => {
+      const counts = Object.fromEntries(
+        Object.entries(stagePageCounts).filter(
+          (entry): entry is [string, number] => entry[1] !== undefined,
+        ),
+      );
+      return pageNumberOffsetFor(STAGE_VIEWS, counts, stageView);
+    },
+    [stagePageCounts],
+  );
+
+  const updateStagePageCount = useCallback(
+    (stageView: View, pageCount: number) => {
+      setStagePageCounts((counts) =>
+        counts[stageView] === pageCount
+          ? counts
+          : { ...counts, [stageView]: pageCount },
+      );
+    },
+    [],
+  );
+
+  const stagePageCountHandlers = useMemo(
+    () => ({
+      "stage-background": (pageCount: number) =>
+        updateStagePageCount("stage-background", pageCount),
+      "stage-timeplace": (pageCount: number) =>
+        updateStagePageCount("stage-timeplace", pageCount),
+      "stage-characters": (pageCount: number) =>
+        updateStagePageCount("stage-characters", pageCount),
+      "stage-characterArcs": (pageCount: number) =>
+        updateStagePageCount("stage-characterArcs", pageCount),
+      "stage-openingHook": (pageCount: number) =>
+        updateStagePageCount("stage-openingHook", pageCount),
+      "stage-clues": (pageCount: number) =>
+        updateStagePageCount("stage-clues", pageCount),
+    }),
+    [updateStagePageCount],
+  );
 
   const navigateStage = useCallback((direction: -1 | 1) => {
     const currentIndex = STAGE_VIEWS.indexOf(view);
@@ -2704,63 +2703,81 @@ export default function Home() {
             <StageView
               stageIndex={0}
               stageName="故事背景"
+              contentKey={`${activeProject.id}:stage-background`}
+              onPageCount={stagePageCountHandlers["stage-background"]}
+              pageNumberOffset={stagePageNumberOffset("stage-background")}
               onPrev={() => navigateStage(-1)}
               onNext={() => navigateStage(1)}
             >
-              <BackgroundStageView
-                project={activeProject}
-                onOpenSource={setSourceRef}
-              />
+              {BackgroundStageView({
+                project: activeProject,
+                onOpenSource: setSourceRef,
+              })}
             </StageView>
           )}
           {view === "stage-timeplace" && (
             <StageView
               stageIndex={1}
               stageName="时间地点"
+              contentKey={`${activeProject.id}:stage-timeplace`}
+              onPageCount={stagePageCountHandlers["stage-timeplace"]}
+              pageNumberOffset={stagePageNumberOffset("stage-timeplace")}
               onPrev={() => navigateStage(-1)}
               onNext={() => navigateStage(1)}
             >
-              <TimePlaceStageView project={activeProject} />
+              {TimePlaceStageView({ project: activeProject })}
             </StageView>
           )}
           {view === "stage-characters" && (
             <StageView
               stageIndex={2}
               stageName="核心人物"
+              contentKey={`${activeProject.id}:stage-characters`}
+              onPageCount={stagePageCountHandlers["stage-characters"]}
+              pageNumberOffset={stagePageNumberOffset("stage-characters")}
               onPrev={() => navigateStage(-1)}
               onNext={() => navigateStage(1)}
             >
-              <CharactersStageView project={activeProject} />
+              {CharactersStageView({ project: activeProject })}
             </StageView>
           )}
           {view === "stage-characterArcs" && (
             <StageView
               stageIndex={3}
               stageName="人物经历与动机"
+              contentKey={`${activeProject.id}:stage-characterArcs`}
+              onPageCount={stagePageCountHandlers["stage-characterArcs"]}
+              pageNumberOffset={stagePageNumberOffset("stage-characterArcs")}
               onPrev={() => navigateStage(-1)}
               onNext={() => navigateStage(1)}
             >
-              <CharacterArcsStageView project={activeProject} />
+              {CharacterArcsStageView({ project: activeProject })}
             </StageView>
           )}
           {view === "stage-openingHook" && (
             <StageView
               stageIndex={4}
               stageName="开篇钩子"
+              contentKey={`${activeProject.id}:stage-openingHook`}
+              onPageCount={stagePageCountHandlers["stage-openingHook"]}
+              pageNumberOffset={stagePageNumberOffset("stage-openingHook")}
               onPrev={() => navigateStage(-1)}
               onNext={() => navigateStage(1)}
             >
-              <OpeningHookStageView project={activeProject} />
+              {OpeningHookStageView({ project: activeProject })}
             </StageView>
           )}
           {view === "stage-clues" && (
             <StageView
               stageIndex={5}
               stageName="关键线索安排"
+              contentKey={`${activeProject.id}:stage-clues`}
+              onPageCount={stagePageCountHandlers["stage-clues"]}
+              pageNumberOffset={stagePageNumberOffset("stage-clues")}
               onPrev={() => navigateStage(-1)}
               onNext={() => navigateStage(1)}
             >
-              <CluesStageView project={activeProject} />
+              {CluesStageView({ project: activeProject })}
             </StageView>
           )}
           {view === "acts" && (
