@@ -1,6 +1,10 @@
 "use client";
 
 import {
+  Children,
+  cloneElement,
+  isValidElement,
+  type ReactElement,
   type ReactNode,
   useCallback,
   useEffect,
@@ -11,110 +15,243 @@ import {
 
 const STAGE_COUNT = 7;
 const MOBILE_BREAKPOINT = 760;
-let enterPreviousStageAtEnd = false;
+const TURN_DURATION = 800;
 
-type PaginationState = {
-  currentPage: number;
-  pagesPerSpread: 1 | 2;
-  totalPages: number;
+type TurnCommand =
+  | "destroy"
+  | "display"
+  | "next"
+  | "page"
+  | "pages"
+  | "previous"
+  | "size";
+
+type TurnCollection = {
+  off: (event?: string) => TurnCollection;
+  on: (
+    event: string,
+    handler: (event: Event, page: number) => void,
+  ) => TurnCollection;
+  turn: (commandOrOptions: TurnCommand | Record<string, unknown>, ...args: unknown[]) => unknown;
 };
 
-export function useBookPagination(
-  contentKey: unknown,
-  consumePreviousStageEntry = false,
-) {
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const flowRef = useRef<HTMLDivElement>(null);
-  const [resizeVersion, setResizeVersion] = useState(0);
-  const [pagination, setPagination] = useState<PaginationState>({
-    currentPage: 0,
-    pagesPerSpread: 2,
-    totalPages: 1,
-  });
+type JQueryFactory = (element: HTMLElement) => TurnCollection;
 
-  useEffect(() => {
-    const handleResize = () => setResizeVersion((version) => version + 1);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    const flow = flowRef.current;
-    if (!viewport || !flow) return;
-
-    const pagesPerSpread: 1 | 2 =
-      window.innerWidth <= MOBILE_BREAKPOINT ? 1 : 2;
-    const pageWidth = viewport.clientWidth / pagesPerSpread;
-    const totalPages = Math.max(1, Math.ceil(flow.scrollWidth / pageWidth));
-
-    // DOM measurement is the source of truth for dynamic stage content.
-    const shouldOpenAtEnd =
-      consumePreviousStageEntry && enterPreviousStageAtEnd;
-    if (shouldOpenAtEnd) enterPreviousStageAtEnd = false;
-    const currentPage = shouldOpenAtEnd
-      ? Math.floor((totalPages - 1) / pagesPerSpread) * pagesPerSpread
-      : 0;
-    setPagination({ currentPage, pagesPerSpread, totalPages });
-    viewport.scrollLeft = currentPage * pageWidth;
-  }, [consumePreviousStageEntry, contentKey, resizeVersion]);
-
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const pageWidth = viewport.clientWidth / pagination.pagesPerSpread;
-    viewport.scrollLeft = pagination.currentPage * pageWidth;
-  }, [pagination]);
-
-  const hasPrevious = pagination.currentPage > 0;
-  const hasNext =
-    pagination.currentPage + pagination.pagesPerSpread < pagination.totalPages;
-
-  const previousSpread = useCallback(() => {
-    if (!hasPrevious) return false;
-    setPagination((current) => ({
-      ...current,
-      currentPage: Math.max(0, current.currentPage - current.pagesPerSpread),
-    }));
-    return true;
-  }, [hasPrevious]);
-
-  const nextSpread = useCallback(() => {
-    if (!hasNext) return false;
-    setPagination((current) => ({
-      ...current,
-      currentPage: current.currentPage + current.pagesPerSpread,
-    }));
-    return true;
-  }, [hasNext]);
-
-  const preparePreviousStageEntry = useCallback(() => {
-    enterPreviousStageAtEnd = true;
-  }, []);
-
-  return {
-    viewportRef,
-    flowRef,
-    previousSpread,
-    nextSpread,
-    hasPrevious,
-    hasNext,
-    preparePreviousStageEntry,
-    currentSpread:
-      Math.floor(pagination.currentPage / pagination.pagesPerSpread) + 1,
-    totalSpreads: Math.ceil(
-      pagination.totalPages / pagination.pagesPerSpread,
-    ),
-  };
+declare global {
+  interface Window {
+    jQuery?: JQueryFactory & { fn?: { turn?: unknown } };
+    $?: JQueryFactory;
+  }
 }
 
-export function BookPages() {
-  return (
-    <div className="book-leaves" aria-hidden="true">
-      <div className="book-page even" />
-      <div className="book-page odd" />
-    </div>
-  );
+export type PageSliceResult = {
+  pages: ReactNode[];
+  pageBreaks: number[];
+};
+
+type ElementWithChildren = ReactElement<{ children?: ReactNode }>;
+
+function contentBlocks(content: ReactNode) {
+  if (isValidElement<{ children?: ReactNode }>(content)) {
+    return {
+      root: content,
+      blocks: Children.toArray(content.props.children),
+    };
+  }
+  return { root: null, blocks: Children.toArray(content) };
+}
+
+export function measureAndSlice(
+  content: ReactNode,
+  pageHeight: number,
+  pageWidth: number,
+  measuredHeights: number[] = [],
+): PageSliceResult {
+  void pageWidth;
+  const { root, blocks } = contentBlocks(content);
+  if (blocks.length === 0) return { pages: [content], pageBreaks: [0] };
+
+  const pageBreaks = [0];
+  let accumulatedHeight = 0;
+  blocks.forEach((_, index) => {
+    const blockHeight = measuredHeights[index] ?? pageHeight;
+    if (index > 0 && accumulatedHeight + blockHeight > pageHeight) {
+      pageBreaks.push(index);
+      accumulatedHeight = blockHeight;
+    } else {
+      accumulatedHeight += blockHeight;
+    }
+  });
+
+  const pages = pageBreaks.map((start, pageIndex) => {
+    const end = pageBreaks[pageIndex + 1] ?? blocks.length;
+    const pageBlocks = blocks.slice(start, end);
+    const sliced = root
+      ? cloneElement(root as ElementWithChildren, { key: pageIndex }, pageBlocks)
+      : pageBlocks;
+    return <div className="book-page-inner" key={pageIndex}>{sliced}</div>;
+  });
+
+  return { pages, pageBreaks };
+}
+
+let scriptPromise: Promise<void> | null = null;
+
+function loadScript(src: string) {
+  return new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(
+      `script[src="${src}"]`,
+    );
+    if (existing?.dataset.loaded === "true") {
+      resolve();
+      return;
+    }
+    const script = existing ?? document.createElement("script");
+    script.src = src;
+    script.async = false;
+    script.addEventListener("load", () => {
+      script.dataset.loaded = "true";
+      resolve();
+    }, { once: true });
+    script.addEventListener("error", () => reject(new Error(`无法加载 ${src}`)), {
+      once: true,
+    });
+    if (!existing) document.head.appendChild(script);
+  });
+}
+
+function loadTurnJs() {
+  if (window.jQuery?.fn?.turn) return Promise.resolve();
+  if (!scriptPromise) {
+    scriptPromise = (async () => {
+      if (!window.jQuery) await loadScript("/jquery-3.7.1.min.js");
+      await loadScript("/turn.min.js");
+      if (!window.jQuery?.fn?.turn) throw new Error("turn.js 初始化失败");
+    })();
+  }
+  return scriptPromise;
+}
+
+type TurnBookOptions = {
+  contentKey?: unknown;
+  heightOffset?: number;
+  onBoundaryPrev?: () => void;
+  onBoundaryNext?: () => void;
+};
+
+export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
+  const flipbookRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+  const turnRef = useRef<TurnCollection | null>(null);
+  const [pages, setPages] = useState<ReactNode[]>([content]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [resizeVersion, setResizeVersion] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const totalPages = pages.length;
+  const heightOffset = options.heightOffset ?? 132;
+
+  useEffect(() => {
+    const resize = () => setResizeVersion((version) => version + 1);
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+
+  useLayoutEffect(() => {
+    const measure = measureRef.current;
+    if (!measure) return;
+    const pageWidth = Math.min(1100, measure.parentElement?.clientWidth ?? 1100);
+    const singleWidth = window.innerWidth <= MOBILE_BREAKPOINT
+      ? pageWidth
+      : pageWidth / 2;
+    const pageHeight = Math.max(360, window.innerHeight - heightOffset - 132);
+    measure.style.width = `${singleWidth}px`;
+    const root = measure.firstElementChild;
+    const nodes = root ? Array.from(root.children) : Array.from(measure.children);
+    const heights = nodes.map((node) => {
+      const element = node as HTMLElement;
+      const styles = window.getComputedStyle(element);
+      return element.offsetHeight +
+        Number.parseFloat(styles.marginTop || "0") +
+        Number.parseFloat(styles.marginBottom || "0");
+    });
+    const result = measureAndSlice(content, pageHeight, singleWidth, heights);
+    setPages(result.pages);
+    setCurrentPage(1);
+  }, [content, heightOffset, options.contentKey, resizeVersion]);
+
+  useEffect(() => {
+    const element = flipbookRef.current;
+    if (!element || pages.length === 0) return;
+    let disposed = false;
+    void loadTurnJs().then(() => {
+      if (disposed || !flipbookRef.current || !window.jQuery) return;
+      const width = Math.min(1100, element.parentElement?.clientWidth ?? 1100);
+      const height = Math.max(480, window.innerHeight - heightOffset);
+      const display = window.innerWidth <= MOBILE_BREAKPOINT ? "single" : "double";
+      const book = window.jQuery(element);
+      turnRef.current = book;
+      book.turn({
+        width,
+        height,
+        autoCenter: false,
+        gradients: true,
+        elevation: 50,
+        acceleration: true,
+        duration: TURN_DURATION,
+        display,
+        page: 1,
+      });
+      book.on("turning.keeperAtlas", () => setIsAnimating(true));
+      book.on("turned.keeperAtlas", (_event, page) => {
+        setCurrentPage(page);
+        setIsAnimating(false);
+      });
+    }).catch((error: unknown) => console.error(error));
+
+    return () => {
+      disposed = true;
+      const book = turnRef.current;
+      turnRef.current = null;
+      if (!book) return;
+      book.off(".keeperAtlas");
+      try {
+        book.turn("destroy");
+      } catch {
+        // The plugin may already have removed its generated wrappers.
+      }
+    };
+  }, [heightOffset, pages]);
+
+  const previousPage = useCallback(() => {
+    if (isAnimating) return;
+    if (currentPage <= 1) {
+      options.onBoundaryPrev?.();
+      return;
+    }
+    turnRef.current?.turn("previous");
+  }, [currentPage, isAnimating, options]);
+
+  const nextPage = useCallback(() => {
+    if (isAnimating) return;
+    if (currentPage >= totalPages) {
+      options.onBoundaryNext?.();
+      return;
+    }
+    turnRef.current?.turn("next");
+  }, [currentPage, isAnimating, options, totalPages]);
+
+  return {
+    flipbookRef,
+    measureRef,
+    pages,
+    currentPage,
+    totalPages,
+    previousPage,
+    nextPage,
+    hasPrevious: currentPage > 1,
+    hasNext: currentPage < totalPages,
+    isAnimating,
+  };
 }
 
 export function StageView({
@@ -130,78 +267,70 @@ export function StageView({
   onNext: () => void;
   children: ReactNode;
 }) {
+  const heading = (
+    <header className="stage-page-heading">
+      <small>{String(stageIndex + 1).padStart(2, "0")} / {STAGE_COUNT}</small>
+      <strong>{stageName}</strong>
+    </header>
+  );
+  const content = isValidElement<{ children?: ReactNode }>(children)
+    ? cloneElement(children, undefined, heading, children.props.children)
+    : <article className="stage-document">{heading}{children}</article>;
   const {
-    viewportRef,
-    flowRef,
-    previousSpread,
-    nextSpread,
+    flipbookRef,
+    measureRef,
+    pages,
+    currentPage,
+    totalPages,
+    previousPage,
+    nextPage,
     hasPrevious,
     hasNext,
-    preparePreviousStageEntry,
-    currentSpread,
-    totalSpreads,
-  } = useBookPagination(children, true);
-
-  const goPrevious = useCallback(() => {
-    if (!previousSpread() && stageIndex > 0) {
-      preparePreviousStageEntry();
-      onPrev();
-    }
-  }, [onPrev, preparePreviousStageEntry, previousSpread, stageIndex]);
-
-  const goNext = useCallback(() => {
-    if (!nextSpread() && stageIndex < STAGE_COUNT - 1) onNext();
-  }, [nextSpread, onNext, stageIndex]);
+  } = useTurnBook(content, {
+    contentKey: children,
+    onBoundaryPrev: stageIndex > 0 ? onPrev : undefined,
+    onBoundaryNext: stageIndex < STAGE_COUNT - 1 ? onNext : undefined,
+  });
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.matches("input, textarea, select, [contenteditable='true']")) {
-        return;
-      }
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (event.key === "ArrowLeft") goPrevious();
-      if (event.key === "ArrowRight") goNext();
+      if (event.key === "ArrowLeft") previousPage();
+      if (event.key === "ArrowRight") nextPage();
     };
     window.addEventListener("keydown", handleKey, true);
     return () => window.removeEventListener("keydown", handleKey, true);
-  }, [goNext, goPrevious]);
+  }, [nextPage, previousPage]);
 
   return (
-    <section className="stage-view flipbook">
-      <BookPages />
-      <div className="book-spread-content">
-        <header className="stage-page-heading">
-          <small>
-            {String(stageIndex + 1).padStart(2, "0")} / {STAGE_COUNT}
-          </small>
-          <strong>{stageName}</strong>
-        </header>
-        <div className="stage-view-content" ref={viewportRef}>
-          <div className="paginated-flow" ref={flowRef}>
-            {children}
-          </div>
-        </div>
-        <nav className="stage-pagination" aria-label="书页翻页">
-          <button
-            onClick={goPrevious}
-            disabled={!hasPrevious && stageIndex === 0}
-          >
-            ← 上一页
-          </button>
-          <span className="stage-page-number">
-            {currentSpread} / {totalSpreads}
-          </span>
-          <button
-            onClick={goNext}
-            disabled={!hasNext && stageIndex === STAGE_COUNT - 1}
-          >
-            下一页 →
-          </button>
-        </nav>
-      </div>
-    </section>
+    <div className="book-reader">
+      <div className="book-measure" ref={measureRef}>{content}</div>
+      <section className="stage-view flipbook" ref={flipbookRef}>
+        {pages.map((page, index) => (
+          <div className="book-page" key={index}>{page}</div>
+        ))}
+      </section>
+      <nav className="stage-pagination" aria-label="书页翻页">
+        <button
+          onClick={previousPage}
+          disabled={!hasPrevious && stageIndex === 0}
+        >
+          ← 上一页
+        </button>
+        <span className="stage-page-number">
+          {currentPage} / {totalPages}
+        </span>
+        <button
+          onClick={nextPage}
+          disabled={!hasNext && stageIndex === STAGE_COUNT - 1}
+        >
+          下一页 →
+        </button>
+      </nav>
+    </div>
   );
 }
