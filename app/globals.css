@@ -3672,7 +3672,7 @@ button:disabled {
   position: relative;
   display: flex;
   width: min(1100px, 100%);
-  height: clamp(520px, calc(100vh - 132px), 760px);
+  height: calc(100vh - 132px);
   overflow: hidden;
   margin: 0 auto;
   color: #2c1810;
@@ -4033,7 +4033,7 @@ button:disabled {
   position: relative;
   display: flex;
   width: min(1100px, 100%);
-  height: clamp(560px, calc(100vh - 118px), 800px);
+  height: calc(100vh - 118px);
   min-height: 0;
   overflow: hidden;
   margin: 0 auto;
