@@ -130,6 +130,10 @@ export function measureAndSlice(
       ? (block.props as { "data-stage-key"?: string })["data-stage-key"]
       : undefined;
 
+  const keepsWithNext = (block: ReactNode) =>
+    isValidElement(block) &&
+    (block.props as { "data-keep-with-next"?: string })["data-keep-with-next"] === "true";
+
   blocks.forEach((block, index) => {
     const measurement = measuredHeights[index] ?? pageHeight;
     const blockHeight = typeof measurement === "number"
@@ -140,6 +144,10 @@ export function measureAndSlice(
       : measurement.protectedRanges;
     const blockStageKey = stageKeyFor(block);
     const previousStageKey = stageKeyFor(currentBlocks[0]);
+    const nextMeasurement = measuredHeights[index + 1];
+    const nextHeight = typeof nextMeasurement === "number"
+      ? nextMeasurement
+      : nextMeasurement?.height ?? 0;
 
     if (
       currentBlocks.length > 0 &&
@@ -185,6 +193,15 @@ export function measureAndSlice(
       }
       currentStart = index + 1;
       return;
+    }
+
+    if (
+      currentBlocks.length > 0 &&
+      keepsWithNext(block) &&
+      accumulatedHeight + blockHeight + nextHeight > pageHeight
+    ) {
+      finishPage();
+      currentStart = index;
     }
 
     if (
@@ -524,6 +541,7 @@ export function StageView({
   editing = false,
   onEditingChange,
   onPageChange,
+  onOpenActTree,
   initialPage,
 }: {
   sections: StageBookSection[];
@@ -533,6 +551,7 @@ export function StageView({
   editing?: boolean;
   onEditingChange?: (editing: boolean) => void;
   onPageChange?: (sectionKey: string, page: number) => void;
+  onOpenActTree?: () => void;
   initialPage?: number;
 }) {
   const activeSectionChangeRef = useRef(onActiveSectionChange);
@@ -542,19 +561,30 @@ export function StageView({
   }, [onActiveSectionChange]);
   const content = (
     <div className="stage-book-document">
-      {sections.map((section, index) => (
-        <section
-          className="stage-document stage-book-section"
-          data-stage-key={section.key}
-          key={section.key}
-        >
-          <header className="stage-page-heading">
-            <small>{String(index + 1).padStart(2, "0")} / {sections.length}</small>
-            <strong>{section.name}</strong>
-          </header>
-          {section.content}
-        </section>
-      ))}
+      {sections.flatMap((section, index) => {
+        const blocks = Children.toArray(section.content);
+        const safeBlocks = blocks.length > 0 ? blocks : [<p key="empty">暂无内容</p>];
+        return safeBlocks.map((block, blockIndex) => {
+          const keepWithNext = isValidElement(block)
+            ? (block.props as { "data-keep-with-next"?: string })["data-keep-with-next"]
+            : undefined;
+          return (
+            <section
+              className="stage-document stage-book-section stage-book-block"
+              data-stage-key={section.key}
+              data-keep-with-next={keepWithNext}
+              key={`${section.key}:${blockIndex}`}
+            >
+              {blockIndex === 0 && (
+                <header className="stage-page-heading stage-page-number-only">
+                  <small>{String(index + 1).padStart(2, "0")} / {sections.length}</small>
+                </header>
+              )}
+              {block}
+            </section>
+          );
+        });
+      })}
     </div>
   );
   const {
@@ -570,6 +600,7 @@ export function StageView({
     hasNext,
     displayCurrentPage,
     displayTotalPages,
+    isAnimating,
   } = useTurnBook(content, {
     contentKey,
     enabled: !editing,
@@ -592,7 +623,10 @@ export function StageView({
   }, [pageSectionsKey]);
   const lastRequestedSectionRef = useRef("");
   const restoredPageRef = useRef(false);
+  const [jumpDraft, setJumpDraft] = useState("");
   const pageNavigationSections = pageSections.map(sectionNavigationKey);
+  const currentSectionKey = pageSections[Math.max(0, currentPage - 1)] ?? "";
+  const actPage = currentSectionKey.startsWith("acts:");
 
   const activeSectionIndex = sections.findIndex(
     (section) =>
@@ -651,21 +685,39 @@ export function StageView({
 
   return (
     <div className="book-reader">
-      {onEditingChange && (
+      {!editing && (
+        <nav className="book-reader-toolbar" aria-label="书页工具">
+          <button type="button" onClick={previousPage} disabled={isAnimating || (!hasPrevious && activeSectionIndex === 0)}>← 上一页</button>
+          <span className="stage-page-number">{displayCurrentPage} / {displayTotalPages}</span>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const page = Number.parseInt(jumpDraft, 10);
+            if (Number.isFinite(page)) requestPage(Math.max(1, Math.min(displayTotalPages, page)));
+            setJumpDraft("");
+          }}>
+            <label>跳至 <input inputMode="numeric" aria-label="跳转页码" value={jumpDraft} onChange={(event) => setJumpDraft(event.target.value.replace(/\D/g, ""))} /> 页</label>
+            <button type="submit" disabled={!jumpDraft}>跳页</button>
+          </form>
+          {onEditingChange && <button className="book-editor-trigger" type="button" onClick={() => onEditingChange(true)}>编辑书页</button>}
+          {actPage && onOpenActTree && <button type="button" onClick={onOpenActTree}>幕树</button>}
+          <button type="button" onClick={nextPage} disabled={isAnimating || (!hasNext && activeSectionIndex === sections.length - 1)}>下一页 →</button>
+        </nav>
+      )}
+      {editing && onEditingChange && (
         <div className="book-edit-toggle">
           <button
-            className={editing ? "active" : ""}
+            className="active"
             type="button"
             onClick={() => {
               if (editing && document.activeElement instanceof HTMLElement) {
                 document.activeElement.blur();
               }
-              onEditingChange(!editing);
+              onEditingChange(false);
             }}
           >
-            {editing ? "完成编辑" : "编辑书页"}
+            完成编辑
           </button>
-          {editing && <span>点击虚线文字进行修改，失焦保存，Esc 取消。</span>}
+          <span>完成后返回书页。</span>
         </div>
       )}
       {!editing && <div className="book-measure" ref={measureRef}>{content}</div>}
@@ -677,25 +729,6 @@ export function StageView({
           pages={pages}
         />
       )}
-      {!editing && <nav className="stage-pagination" aria-label="书页翻页">
-        <button
-          type="button"
-          onClick={previousPage}
-          disabled={!hasPrevious && activeSectionIndex === 0}
-        >
-          ← 上一页
-        </button>
-        <span className="stage-page-number">
-          {displayCurrentPage} / {displayTotalPages}
-        </span>
-        <button
-          type="button"
-          onClick={nextPage}
-          disabled={!hasNext && activeSectionIndex === sections.length - 1}
-        >
-          下一页 →
-        </button>
-      </nav>}
     </div>
   );
 }

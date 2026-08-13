@@ -291,6 +291,65 @@ export type KPNotes = {
   actViewOverrides?: Record<string, Record<string, string>>;
   sectionNotes?: Record<string, KPNoteBlock[]>;
   sectionMarkdown?: Record<string, string>;
+  entityOverrides?: Record<string, EntityOverrides>;
+  keeperEntities?: EntityCard[];
+  entityRelations?: EntityRelation[];
+};
+
+export type EntityKind = "person" | "clue" | "place" | "event" | "custom";
+export type EntitySource = "source" | "inference" | "keeper";
+export type EntityRelationLevel = "direct" | "indirect" | "inference" | "keeper";
+
+export type EntityLinkBehavior = {
+  jump: boolean;
+  preview: boolean;
+};
+
+export type EntityAppearance = {
+  sectionKey: string;
+  label?: string;
+};
+
+export type EntityRelation = {
+  id: string;
+  sourceRef: string;
+  targetRef: string;
+  label?: string;
+  level: EntityRelationLevel;
+};
+
+export type EntityFields = Record<string, string | string[] | boolean>;
+
+export type EntityOverrides = {
+  name?: string;
+  aliases?: string[];
+  tags?: string[];
+  playerVisible?: string;
+  keeperPrivate?: string;
+  fields?: EntityFields;
+  linkBehavior?: EntityLinkBehavior;
+  updatedAt: string;
+};
+
+export type EntityCard = {
+  ref: string;
+  id: string;
+  kind: EntityKind;
+  source: EntitySource;
+  confirmed: boolean;
+  original: {
+    name: string;
+    aliases: string[];
+    tags: string[];
+    playerVisible: string;
+    keeperPrivate: string;
+    fields: EntityFields;
+  };
+  overrides?: EntityOverrides;
+  appearances: EntityAppearance[];
+  linkBehavior: EntityLinkBehavior;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type KPNoteBlock = {

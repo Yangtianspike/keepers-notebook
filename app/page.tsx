@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  type ReactNode,
   useCallback,
   useEffect,
   useRef,
@@ -16,17 +15,19 @@ import {
 } from "@/lib/quote-check";
 import { ConfirmWizard } from "@/app/components/confirm-wizard";
 import { ActTreeView } from "@/app/components/act-tree-view";
-import {
-  ActBookContentView,
-} from "@/app/components/act-text-view";
 import { SettingsModal } from "@/app/components/settings-modal";
 import { StageView } from "@/app/components/stage-view";
 import { PersonDetailPanel } from "@/app/components/person-detail-panel";
-import { EditableText } from "@/app/components/editable-text";
 import { BookEditor } from "@/app/components/book-editor";
 import { AnalysisLogModal } from "@/app/components/analysis-log-modal";
-import { MarkdownDocument } from "@/app/components/markdown-document";
+import { markdownToReactBlocks } from "@/app/components/markdown-document";
+import { EntityWindow } from "@/app/components/entity-window";
 import { SourceDocumentView } from "@/app/components/source-document-view";
+import {
+  buildEntityRelations,
+  buildProjectEntities,
+  createKeeperEntity,
+} from "@/lib/entities";
 import {
   deleteProject,
   listProjects,
@@ -40,6 +41,9 @@ import {
   type Act,
   type CharacterArc,
   type Clue,
+  type EntityCard,
+  type EntityKind,
+  type EntityOverrides,
   type ModelConfig,
   type Person,
   type Project,
@@ -166,49 +170,6 @@ function statusLabel(status: Project["status"]) {
     analyzing: "分析进行中",
     ready: "备本已生成",
   }[status];
-}
-
-function sourcePageLabel(source: SourceRef) {
-  return source.printedPage
-    ? `PDF ${source.page} 页 · 书内 ${source.printedPage} 页`
-    : `PDF ${source.page} 页`;
-}
-
-function EmptyState({
-  title,
-  description,
-  action,
-}: {
-  title: string;
-  description: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="empty-state">
-      <div className="empty-symbol">∴</div>
-      <h3>{title}</h3>
-      <p>{description}</p>
-      {action}
-    </div>
-  );
-}
-
-function SourceButton({
-  source,
-  onOpen,
-}: {
-  source: SourceRef;
-  onOpen: (source: SourceRef) => void;
-}) {
-  return (
-    <button className="source-link" onClick={() => onOpen(source)}>
-      <span>
-        {source.verified === false ? "待核实 · " : ""}
-        {sourcePageLabel(source)}
-      </span>
-      <span aria-hidden>↗</span>
-    </button>
-  );
 }
 
 function ProjectHome({
@@ -751,222 +712,6 @@ function AnalysisView({
   );
 }
 
-function BackgroundStageView({
-  project,
-  onOpenSource,
-  editing,
-  override,
-}: {
-  project: Project;
-  onOpenSource: (source: SourceRef) => void;
-  editing: boolean;
-  override: (key: string, fallback: string) => {
-    text: string;
-    onChange: (value: string) => void;
-  };
-}): ReactNode {
-  const overview = project.analysis.overview;
-  if (!overview) {
-    return <EmptyState title="尚无故事背景" description="请先完成故事背景分析。" />;
-  }
-  return (
-    <>
-      <section>
-        <h2>起因</h2>
-        <EditableText as="p" editing={editing} {...override("cause", overview.cause)} />
-      </section>
-      <section>
-        <h2>开团前的历史</h2>
-        <EditableText as="p" editing={editing} {...override("history", overview.history)} />
-      </section>
-      <section>
-        <h2>当前状态</h2>
-        <EditableText as="p" editing={editing} {...override("currentState", overview.currentState)} />
-      </section>
-      <section>
-        <h2>各方计划</h2>
-        {overview.plans.map((plan, index) => (
-          <article className="stage-inset-card" key={`${plan.faction}-${index}`}>
-            <EditableText as="h3" editing={editing} {...override(`plan:${index}:faction`, plan.faction)} />
-            <EditableText as="p" editing={editing} {...override(`plan:${index}:plan`, plan.plan)} />
-          </article>
-        ))}
-      </section>
-      {overview.endings.length > 0 && (
-        <section>
-          <h2>可能结局</h2>
-          <ul>{overview.endings.map((ending) => <li key={ending}>{ending}</li>)}</ul>
-        </section>
-      )}
-      {overview.conflicts.length > 0 && (
-        <section>
-          <h2>原作矛盾</h2>
-          {overview.conflicts.map((conflict, index) => (
-            <article className="stage-inset-card" key={`conflict-${index}`}>
-              <p>{conflict.summary}</p>
-              {conflict.sources.map((source, sourceIndex) => (
-                <SourceButton
-                  key={sourceIndex}
-                  source={source}
-                  onOpen={onOpenSource}
-                />
-              ))}
-            </article>
-          ))}
-        </section>
-      )}
-    </>
-  );
-}
-
-function TimePlaceStageView({ project, editing, override }: StageContentProps): ReactNode {
-  const timePlace = project.analysis.timePlace;
-  if (!timePlace) {
-    return <EmptyState title="尚无时间地点" description="请先完成时间地点分析。" />;
-  }
-  return (
-    <>
-      <section>
-        <h2>地点档案</h2>
-        <div className="stage-card-grid">
-          {timePlace.places.map((place) => (
-            <article className="stage-inset-card" key={place.id}>
-              <EditableText as="h3" editing={editing} {...override(`place:${place.id}:name`, place.name)} />
-              <EditableText as="p" editing={editing} {...override(`place:${place.id}:description`, place.description || place.summary)} />
-              {place.regionHint && <small>{place.regionHint}</small>}
-            </article>
-          ))}
-        </div>
-      </section>
-    </>
-  );
-}
-
-type StageContentProps = {
-  project: Project;
-  editing: boolean;
-  override: (key: string, fallback: string) => {
-    text: string;
-    onChange: (value: string) => void;
-  };
-};
-
-function CharactersStageView({ project, editing, override }: StageContentProps): ReactNode {
-  const groups: Array<{ key: Person["importance"]; label: string }> = [
-    { key: "core", label: "核心人物" },
-    { key: "important", label: "重要人物" },
-    { key: "minor", label: "次要人物" },
-  ];
-  if (project.analysis.people.length === 0) {
-    return <EmptyState title="尚无人物" description="请先完成核心人物分析。" />;
-  }
-  return (
-    <>
-      {groups.map((group) => {
-        const members = project.analysis.people.filter(
-          (person) => person.importance === group.key,
-        );
-        if (members.length === 0) return null;
-        return (
-          <section key={group.key}>
-            <h2>{group.label}</h2>
-            <div className="stage-card-grid">
-              {members.map((person) => (
-                <article className="stage-inset-card" key={person.id}>
-                  <EditableText as="h3" editing={editing} {...override(`person:${person.id}:name`, person.name)} />
-                  <EditableText as="p" editing={editing} {...override(`person:${person.id}:role`, person.role)} />
-                  <dl>
-                    <dt>公开身份</dt>
-                    <EditableText as="dd" editing={editing} {...override(`person:${person.id}:publicIdentity`, person.publicIdentity || "未知")} />
-                    <dt>真实身份</dt>
-                    <EditableText as="dd" editing={editing} {...override(`person:${person.id}:trueIdentity`, person.trueIdentity || "未知")} />
-                    <dt>动机</dt>
-                    <EditableText as="dd" editing={editing} {...override(`person:${person.id}:motivation`, person.motivation || "未知")} />
-                  </dl>
-                </article>
-              ))}
-            </div>
-          </section>
-        );
-      })}
-    </>
-  );
-}
-
-function CharacterArcsStageView({ project, editing, override }: StageContentProps): ReactNode {
-  const arcs = project.analysis.characterArcs ?? [];
-  if (arcs.length === 0) {
-    return <EmptyState title="尚无人物经历" description="请先完成人物经历与动机分析。" />;
-  }
-  return (
-    <>
-      {arcs.map((arc) => (
-        <section className="stage-inset-card" key={arc.personId}>
-          <h2>
-            {project.analysis.people.find((person) => person.id === arc.personId)
-              ?.name || arc.personId}
-          </h2>
-          <h3>经历</h3>
-          <EditableText as="p" editing={editing} {...override(`arc:${arc.personId}:experience`, arc.experience)} />
-          <h3>动机</h3>
-          <EditableText as="p" editing={editing} {...override(`arc:${arc.personId}:motivation`, arc.motivation)} />
-        </section>
-      ))}
-    </>
-  );
-}
-
-function OpeningHookStageView({ project, editing, override }: StageContentProps): ReactNode {
-  return (
-    <EditableText as="p" editing={editing} {...override("openingHook", project.analysis.openingHook || "请先完成开篇钩子分析。")} />
-  );
-}
-
-function CluesStageView({ project, editing, override }: StageContentProps): ReactNode {
-  const groups: Array<{ key: Clue["importance"]; label: string }> = [
-    { key: "key", label: "关键线索" },
-    { key: "secondary", label: "次要线索" },
-    { key: "other", label: "其他线索" },
-  ];
-  if (project.analysis.clues.length === 0) {
-    return <EmptyState title="尚无线索" description="请先完成关键线索分析。" />;
-  }
-  return (
-    <>
-      {groups.map((group) => {
-        const clues = project.analysis.clues.filter(
-          (clue) => clue.importance === group.key,
-        );
-        if (clues.length === 0) return null;
-        return (
-          <section key={group.key}>
-            <h2>{group.label}</h2>
-            <div className="stage-card-grid">
-              {clues.map((clue) => (
-                <article className="stage-inset-card" key={clue.id}>
-                  <EditableText as="h3" editing={editing} {...override(`clue:${clue.id}:name`, clue.name)} />
-                  <EditableText as="p" editing={editing} {...override(`clue:${clue.id}:summary`, clue.summary)} />
-                  <dl>
-                    <dt>来源</dt>
-                    <EditableText as="dd" editing={editing} {...override(`clue:${clue.id}:source`, clue.source)} />
-                    <dt>获取方式</dt>
-                    <EditableText as="dd" editing={editing} {...override(`clue:${clue.id}:acquisition`, clue.acquisition || "待补充")} />
-                    <dt>指向</dt>
-                    <dd>
-                      {clue.targets.map((target) => target.label).join("、") ||
-                        "待补充"}
-                    </dd>
-                  </dl>
-                </article>
-              ))}
-            </div>
-          </section>
-        );
-      })}
-    </>
-  );
-}
-
 function SettingsView({
   config,
   apiKey,
@@ -1307,6 +1052,7 @@ export default function Home() {
   const [isContinuing, setIsContinuing] = useState(false);
   const [bookEditing, setBookEditing] = useState(false);
   const [showAnalysisLog, setShowAnalysisLog] = useState(false);
+  const [entityWindowRef, setEntityWindowRef] = useState<string | null>(null);
   const [pendingReadingPosition, setPendingReadingPosition] = useState<Project["lastReadingPosition"]>();
   const [streamPreview, setStreamPreview] = useState("");
   const analysisAbortRef = useRef<AbortController | null>(null);
@@ -1396,28 +1142,6 @@ export default function Home() {
     });
     await saveProject(project);
   }, []);
-
-  const stageOverride = useCallback((sectionKey: string, key: string, fallback: string) => ({
-    text: activeProject?.kpNotes?.stageViewOverrides?.[sectionKey]?.[key] ?? fallback,
-    onChange: (value: string) => {
-      if (!activeProject) return;
-      const stageViewOverrides = activeProject.kpNotes?.stageViewOverrides ?? {};
-      void persistProject({
-        ...activeProject,
-        updatedAt: new Date().toISOString(),
-        kpNotes: {
-          ...activeProject.kpNotes,
-          stageViewOverrides: {
-            ...stageViewOverrides,
-            [sectionKey]: {
-              ...stageViewOverrides[sectionKey],
-              [key]: value,
-            },
-          },
-        },
-      });
-    },
-  }), [activeProject, persistProject]);
 
   const handleImport = async (file: File) => {
     setImporting(true);
@@ -2550,6 +2274,63 @@ export default function Home() {
   const selectedActPerson = activeProject?.analysis.people.find(
     (person) => person.id === selectedActPersonId,
   );
+  const entities = activeProject ? buildProjectEntities(activeProject) : [];
+  const entityRelations = activeProject ? buildEntityRelations(activeProject, entities) : [];
+
+  const saveEntityOverride = (entity: EntityCard, override: EntityOverrides) => {
+    if (!activeProject) return;
+    if (entity.source === "keeper") {
+      const keeperEntities = (activeProject.kpNotes?.keeperEntities ?? []).map((candidate) =>
+        candidate.ref === entity.ref ? { ...candidate, overrides: override, linkBehavior: override.linkBehavior ?? candidate.linkBehavior, updatedAt: override.updatedAt } : candidate,
+      );
+      void persistProject({
+        ...activeProject,
+        updatedAt: new Date().toISOString(),
+        kpNotes: { ...activeProject.kpNotes, keeperEntities },
+      });
+      return;
+    }
+    void persistProject({
+      ...activeProject,
+      updatedAt: new Date().toISOString(),
+      kpNotes: {
+        ...activeProject.kpNotes,
+        entityOverrides: { ...activeProject.kpNotes?.entityOverrides, [entity.ref]: override },
+      },
+    });
+  };
+
+  const addKeeperEntity = (kind: EntityKind, name: string, sectionKey: string, relatedTo?: EntityCard) => {
+    const entity = createKeeperEntity(kind, name, sectionKey);
+    if (!activeProject) return entity;
+    const relation = relatedTo ? {
+      id: crypto.randomUUID(), sourceRef: relatedTo.ref, targetRef: entity.ref,
+      label: "KP 新建关联", level: "keeper" as const,
+    } : null;
+    void persistProject({
+      ...activeProject,
+      updatedAt: new Date().toISOString(),
+      kpNotes: {
+        ...activeProject.kpNotes,
+        keeperEntities: [...(activeProject.kpNotes?.keeperEntities ?? []), entity],
+        entityRelations: relation
+          ? [...(activeProject.kpNotes?.entityRelations ?? []), relation]
+          : activeProject.kpNotes?.entityRelations,
+      },
+    });
+    return entity;
+  };
+
+  const jumpToEntity = (entity: EntityCard) => {
+    const sectionKey = entity.appearances[0]?.sectionKey;
+    if (!sectionKey) return;
+    if (sectionKey.startsWith("acts:")) {
+      setSelectedActId(sectionKey.slice("acts:".length));
+      setView("acts");
+    } else setView(sectionKey as View);
+    setActView("detail");
+    setEntityWindowRef(null);
+  };
 
   const sectionMarkdown = activeProject?.kpNotes?.sectionMarkdown ?? {};
   const noteMarkdown = (sectionKey: string) => (activeProject?.kpNotes?.sectionNotes?.[sectionKey] ?? [])
@@ -2562,7 +2343,7 @@ export default function Home() {
     "stage-characterArcs": `# 人物经历与动机\n\n${(activeProject.analysis.characterArcs ?? []).map((arc) => `## ${activeProject.analysis.people.find((person) => person.id === arc.personId)?.name ?? arc.personId}\n\n### 经历\n${arc.experience}\n\n### 动机\n${arc.motivation}`).join("\n\n")}${noteMarkdown("stage-characterArcs")}`,
     "stage-openingHook": `# 开篇钩子\n\n${activeProject.analysis.openingHook ?? ""}${noteMarkdown("stage-openingHook")}`,
     "stage-clues": `# 关键线索安排\n\n${activeProject.analysis.clues.map((clue) => `## ${clue.name}\n${clue.summary}\n\n- 来源：${clue.source}\n- 获取方式：${clue.acquisition || "待补充"}\n- 指向：${clue.targets.map((target) => target.label).join("、") || "待补充"}`).join("\n\n")}${noteMarkdown("stage-clues")}`,
-    ...Object.fromEntries(activeProject.analysis.acts.map((act) => [`acts:${act.id}`, `# 第 ${act.sequence} 幕 · ${act.title}\n\n${act.placeText || "地点未定"} · ${act.time || "时间未定"}\n\n## 人物\n${activeProject.analysis.people.filter((person) => act.personIds.includes(person.id)).map((person) => `- **${person.name}**：${person.role}`).join("\n")}\n\n## 线索\n${activeProject.analysis.clues.filter((clue) => act.clueIds.includes(clue.id)).map((clue) => `- **${clue.name}**：${clue.summary}`).join("\n")}\n\n## 幕描述\n${act.description}${noteMarkdown(`acts:${act.id}`)}`])),
+    ...Object.fromEntries(activeProject.analysis.acts.map((act) => [`acts:${act.id}`, `# 第 ${act.sequence} 幕 · ${act.title}\n\n${act.placeText || "地点未定"} · ${act.time || "时间未定"}\n\n## 人物\n${activeProject.analysis.people.filter((person) => act.personIds.includes(person.id)).map((person) => `- ${person.name}：${person.role}`).join("\n") || "暂无明确人物"}\n\n## 线索\n${activeProject.analysis.clues.filter((clue) => act.clueIds.includes(clue.id)).map((clue) => `- ${clue.name}：${clue.summary}`).join("\n") || "暂无明确线索"}\n\n## 关键事件\n${act.keyEvents.map((event) => `### ${event.title}\n${event.description}`).join("\n\n") || "暂无关键事件"}\n\n## 分支结构\n${act.branches.map((branch) => `- ${branch.condition}${branch.nextActId ? ` → ${activeProject.analysis.acts.find((candidate) => candidate.id === branch.nextActId)?.title ?? branch.nextActId}` : branch.isEnding ? " → 结局" : ""}`).join("\n") || "暂无分支"}\n\n## 幕描述\n${act.description}${noteMarkdown(`acts:${act.id}`)}`])),
   } : {};
 
   const markdownSections = Object.keys(defaultMarkdown).map((key) => ({
@@ -2580,103 +2361,17 @@ export default function Home() {
     markdown: sectionMarkdown[key] ?? defaultMarkdown[key],
   }));
 
-  const bookSections = activeProject ? [
-    {
-      key: "stage-background",
-      name: "故事背景",
-      content: BackgroundStageView({
-        project: activeProject,
-        onOpenSource: setSourceRef,
-        editing: bookEditing,
-        override: (key, fallback) => stageOverride("stage-background", key, fallback),
-      }),
-    },
-    {
-      key: "stage-timeplace",
-      name: "时间地点",
-      content: TimePlaceStageView({
-        project: activeProject,
-        editing: bookEditing,
-        override: (key, fallback) => stageOverride("stage-timeplace", key, fallback),
-      }),
-    },
-    {
-      key: "stage-characters",
-      name: "核心人物",
-      content: CharactersStageView({
-        project: activeProject,
-        editing: bookEditing,
-        override: (key, fallback) => stageOverride("stage-characters", key, fallback),
-      }),
-    },
-    {
-      key: "stage-characterArcs",
-      name: "人物经历与动机",
-      content: CharacterArcsStageView({
-        project: activeProject,
-        editing: bookEditing,
-        override: (key, fallback) => stageOverride("stage-characterArcs", key, fallback),
-      }),
-    },
-    {
-      key: "stage-openingHook",
-      name: "开篇钩子",
-      content: OpeningHookStageView({
-        project: activeProject,
-        editing: bookEditing,
-        override: (key, fallback) => stageOverride("stage-openingHook", key, fallback),
-      }),
-    },
-    {
-      key: "stage-clues",
-      name: "关键线索安排",
-      content: CluesStageView({
-        project: activeProject,
-        editing: bookEditing,
-        override: (key, fallback) => stageOverride("stage-clues", key, fallback),
-      }),
-    },
-    ...activeProject.analysis.acts
-      .slice()
-      .sort((left, right) => left.sequence - right.sequence)
-      .map((act, _index, orderedActs) => ({
-        key: `acts:${act.id}`,
-        name: `第 ${act.sequence} 幕 · ${act.title}`,
-        content: (
-          <ActBookContentView
-            key={act.id}
-            act={act}
-            acts={orderedActs}
-            people={activeProject.analysis.people}
-            clues={activeProject.analysis.clues}
-            places={activeProject.analysis.places}
-            onOpenTree={() => setActView("tree")}
-            onSelectPerson={setSelectedActPersonId}
-            onUpdateAct={() => undefined}
-            onUpdatePerson={(person) => void persistProject({
-              ...activeProject,
-              updatedAt: new Date().toISOString(),
-              analysis: {
-                ...activeProject.analysis,
-                people: activeProject.analysis.people.map((candidate) =>
-                  candidate.id === person.id ? person : candidate,
-                ),
-              },
-            })}
-          />
-        ),
-      })),
-    ...(activeProject.analysis.acts.length === 0 ? [{
-      key: "acts",
-      name: "幕",
-      content: <p>暂无幕内容，请先运行幕阶段分析。</p>,
-    }] : []),
-  ] : [];
-  const renderedBookSections = bookSections.map((section) => ({
-    ...section,
-    content: sectionMarkdown[section.key]
-      ? <MarkdownDocument markdown={sectionMarkdown[section.key]} />
-      : section.content,
+  const renderedBookSections = markdownSections.map((section) => ({
+    key: section.key,
+    name: section.name,
+    content: markdownToReactBlocks({
+      markdown: section.markdown,
+      entities,
+      onEntityAction: ({ entity, action }) => {
+        if (action === "jump") jumpToEntity(entity);
+        else setEntityWindowRef(entity.ref);
+      },
+    }),
   }));
 
   if (!activeProject) {
@@ -2866,6 +2561,8 @@ export default function Home() {
             {bookEditing ? (
               <BookEditor
                 sections={markdownSections}
+                entities={entities}
+                onCreateEntity={(kind, name, sectionKey) => addKeeperEntity(kind, name, sectionKey)}
                 onCancel={() => setBookEditing(false)}
                 onSave={(markdown) => {
                   void persistProject({
@@ -2889,6 +2586,7 @@ export default function Home() {
               contentKey={`${activeProject.id}:${activeProject.updatedAt}`}
               editing={bookEditing}
               onEditingChange={setBookEditing}
+              onOpenActTree={() => setActView("tree")}
               initialPage={pendingReadingPosition?.sectionKey === (
                 view === "acts" && selectedActId ? `acts:${selectedActId}` : view
               ) ? pendingReadingPosition.page : undefined}
@@ -3033,6 +2731,33 @@ export default function Home() {
               },
             })
           }
+        />
+      )}
+      {entityWindowRef && (
+        <EntityWindow
+          key={entityWindowRef}
+          entities={entities}
+          relations={entityRelations}
+          initialRef={entityWindowRef}
+          onClose={() => setEntityWindowRef(null)}
+          onJump={jumpToEntity}
+          onSave={saveEntityOverride}
+          onCreate={(kind, name, relatedTo) => {
+            const created = addKeeperEntity(kind, name, relatedTo.appearances[0]?.sectionKey ?? "stage-background", relatedTo);
+            setEntityWindowRef(created.ref);
+          }}
+          onDelete={(entity) => {
+            if (entity.source !== "keeper" || !window.confirm(`删除“${entity.original.name}”实体卡？书页文字会保留。`)) return;
+            void persistProject({
+              ...activeProject,
+              updatedAt: new Date().toISOString(),
+              kpNotes: {
+                ...activeProject.kpNotes,
+                keeperEntities: (activeProject.kpNotes?.keeperEntities ?? []).filter((candidate) => candidate.ref !== entity.ref),
+                entityRelations: (activeProject.kpNotes?.entityRelations ?? []).filter((relation) => relation.sourceRef !== entity.ref && relation.targetRef !== entity.ref),
+              },
+            }).then(() => setEntityWindowRef(null));
+          }}
         />
       )}
       {toast && <div className="toast">{toast}</div>}
