@@ -1038,6 +1038,13 @@ button:disabled {
   margin-top: 12px;
 }
 
+.analysis-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 /* V0.7.5: keep the seven analysis stages as one readable vertical progress list. */
 .pipeline.pipeline-major {
   grid-template-columns: 1fr;
@@ -1113,6 +1120,15 @@ button:disabled {
 
   .pipeline-major .pipeline-actions {
     grid-column: 2 / -1;
+  }
+
+  .dashboard-health {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analysis-log-modal li,
+  .dashboard-recent-activity li {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -3775,6 +3791,139 @@ button:disabled {
   gap: 12px;
   padding-bottom: 10px;
 }
+
+.book-editor-shell {
+  width: min(980px, 100%);
+  margin: 0 auto;
+}
+
+.book-continuous-editor {
+  display: grid;
+  gap: 22px;
+}
+
+.book-editor-section {
+  border: 1px solid #9a7b58;
+  border-radius: 8px;
+  background: #f5f0e1 url("/book-page-bg.png") center / cover;
+  color: #2c1810;
+  padding: 34px clamp(24px, 6vw, 70px);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.32);
+}
+
+.book-editor-section > .stage-document {
+  margin-top: 24px;
+}
+
+.kp-note-editor {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+  border-left: 4px solid #7b211e;
+  background: rgba(123, 33, 30, 0.06);
+  padding: 18px;
+}
+
+.kp-note-editor h3 {
+  margin: 0;
+  color: #7b211e;
+}
+
+.kp-note-block,
+.kp-note-compose {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(123, 33, 30, 0.28);
+  background: rgba(255, 252, 239, 0.7);
+  padding: 12px;
+}
+
+.kp-note-editor input,
+.kp-note-editor textarea {
+  width: 100%;
+  border: 1px solid rgba(123, 33, 30, 0.32);
+  border-radius: 4px;
+  background: rgba(255, 252, 239, 0.92);
+  color: #2c1810;
+  padding: 9px;
+  font: inherit;
+}
+
+.kp-note-editor button {
+  width: max-content;
+  border: 1px solid #7b211e;
+  border-radius: 4px;
+  background: transparent;
+  color: #7b211e;
+  padding: 7px 10px;
+}
+
+.kp-note-read {
+  border-left: 4px solid #7b211e;
+  background: rgba(123, 33, 30, 0.07);
+  padding: 12px 16px;
+}
+
+.kp-note-read::before {
+  color: #7b211e;
+  content: "KP 注";
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.kp-note-read strong {
+  display: block;
+  margin-top: 5px;
+  color: #7b211e;
+}
+
+.kp-note-read p {
+  margin: 6px 0 0;
+}
+
+.analysis-log-backdrop {
+  position: fixed;
+  z-index: 1250;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 8, 11, 0.68);
+  padding: 20px;
+}
+
+.analysis-log-modal {
+  width: min(760px, 94vw);
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 22px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.48);
+}
+
+.analysis-log-modal > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.analysis-log-modal h2 { margin: 5px 0 16px; }
+.analysis-log-modal > header button { border: 0; background: transparent; color: var(--text); font-size: 26px; }
+.analysis-log-modal ol,
+.dashboard-recent-activity ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.analysis-log-modal li,
+.dashboard-recent-activity li { display: grid; grid-template-columns: 160px 1fr; gap: 12px; border-left: 2px solid var(--line); padding: 8px 12px; }
+.analysis-log-modal time,
+.dashboard-recent-activity time { color: var(--faint); font-size: 12px; }
+
+.dashboard-next-work { display: grid; }
+.dashboard-next-work .action-card { width: 100%; }
+.dashboard-health { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.dashboard-health > * { display: grid; gap: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 14px; text-align: left; }
+.dashboard-health span { color: var(--faint); font-size: 12px; }
+.dashboard-health strong { font-size: 18px; }
+.dashboard-recent-activity { margin-top: 14px; border: 1px solid var(--line); background: var(--panel); padding: 18px; }
 
 .book-edit-toggle button {
   border: 1px solid rgba(255, 255, 255, 0.55);

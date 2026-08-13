@@ -144,7 +144,6 @@ function ActTextViewContent({
   onOpenTree,
   onSelectPerson,
   onUpdatePerson,
-  onUpdateAct,
   embeddedContentOnly = false,
 }: Omit<ActTextViewProps, "embedded"> & { embeddedContentOnly: boolean }) {
   const orderedActs = useMemo(
@@ -156,9 +155,7 @@ function ActTextViewContent({
     orderedActs.findIndex((act) => act.id === initialActId),
   );
   const [index, setIndex] = useState(initialIndex);
-  const [editing, setEditing] = useState(false);
   const act = orderedActs[index] ?? orderedActs[0];
-  const [draft, setDraft] = useState<Act | null>(act ?? null);
 
   const actPeople = act
     ? people.filter((person) => act.personIds.includes(person.id))
@@ -173,14 +170,12 @@ function ActTextViewContent({
   const goPreviousAct = useCallback(() => {
     if (index > 0) {
       setIndex(index - 1);
-      setEditing(false);
     }
   }, [index]);
 
   const goNextAct = useCallback(() => {
     if (index < orderedActs.length - 1) {
       setIndex(index + 1);
-      setEditing(false);
     }
   }, [index, orderedActs.length]);
 
@@ -204,93 +199,9 @@ function ActTextViewContent({
             <NetworkIcon />
             <span>幕树</span>
           </button>
-          {!editing && (
-            <button
-              className="ghost-button compact"
-              onClick={() => {
-                setDraft(act);
-                setEditing(true);
-              }}
-            >
-              编辑
-            </button>
-          )}
         </div>
       </header>
-      {editing && draft ? (
-        <section className="act-editor">
-            <label className="field">
-              <span>幕标题</span>
-              <input
-                value={draft.title}
-                onChange={(event) =>
-                  setDraft((current) =>
-                    current ? { ...current, title: event.target.value } : current,
-                  )
-                }
-              />
-            </label>
-            <div className="act-editor-grid">
-              <label className="field">
-                <span>地点</span>
-                <input
-                  value={draft.placeText ?? ""}
-                  onChange={(event) =>
-                    setDraft((current) =>
-                      current
-                        ? {
-                            ...current,
-                            placeId: undefined,
-                            placeText: event.target.value,
-                          }
-                        : current,
-                    )
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>时间</span>
-                <input
-                  value={draft.time}
-                  onChange={(event) =>
-                    setDraft((current) =>
-                      current ? { ...current, time: event.target.value } : current,
-                    )
-                  }
-                />
-              </label>
-            </div>
-            <label className="field">
-              <span>幕描述</span>
-              <textarea
-                rows={8}
-                value={draft.description}
-                onChange={(event) =>
-                  setDraft((current) =>
-                    current
-                      ? { ...current, description: event.target.value }
-                      : current,
-                  )
-                }
-              />
-            </label>
-            <div className="act-editor-actions">
-              <button className="ghost-button" onClick={() => setEditing(false)}>
-                取消
-              </button>
-              <button
-                className="primary-button"
-                onClick={() => {
-                  onUpdateAct(draft);
-                  setEditing(false);
-                }}
-              >
-                保存修改
-              </button>
-            </div>
-        </section>
-      ) : (
-        <>
+      <>
             <section className="act-detail-section">
               <h3>人物</h3>
               {personGroups.map((group) => {
@@ -394,8 +305,7 @@ function ActTextViewContent({
                 {act.description || "尚无幕描述。"}
               </p>
             </section>
-        </>
-      )}
+      </>
     </article>
   ) : null;
 
@@ -410,7 +320,7 @@ function ActTextViewContent({
     displayCurrentPage,
     displayTotalPages,
   } = useTurnBook(bookContent, {
-    contentKey: JSON.stringify({ act, editing, people, clues, places }),
+    contentKey: JSON.stringify({ act, people, clues, places }),
     enabled: !embeddedContentOnly,
     onBoundaryPrev: index > 0 ? goPreviousAct : undefined,
     onBoundaryNext:

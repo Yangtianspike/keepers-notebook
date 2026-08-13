@@ -14,6 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { KPNoteBlock } from "@/lib/types";
 
 const MOBILE_BREAKPOINT = 760;
 const TURN_DURATION = 800;
@@ -261,6 +262,7 @@ type TurnBookOptions = {
   enabled?: boolean;
   onBoundaryPrev?: () => void;
   onBoundaryNext?: () => void;
+  onPageChange?: (page: number) => void;
 };
 
 export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
@@ -270,6 +272,7 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
   const lifecycleRef = useRef<"idle" | "initializing" | "ready" | "turning" | "destroying">("idle");
   const generationRef = useRef(0);
   const pendingPageRef = useRef<number | null>(null);
+  const pageChangeRef = useRef(options.onPageChange);
   const [pages, setPages] = useState<ReactNode[]>([]);
   const [bookRevision, setBookRevision] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -277,6 +280,10 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
   const [isAnimating, setIsAnimating] = useState(false);
   const totalPages = pages.length;
   const enabled = options.enabled ?? true;
+
+  useEffect(() => {
+    pageChangeRef.current = options.onPageChange;
+  }, [options.onPageChange]);
 
   const destroyTurnBook = useCallback(() => {
     generationRef.current += 1;
@@ -417,6 +424,7 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
       book.on("turned.keeperAtlas", (_event, page) => {
         if (generation !== generationRef.current) return;
         setCurrentPage(page);
+        pageChangeRef.current?.(page);
         setIsAnimating(false);
         lifecycleRef.current = "ready";
         const pendingPage = pendingPageRef.current;
@@ -516,6 +524,9 @@ export function StageView({
   onActiveSectionChange,
   editing = false,
   onEditingChange,
+  onPageChange,
+  notes = {},
+  initialPage,
 }: {
   sections: StageBookSection[];
   activeSectionKey: string;
@@ -523,8 +534,12 @@ export function StageView({
   onActiveSectionChange: (sectionKey: string) => void;
   editing?: boolean;
   onEditingChange?: (editing: boolean) => void;
+  onPageChange?: (sectionKey: string, page: number) => void;
+  notes?: Record<string, KPNoteBlock[]>;
+  initialPage?: number;
 }) {
   const activeSectionChangeRef = useRef(onActiveSectionChange);
+  const pageSectionsRef = useRef<string[]>([]);
   useEffect(() => {
     activeSectionChangeRef.current = onActiveSectionChange;
   }, [onActiveSectionChange]);
@@ -541,6 +556,12 @@ export function StageView({
             <strong>{section.name}</strong>
           </header>
           {section.content}
+          {(notes[section.key] ?? []).map((note) => (
+            <aside className="kp-note-read" key={note.id}>
+              <strong>{note.title}</strong>
+              <p>{note.body}</p>
+            </aside>
+          ))}
         </section>
       ))}
     </div>
@@ -560,8 +581,12 @@ export function StageView({
     displayTotalPages,
   } = useTurnBook(content, {
     contentKey,
+    enabled: !editing,
+    onPageChange: (page) => {
+      const sectionKey = pageSectionsRef.current[Math.max(0, page - 1)];
+      if (sectionKey) onPageChange?.(sectionKey, page);
+    },
   });
-
   const pageSections = pages.map((page) => {
     if (!isValidElement(page)) return "";
     return String(
@@ -569,7 +594,13 @@ export function StageView({
     );
   });
   const pageSectionsKey = pageSections.join("|");
+  useEffect(() => {
+    pageSectionsRef.current = pageSections;
+    // pageSectionsKey is the stable representation of the generated page map.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageSectionsKey]);
   const lastRequestedSectionRef = useRef("");
+  const restoredPageRef = useRef(false);
   const pageNavigationSections = pageSections.map(sectionNavigationKey);
 
   const activeSectionIndex = sections.findIndex(
@@ -595,6 +626,12 @@ export function StageView({
     lastRequestedSectionRef.current = activeSectionKey;
     requestPage(targetPage);
   }, [activeSectionKey, requestPage, targetPage]);
+
+  useEffect(() => {
+    if (restoredPageRef.current || !initialPage || pages.length === 0) return;
+    restoredPageRef.current = true;
+    requestPage(Math.min(initialPage, pages.length));
+  }, [initialPage, pages.length, requestPage]);
 
   useEffect(() => {
     const pageSection = pageNavigationSections[Math.max(0, currentPage - 1)];
@@ -640,14 +677,16 @@ export function StageView({
           {editing && <span>点击虚线文字进行修改，失焦保存，Esc 取消。</span>}
         </div>
       )}
-      <div className="book-measure" ref={measureRef}>{content}</div>
-      <TurnBookPages
-        key={bookRevision}
-        className="stage-view flipbook"
-        flipbookRef={flipbookRef}
-        pages={pages}
-      />
-      <nav className="stage-pagination" aria-label="书页翻页">
+      {!editing && <div className="book-measure" ref={measureRef}>{content}</div>}
+      {!editing && (
+        <TurnBookPages
+          key={bookRevision}
+          className="stage-view flipbook"
+          flipbookRef={flipbookRef}
+          pages={pages}
+        />
+      )}
+      {!editing && <nav className="stage-pagination" aria-label="书页翻页">
         <button
           type="button"
           onClick={previousPage}
@@ -665,7 +704,7 @@ export function StageView({
         >
           下一页 →
         </button>
-      </nav>
+      </nav>}
     </div>
   );
 }

@@ -23,6 +23,8 @@ import { SettingsModal } from "@/app/components/settings-modal";
 import { StageView } from "@/app/components/stage-view";
 import { PersonDetailPanel } from "@/app/components/person-detail-panel";
 import { EditableText } from "@/app/components/editable-text";
+import { BookEditor } from "@/app/components/book-editor";
+import { AnalysisLogModal } from "@/app/components/analysis-log-modal";
 import {
   deleteProject,
   listProjects,
@@ -39,6 +41,7 @@ import {
   type ModelConfig,
   type Person,
   type Project,
+  type KPNoteBlock,
   type ReviewItem,
   type SourceRef,
   type TimePlace,
@@ -467,8 +470,9 @@ function AnalysisView({
   onResolveReview,
   onEditReview,
   onPause,
-  onRun,
   onRunAll,
+  onRerunAll,
+  onShowLog,
   onNavigate,
 }: {
   project: Project;
@@ -479,8 +483,9 @@ function AnalysisView({
   onResolveReview: (item: ReviewItem, accepted: boolean) => void;
   onEditReview: (item: ReviewItem, changes: Partial<ReviewItem>) => void;
   onPause: () => void;
-  onRun: (stage: AnalysisStage) => void;
   onRunAll: () => void;
+  onRerunAll: () => void;
+  onShowLog: () => void;
   onNavigate: (view: View) => void;
 }) {
   const stages: Record<
@@ -566,9 +571,6 @@ function AnalysisView({
     const state = project.analysis.stages[stage.id] ?? {
       status: "idle" as const,
     };
-    const blocked =
-      !!stage.requires &&
-      project.analysis.stages[stage.requires].status !== "complete";
     return (
       <section
         className={`pipeline-body pipeline-${state.status}${activeStage === stage.id ? " pipeline-running" : ""}`}
@@ -577,7 +579,6 @@ function AnalysisView({
         <div className="pipeline-number">{stage.number}</div>
         <div className="pipeline-title">
           <h3>{stageLabels[stage.id]}</h3>
-          <span>{stateLabel(state.status)}</span>
         </div>
         <p>{stage.description}</p>
         {state.error && <p className="inline-error">{state.error}</p>}
@@ -595,31 +596,6 @@ function AnalysisView({
               "—"
             )}
           </span>
-          <button
-            className="primary-button compact"
-            disabled={!configReady || blocked || activeStage !== null}
-            onClick={(event) => {
-              event.stopPropagation();
-              onRun(stage.id);
-            }}
-          >
-            {activeStage === stage.id
-              ? "正在分析…"
-              : state.status === "complete"
-                ? "重新分析"
-                : "开始分析"}
-          </button>
-          {state.status === "complete" && (
-            <button
-              className="text-button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onNavigate(stage.target);
-              }}
-            >
-              查看结果
-            </button>
-          )}
         </div>
       </section>
     );
@@ -639,13 +615,25 @@ function AnalysisView({
             tokens
           </strong>
           <small>实际用量以模型服务为准</small>
-          <button
-            className="primary-button compact analysis-run-all"
-            disabled={!configReady || activeStage !== null}
-            onClick={onRunAll}
-          >
-            {activeStage ? "分析进行中…" : "分析剧本"}
-          </button>
+          <div className="analysis-header-actions">
+            <button
+              className="primary-button compact analysis-run-all"
+              disabled={!configReady || activeStage !== null}
+              onClick={onRunAll}
+            >
+              {activeStage ? "分析进行中…" : "分析剧本"}
+            </button>
+            <button
+              className="ghost-button compact"
+              disabled={!configReady || activeStage !== null}
+              onClick={onRerunAll}
+            >
+              重新分析
+            </button>
+            <button className="ghost-button compact" onClick={onShowLog}>
+              分析记录
+            </button>
+          </div>
         </div>
       </header>
 
@@ -699,32 +687,6 @@ function AnalysisView({
           <pre>{streamPreview}</pre>
         </section>
       )}
-      <section className="analysis-log">
-        <div>
-          <span className="eyebrow">ANALYSIS ACTIVITY</span>
-          <h3>分析记录</h3>
-        </div>
-        {(project.analysis.activityLog ?? []).length === 0 ? (
-          <p>尚未开始分析。这里会保留每个阶段的执行、暂停、确认与完成记录。</p>
-        ) : (
-          <ol>
-            {(project.analysis.activityLog ?? [])
-              .slice(-8)
-              .reverse()
-              .map((entry) => (
-                <li key={entry.id} className={`log-${entry.kind}`}>
-                  <time>
-                    {new Date(entry.createdAt).toLocaleTimeString("zh-CN", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </time>
-                  <span>{entry.message}</span>
-                </li>
-              ))}
-          </ol>
-        )}
-      </section>
       {reviewItems.filter(
         (item) => item.status === "pending" && item.type !== "external",
       ).length > 0 && (
@@ -1126,9 +1088,11 @@ function SettingsView({
 function DashboardView({
   project,
   onNavigate,
+  onContinueReading,
 }: {
   project: Project;
   onNavigate: (view: View) => void;
+  onContinueReading: (sectionKey?: string) => void;
 }) {
   const completed = Object.values(project.analysis.stages).filter(
     (stage) => stage.status === "complete",
@@ -1184,33 +1148,53 @@ function DashboardView({
         <div className="section-heading">
           <div>
             <p className="eyebrow">WORKSPACE</p>
-            <h2>核心视图</h2>
+            <h2>继续工作</h2>
           </div>
         </div>
-        <div className="action-grid">
+        <div className="dashboard-next-work">
           <button
             className="action-card truth"
-            onClick={() => onNavigate("stage-background")}
+            onClick={() => {
+              if (pending > 0) onNavigate("analysis");
+              else if (completed < STAGE_ORDER.length) onNavigate("analysis");
+              else onContinueReading(project.lastReadingPosition?.sectionKey);
+            }}
           >
-            <span>01</span>
+            <span>→</span>
             <div>
-              <h3>幕后真相</h3>
-              <p>起因、真实历史与各方计划</p>
-            </div>
-            <i>→</i>
-          </button>
-          <button
-            className="action-card relation"
-            onClick={() => onNavigate("acts")}
-          >
-            <span>02</span>
-            <div>
-              <h3>幕</h3>
-              <p>剧情分幕、关键事件与分支</p>
+              <h3>{pending > 0
+                ? `处理 ${pending} 项待确认`
+                : completed < STAGE_ORDER.length
+                  ? `继续分析（${completed} / 7）`
+                  : "继续阅读"}</h3>
+              <p>{project.lastReadingPosition
+                ? `上次阅读：${project.lastReadingPosition.sectionKey} · 第 ${project.lastReadingPosition.page} 页`
+                : "从项目当前最重要的下一步继续。"}</p>
             </div>
             <i>→</i>
           </button>
         </div>
+        <div className="dashboard-health">
+          <button onClick={() => onNavigate("analysis")}><span>分析进度</span><strong>{completed} / 7</strong></button>
+          <button onClick={() => onNavigate("analysis")}><span>待确认</span><strong>{pending}</strong></button>
+          <button onClick={() => onNavigate("analysis")}><span>分析错误</span><strong>{Object.values(project.analysis.stages).filter((stage) => stage.status === "error").length}</strong></button>
+          <div><span>最后更新</span><strong>{new Date(project.updatedAt).toLocaleString("zh-CN")}</strong></div>
+        </div>
+        <section className="dashboard-recent-activity">
+          <h3>最近活动</h3>
+          {(project.analysis.activityLog ?? []).length === 0 ? (
+            <p>尚无活动记录。</p>
+          ) : (
+            <ol>
+              {project.analysis.activityLog.slice(-5).reverse().map((entry) => (
+                <li key={entry.id}>
+                  <time>{new Date(entry.createdAt).toLocaleString("zh-CN")}</time>
+                  <span>{entry.message}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
       </section>
     </div>
   );
@@ -1311,6 +1295,8 @@ export default function Home() {
   const [wizardStage, setWizardStage] = useState<AnalysisStage | null>(null);
   const [isContinuing, setIsContinuing] = useState(false);
   const [bookEditing, setBookEditing] = useState(false);
+  const [showAnalysisLog, setShowAnalysisLog] = useState(false);
+  const [pendingReadingPosition, setPendingReadingPosition] = useState<Project["lastReadingPosition"]>();
   const [streamPreview, setStreamPreview] = useState("");
   const analysisAbortRef = useRef<AbortController | null>(null);
   const [modelConfig, setModelConfig] = useState<ModelConfig>(() => {
@@ -1421,6 +1407,25 @@ export default function Home() {
       });
     },
   }), [activeProject, persistProject]);
+
+  const updateSectionNotes = useCallback((
+    sectionKey: string,
+    update: (notes: KPNoteBlock[]) => KPNoteBlock[],
+  ) => {
+    if (!activeProject) return;
+    const sectionNotes = activeProject.kpNotes?.sectionNotes ?? {};
+    void persistProject({
+      ...activeProject,
+      updatedAt: new Date().toISOString(),
+      kpNotes: {
+        ...activeProject.kpNotes,
+        sectionNotes: {
+          ...sectionNotes,
+          [sectionKey]: update(sectionNotes[sectionKey] ?? []),
+        },
+      },
+    });
+  }, [activeProject, persistProject]);
 
   const handleImport = async (file: File) => {
     setImporting(true);
@@ -2554,6 +2559,99 @@ export default function Home() {
     (person) => person.id === selectedActPersonId,
   );
 
+  const bookSections = activeProject ? [
+    {
+      key: "stage-background",
+      name: "故事背景",
+      content: BackgroundStageView({
+        project: activeProject,
+        onOpenSource: setSourceRef,
+        editing: bookEditing,
+        override: (key, fallback) => stageOverride("stage-background", key, fallback),
+      }),
+    },
+    {
+      key: "stage-timeplace",
+      name: "时间地点",
+      content: TimePlaceStageView({
+        project: activeProject,
+        editing: bookEditing,
+        override: (key, fallback) => stageOverride("stage-timeplace", key, fallback),
+      }),
+    },
+    {
+      key: "stage-characters",
+      name: "核心人物",
+      content: CharactersStageView({
+        project: activeProject,
+        editing: bookEditing,
+        override: (key, fallback) => stageOverride("stage-characters", key, fallback),
+      }),
+    },
+    {
+      key: "stage-characterArcs",
+      name: "人物经历与动机",
+      content: CharacterArcsStageView({
+        project: activeProject,
+        editing: bookEditing,
+        override: (key, fallback) => stageOverride("stage-characterArcs", key, fallback),
+      }),
+    },
+    {
+      key: "stage-openingHook",
+      name: "开篇钩子",
+      content: OpeningHookStageView({
+        project: activeProject,
+        editing: bookEditing,
+        override: (key, fallback) => stageOverride("stage-openingHook", key, fallback),
+      }),
+    },
+    {
+      key: "stage-clues",
+      name: "关键线索安排",
+      content: CluesStageView({
+        project: activeProject,
+        editing: bookEditing,
+        override: (key, fallback) => stageOverride("stage-clues", key, fallback),
+      }),
+    },
+    ...activeProject.analysis.acts
+      .slice()
+      .sort((left, right) => left.sequence - right.sequence)
+      .map((act, _index, orderedActs) => ({
+        key: `acts:${act.id}`,
+        name: `第 ${act.sequence} 幕 · ${act.title}`,
+        content: (
+          <ActBookContentView
+            key={act.id}
+            act={act}
+            acts={orderedActs}
+            people={activeProject.analysis.people}
+            clues={activeProject.analysis.clues}
+            places={activeProject.analysis.places}
+            onOpenTree={() => setActView("tree")}
+            onSelectPerson={setSelectedActPersonId}
+            onUpdateAct={() => undefined}
+            onUpdatePerson={(person) => void persistProject({
+              ...activeProject,
+              updatedAt: new Date().toISOString(),
+              analysis: {
+                ...activeProject.analysis,
+                people: activeProject.analysis.people.map((candidate) =>
+                  candidate.id === person.id ? person : candidate,
+                ),
+              },
+            })}
+          />
+        ),
+      })),
+    ...(activeProject.analysis.acts.length === 0 ? [{
+      key: "acts",
+      name: "幕",
+      content: <p>暂无幕内容，请先运行幕阶段分析。</p>,
+    }] : []),
+  ] : [];
+
   if (!activeProject) {
     if (view === "settings") {
       return (
@@ -2679,7 +2777,19 @@ export default function Home() {
           }`}
         >
           {view === "dashboard" && (
-            <DashboardView project={activeProject} onNavigate={setView} />
+            <DashboardView
+              project={activeProject}
+              onNavigate={setView}
+              onContinueReading={(sectionKey) => {
+                setPendingReadingPosition(activeProject.lastReadingPosition);
+                if (sectionKey?.startsWith("acts:")) {
+                  setSelectedActId(sectionKey.slice("acts:".length));
+                  setView("acts");
+                  return;
+                }
+                setView((sectionKey as View | undefined) ?? "stage-background");
+              }}
+            />
           )}
           {view === "structure" && (
             <StructureView
@@ -2705,128 +2815,56 @@ export default function Home() {
               onResolveReview={resolveReview}
               onEditReview={editReview}
               onPause={() => analysisAbortRef.current?.abort()}
-              onRun={runStage}
               onRunAll={() => {
                 const firstIncomplete = STAGE_ORDER.find(
                   (stage) => activeProject.analysis.stages[stage].status !== "complete",
-                ) ?? "background";
+                );
+                if (!firstIncomplete) {
+                  setToast("七个阶段均已完成；如需覆盖结果，请使用“重新分析”。");
+                  return;
+                }
                 void runStage(firstIncomplete);
               }}
+              onRerunAll={() => {
+                if (!window.confirm("重新分析会从故事背景开始覆盖七个阶段的 AI 结果。KP 笔记会保留，是否继续？")) return;
+                const resetProject: Project = {
+                  ...activeProject,
+                  status: "structured",
+                  analysis: {
+                    ...activeProject.analysis,
+                    stages: Object.fromEntries(STAGE_ORDER.map((stage) => [stage, { status: "idle" }])) as Project["analysis"]["stages"],
+                    pendingAskUserCall: undefined,
+                  },
+                };
+                void persistProject(resetProject).then(() => runStage("background", resetProject));
+              }}
+              onShowLog={() => setShowAnalysisLog(true)}
               onNavigate={setView}
             />
           )}
           {STAGE_VIEWS.includes(view) && actView === "detail" && (
+            <>
+            {bookEditing ? (
+              <div className="book-editor-shell">
+                <div className="book-edit-toggle">
+                  <button className="active" onClick={() => setBookEditing(false)}>
+                    保存并返回书页
+                  </button>
+                  <span>连续纸张编辑模式：可修改虚线内容并自由添加 KP 笔记。</span>
+                </div>
+                <BookEditor
+                  sections={bookSections}
+                  notes={activeProject.kpNotes?.sectionNotes ?? {}}
+                  onAddNote={(sectionKey, note) => updateSectionNotes(sectionKey, (notes) => [...notes, note])}
+                  onUpdateNote={(sectionKey, note) => updateSectionNotes(sectionKey, (notes) =>
+                    notes.map((candidate) => candidate.id === note.id ? note : candidate))}
+                  onDeleteNote={(sectionKey, noteId) => updateSectionNotes(sectionKey, (notes) =>
+                    notes.filter((note) => note.id !== noteId))}
+                />
+              </div>
+            ) : (
             <StageView
-              sections={[
-                {
-                  key: "stage-background",
-                  name: "故事背景",
-                  content: BackgroundStageView({
-                    project: activeProject,
-                    onOpenSource: setSourceRef,
-                    editing: bookEditing,
-                    override: (key, fallback) => stageOverride("stage-background", key, fallback),
-                  }),
-                },
-                {
-                  key: "stage-timeplace",
-                  name: "时间地点",
-                  content: TimePlaceStageView({
-                    project: activeProject,
-                    editing: bookEditing,
-                    override: (key, fallback) => stageOverride("stage-timeplace", key, fallback),
-                  }),
-                },
-                {
-                  key: "stage-characters",
-                  name: "核心人物",
-                  content: CharactersStageView({
-                    project: activeProject,
-                    editing: bookEditing,
-                    override: (key, fallback) => stageOverride("stage-characters", key, fallback),
-                  }),
-                },
-                {
-                  key: "stage-characterArcs",
-                  name: "人物经历与动机",
-                  content: CharacterArcsStageView({
-                    project: activeProject,
-                    editing: bookEditing,
-                    override: (key, fallback) => stageOverride("stage-characterArcs", key, fallback),
-                  }),
-                },
-                {
-                  key: "stage-openingHook",
-                  name: "开篇钩子",
-                  content: OpeningHookStageView({
-                    project: activeProject,
-                    editing: bookEditing,
-                    override: (key, fallback) => stageOverride("stage-openingHook", key, fallback),
-                  }),
-                },
-                {
-                  key: "stage-clues",
-                  name: "关键线索安排",
-                  content: CluesStageView({
-                    project: activeProject,
-                    editing: bookEditing,
-                    override: (key, fallback) => stageOverride("stage-clues", key, fallback),
-                  }),
-                },
-                ...activeProject.analysis.acts
-                  .slice()
-                  .sort((left, right) => left.sequence - right.sequence)
-                  .map((act, _index, orderedActs) => ({
-                    key: `acts:${act.id}`,
-                    name: `第 ${act.sequence} 幕 · ${act.title}`,
-                    content: (
-                      <ActBookContentView
-                        key={act.id}
-                        act={act}
-                        acts={orderedActs}
-                        people={activeProject.analysis.people}
-                        clues={activeProject.analysis.clues}
-                        places={activeProject.analysis.places}
-                        onOpenTree={() => setActView("tree")}
-                        onSelectPerson={setSelectedActPersonId}
-                        onUpdateAct={(updatedAct) =>
-                          void persistProject({
-                            ...activeProject,
-                            updatedAt: new Date().toISOString(),
-                            analysis: {
-                              ...activeProject.analysis,
-                              acts: activeProject.analysis.acts.map((candidate) =>
-                                candidate.id === updatedAct.id
-                                  ? updatedAct
-                                  : candidate,
-                              ),
-                            },
-                          })
-                        }
-                        onUpdatePerson={(person) =>
-                          void persistProject({
-                            ...activeProject,
-                            updatedAt: new Date().toISOString(),
-                            analysis: {
-                              ...activeProject.analysis,
-                              people: activeProject.analysis.people.map(
-                                (candidate) =>
-                                  candidate.id === person.id ? person : candidate,
-                              ),
-                            },
-                          })
-                        }
-                      />
-                    ),
-                  })),
-                ...(activeProject.analysis.acts.length === 0
-                  ? [{
-                      key: "acts",
-                      name: "幕",
-                      content: <p>暂无幕内容，请先运行幕阶段分析。</p>,
-                    }]
-                  : []),
-              ]}
+              sections={bookSections}
               activeSectionKey={
                 view === "acts" && selectedActId
                   ? `acts:${selectedActId}`
@@ -2835,6 +2873,23 @@ export default function Home() {
               contentKey={`${activeProject.id}:${activeProject.updatedAt}`}
               editing={bookEditing}
               onEditingChange={setBookEditing}
+              notes={activeProject.kpNotes?.sectionNotes}
+              initialPage={pendingReadingPosition?.sectionKey === (
+                view === "acts" && selectedActId ? `acts:${selectedActId}` : view
+              ) ? pendingReadingPosition.page : undefined}
+              onPageChange={(sectionKey, page) => {
+                setPendingReadingPosition(undefined);
+                const current = activeProject.lastReadingPosition;
+                if (current?.sectionKey === sectionKey && current.page === page) return;
+                void persistProject({
+                  ...activeProject,
+                  lastReadingPosition: {
+                    sectionKey,
+                    page,
+                    updatedAt: new Date().toISOString(),
+                  },
+                });
+              }}
               onActiveSectionChange={(sectionKey) => {
                 if (sectionKey.startsWith("acts:")) {
                   setSelectedActId(sectionKey.slice("acts:".length));
@@ -2844,6 +2899,8 @@ export default function Home() {
                 setView(sectionKey as View);
               }}
             />
+            )}
+            </>
           )}
           {view === "acts" && actView === "tree" && (
             <div className="content-stack">
@@ -2889,6 +2946,12 @@ export default function Home() {
           source={sourceRef}
           sourceUrl={sourceUrl}
           onClose={() => setSourceRef(null)}
+        />
+      )}
+      {showAnalysisLog && (
+        <AnalysisLogModal
+          entries={activeProject.analysis.activityLog ?? []}
+          onClose={() => setShowAnalysisLog(false)}
         />
       )}
       {wizardStage && realtimeAskUserCall ? (

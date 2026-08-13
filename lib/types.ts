@@ -289,6 +289,21 @@ export type ProjectAnalysis = {
 export type KPNotes = {
   stageViewOverrides?: Record<string, Record<string, string>>;
   actViewOverrides?: Record<string, Record<string, string>>;
+  sectionNotes?: Record<string, KPNoteBlock[]>;
+};
+
+export type KPNoteBlock = {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReadingPosition = {
+  sectionKey: string;
+  page: number;
+  updatedAt: string;
 };
 
 export type Project = {
@@ -305,6 +320,7 @@ export type Project = {
   chapters: Chapter[];
   analysis: ProjectAnalysis;
   kpNotes?: KPNotes;
+  lastReadingPosition?: ReadingPosition;
 };
 
 export type ModelConfig = {
