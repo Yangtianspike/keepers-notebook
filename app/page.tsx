@@ -25,6 +25,8 @@ import { PersonDetailPanel } from "@/app/components/person-detail-panel";
 import { EditableText } from "@/app/components/editable-text";
 import { BookEditor } from "@/app/components/book-editor";
 import { AnalysisLogModal } from "@/app/components/analysis-log-modal";
+import { MarkdownDocument } from "@/app/components/markdown-document";
+import { SourceDocumentView } from "@/app/components/source-document-view";
 import {
   deleteProject,
   listProjects,
@@ -41,7 +43,6 @@ import {
   type ModelConfig,
   type Person,
   type Project,
-  type KPNoteBlock,
   type ReviewItem,
   type SourceRef,
   type TimePlace,
@@ -58,6 +59,7 @@ type View =
   | "stage-openingHook"
   | "stage-clues"
   | "acts"
+  | "source-document"
   | "settings";
 
 const stageLabels: Record<AnalysisStage, string> = {
@@ -130,6 +132,12 @@ const navGroups: Array<{
       { view: "stage-openingHook", label: "开篇钩子", short: "钩" },
       { view: "stage-clues", label: "关键线索安排", short: "索" },
       { view: "acts", label: "幕", short: "幕" },
+    ],
+  },
+  {
+    label: "原始资料",
+    items: [
+      { view: "source-document", label: "原始文档", short: "PDF" },
     ],
   },
 ];
@@ -473,6 +481,7 @@ function AnalysisView({
   onRunAll,
   onRerunAll,
   onShowLog,
+  onOpenSettings,
   onNavigate,
 }: {
   project: Project;
@@ -486,6 +495,7 @@ function AnalysisView({
   onRunAll: () => void;
   onRerunAll: () => void;
   onShowLog: () => void;
+  onOpenSettings: () => void;
   onNavigate: (view: View) => void;
 }) {
   const stages: Record<
@@ -615,6 +625,7 @@ function AnalysisView({
             tokens
           </strong>
           <small>实际用量以模型服务为准</small>
+          {!configReady && <small className="analysis-config-hint">请先完成模型连接配置后开始分析。</small>}
           <div className="analysis-header-actions">
             <button
               className="primary-button compact analysis-run-all"
@@ -652,7 +663,7 @@ function AnalysisView({
           <p>请先填写接口地址、模型名称与 API Key，并测试连接。</p>
           <button
             className="text-button"
-            onClick={() => onNavigate("settings")}
+            onClick={onOpenSettings}
           >
             前往配置 →
           </button>
@@ -1407,25 +1418,6 @@ export default function Home() {
       });
     },
   }), [activeProject, persistProject]);
-
-  const updateSectionNotes = useCallback((
-    sectionKey: string,
-    update: (notes: KPNoteBlock[]) => KPNoteBlock[],
-  ) => {
-    if (!activeProject) return;
-    const sectionNotes = activeProject.kpNotes?.sectionNotes ?? {};
-    void persistProject({
-      ...activeProject,
-      updatedAt: new Date().toISOString(),
-      kpNotes: {
-        ...activeProject.kpNotes,
-        sectionNotes: {
-          ...sectionNotes,
-          [sectionKey]: update(sectionNotes[sectionKey] ?? []),
-        },
-      },
-    });
-  }, [activeProject, persistProject]);
 
   const handleImport = async (file: File) => {
     setImporting(true);
@@ -2559,6 +2551,35 @@ export default function Home() {
     (person) => person.id === selectedActPersonId,
   );
 
+  const sectionMarkdown = activeProject?.kpNotes?.sectionMarkdown ?? {};
+  const noteMarkdown = (sectionKey: string) => (activeProject?.kpNotes?.sectionNotes?.[sectionKey] ?? [])
+    .map((note) => `\n## ${note.title}\n${note.body}`)
+    .join("\n");
+  const defaultMarkdown: Record<string, string> = activeProject ? {
+    "stage-background": `# 故事背景\n\n## 起因\n${activeProject.analysis.overview?.cause ?? ""}\n\n## 开团前的历史\n${activeProject.analysis.overview?.history ?? ""}\n\n## 当前状态\n${activeProject.analysis.overview?.currentState ?? ""}${noteMarkdown("stage-background")}`,
+    "stage-timeplace": `# 时间地点\n\n${activeProject.analysis.timePlace?.places.map((place) => `## ${place.name}\n${place.description || place.summary}`).join("\n\n") ?? ""}${noteMarkdown("stage-timeplace")}`,
+    "stage-characters": `# 核心人物\n\n${activeProject.analysis.people.map((person) => `## ${person.name}\n${person.role}\n\n- 公开身份：${person.publicIdentity || "未知"}\n- 真实身份：${person.trueIdentity || "未知"}\n- 动机：${person.motivation || "未知"}`).join("\n\n")}${noteMarkdown("stage-characters")}`,
+    "stage-characterArcs": `# 人物经历与动机\n\n${(activeProject.analysis.characterArcs ?? []).map((arc) => `## ${activeProject.analysis.people.find((person) => person.id === arc.personId)?.name ?? arc.personId}\n\n### 经历\n${arc.experience}\n\n### 动机\n${arc.motivation}`).join("\n\n")}${noteMarkdown("stage-characterArcs")}`,
+    "stage-openingHook": `# 开篇钩子\n\n${activeProject.analysis.openingHook ?? ""}${noteMarkdown("stage-openingHook")}`,
+    "stage-clues": `# 关键线索安排\n\n${activeProject.analysis.clues.map((clue) => `## ${clue.name}\n${clue.summary}\n\n- 来源：${clue.source}\n- 获取方式：${clue.acquisition || "待补充"}\n- 指向：${clue.targets.map((target) => target.label).join("、") || "待补充"}`).join("\n\n")}${noteMarkdown("stage-clues")}`,
+    ...Object.fromEntries(activeProject.analysis.acts.map((act) => [`acts:${act.id}`, `# 第 ${act.sequence} 幕 · ${act.title}\n\n${act.placeText || "地点未定"} · ${act.time || "时间未定"}\n\n## 人物\n${activeProject.analysis.people.filter((person) => act.personIds.includes(person.id)).map((person) => `- **${person.name}**：${person.role}`).join("\n")}\n\n## 线索\n${activeProject.analysis.clues.filter((clue) => act.clueIds.includes(clue.id)).map((clue) => `- **${clue.name}**：${clue.summary}`).join("\n")}\n\n## 幕描述\n${act.description}${noteMarkdown(`acts:${act.id}`)}`])),
+  } : {};
+
+  const markdownSections = Object.keys(defaultMarkdown).map((key) => ({
+    key,
+    name: key.startsWith("acts:")
+      ? activeProject?.analysis.acts.find((act) => `acts:${act.id}` === key)?.title ?? "幕"
+      : stageLabels[({
+          "stage-background": "background",
+          "stage-timeplace": "timeplace",
+          "stage-characters": "characters",
+          "stage-characterArcs": "characterArcs",
+          "stage-openingHook": "openingHook",
+          "stage-clues": "clues",
+        } as Record<string, AnalysisStage>)[key]],
+    markdown: sectionMarkdown[key] ?? defaultMarkdown[key],
+  }));
+
   const bookSections = activeProject ? [
     {
       key: "stage-background",
@@ -2651,6 +2672,12 @@ export default function Home() {
       content: <p>暂无幕内容，请先运行幕阶段分析。</p>,
     }] : []),
   ] : [];
+  const renderedBookSections = bookSections.map((section) => ({
+    ...section,
+    content: sectionMarkdown[section.key]
+      ? <MarkdownDocument markdown={sectionMarkdown[section.key]} />
+      : section.content,
+  }));
 
   if (!activeProject) {
     if (view === "settings") {
@@ -2749,15 +2776,6 @@ export default function Home() {
             <strong>{activeProject.name}</strong>
           </div>
           <div className="topbar-actions">
-            <span className={`project-status status-${activeProject.status}`}>
-              {statusLabel(activeProject.status)}
-            </span>
-            <button
-              className="primary-button compact"
-              onClick={() => setView("analysis")}
-            >
-              {activeStage ? "分析进行中…" : "分析剧本"}
-            </button>
             <button
               className="icon-button settings-trigger"
               aria-label="打开模型连接设置"
@@ -2839,32 +2857,30 @@ export default function Home() {
                 void persistProject(resetProject).then(() => runStage("background", resetProject));
               }}
               onShowLog={() => setShowAnalysisLog(true)}
+              onOpenSettings={() => setShowSettings(true)}
               onNavigate={setView}
             />
           )}
           {STAGE_VIEWS.includes(view) && actView === "detail" && (
             <>
             {bookEditing ? (
-              <div className="book-editor-shell">
-                <div className="book-edit-toggle">
-                  <button className="active" onClick={() => setBookEditing(false)}>
-                    保存并返回书页
-                  </button>
-                  <span>连续纸张编辑模式：可修改虚线内容并自由添加 KP 笔记。</span>
-                </div>
-                <BookEditor
-                  sections={bookSections}
-                  notes={activeProject.kpNotes?.sectionNotes ?? {}}
-                  onAddNote={(sectionKey, note) => updateSectionNotes(sectionKey, (notes) => [...notes, note])}
-                  onUpdateNote={(sectionKey, note) => updateSectionNotes(sectionKey, (notes) =>
-                    notes.map((candidate) => candidate.id === note.id ? note : candidate))}
-                  onDeleteNote={(sectionKey, noteId) => updateSectionNotes(sectionKey, (notes) =>
-                    notes.filter((note) => note.id !== noteId))}
-                />
-              </div>
+              <BookEditor
+                sections={markdownSections}
+                onCancel={() => setBookEditing(false)}
+                onSave={(markdown) => {
+                  void persistProject({
+                    ...activeProject,
+                    updatedAt: new Date().toISOString(),
+                    kpNotes: {
+                      ...activeProject.kpNotes,
+                      sectionMarkdown: markdown,
+                    },
+                  }).then(() => setBookEditing(false));
+                }}
+              />
             ) : (
             <StageView
-              sections={bookSections}
+              sections={renderedBookSections}
               activeSectionKey={
                 view === "acts" && selectedActId
                   ? `acts:${selectedActId}`
@@ -2873,7 +2889,6 @@ export default function Home() {
               contentKey={`${activeProject.id}:${activeProject.updatedAt}`}
               editing={bookEditing}
               onEditingChange={setBookEditing}
-              notes={activeProject.kpNotes?.sectionNotes}
               initialPage={pendingReadingPosition?.sectionKey === (
                 view === "acts" && selectedActId ? `acts:${selectedActId}` : view
               ) ? pendingReadingPosition.page : undefined}
@@ -2902,6 +2917,9 @@ export default function Home() {
             )}
             </>
           )}
+          {view === "source-document" && (
+            <SourceDocumentView project={activeProject} sourceUrl={sourceUrl} />
+          )}
           {view === "acts" && actView === "tree" && (
             <div className="content-stack">
               <div className="act-tree-reader">
@@ -2926,16 +2944,6 @@ export default function Home() {
                 />
               </div>
             </div>
-          )}
-          {view === "settings" && (
-            <SettingsView
-              config={modelConfig}
-              apiKey={apiKey}
-              testState={testState}
-              onConfig={setModelConfig}
-              onApiKey={setApiKey}
-              onTest={testConnection}
-            />
           )}
         </main>
       </section>

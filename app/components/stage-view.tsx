@@ -14,7 +14,6 @@ import {
   useRef,
   useState,
 } from "react";
-import type { KPNoteBlock } from "@/lib/types";
 
 const MOBILE_BREAKPOINT = 760;
 const TURN_DURATION = 800;
@@ -525,7 +524,6 @@ export function StageView({
   editing = false,
   onEditingChange,
   onPageChange,
-  notes = {},
   initialPage,
 }: {
   sections: StageBookSection[];
@@ -535,7 +533,6 @@ export function StageView({
   editing?: boolean;
   onEditingChange?: (editing: boolean) => void;
   onPageChange?: (sectionKey: string, page: number) => void;
-  notes?: Record<string, KPNoteBlock[]>;
   initialPage?: number;
 }) {
   const activeSectionChangeRef = useRef(onActiveSectionChange);
@@ -556,12 +553,6 @@ export function StageView({
             <strong>{section.name}</strong>
           </header>
           {section.content}
-          {(notes[section.key] ?? []).map((note) => (
-            <aside className="kp-note-read" key={note.id}>
-              <strong>{note.title}</strong>
-              <p>{note.body}</p>
-            </aside>
-          ))}
         </section>
       ))}
     </div>

@@ -1041,8 +1041,31 @@ button:disabled {
 .analysis-header-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin-top: 12px;
+}
+
+.analysis-config-hint {
+  color: var(--amber) !important;
+}
+
+.analysis-header-actions .primary-button,
+.analysis-header-actions .ghost-button {
+  min-width: 96px;
+  height: 38px;
+  border: 1px solid var(--teal);
+  border-radius: 6px;
+  background: var(--teal-dark);
+  color: #dff8f1;
+  padding: 0 14px;
+  font-weight: 700;
+}
+
+.analysis-header-actions button:disabled {
+  border-color: var(--line);
+  background: var(--panel-2);
+  color: var(--faint);
 }
 
 /* V0.7.5: keep the seven analysis stages as one readable vertical progress list. */
@@ -1129,6 +1152,16 @@ button:disabled {
   .analysis-log-modal li,
   .dashboard-recent-activity li {
     grid-template-columns: 1fr;
+  }
+
+  .markdown-editor-workspace {
+    height: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .markdown-editor-workspace > textarea,
+  .markdown-editor-preview {
+    min-height: 520px;
   }
 }
 
@@ -3796,6 +3829,107 @@ button:disabled {
   width: min(980px, 100%);
   margin: 0 auto;
 }
+
+.markdown-editor-shell {
+  width: min(1440px, 100%);
+  margin: 0 auto;
+}
+
+.markdown-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 14px 18px;
+}
+
+.markdown-editor-toolbar strong,
+.markdown-editor-toolbar span {
+  display: block;
+}
+
+.markdown-editor-toolbar span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.markdown-editor-toolbar > div:last-child,
+.markdown-editor-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.markdown-editor-tabs {
+  margin-bottom: 10px;
+}
+
+.markdown-editor-tabs button {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--muted);
+  padding: 8px 12px;
+}
+
+.markdown-editor-tabs button.active {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.markdown-editor-workspace {
+  display: grid;
+  height: calc(100vh - 245px);
+  min-height: 560px;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.markdown-editor-workspace > textarea {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #171c1e;
+  color: #d8e2df;
+  padding: 22px;
+  font: 14px/1.8 var(--mono);
+  resize: none;
+}
+
+.markdown-editor-preview {
+  height: 100%;
+  overflow: auto;
+  border: 1px solid #9a7b58;
+  border-radius: 7px;
+  background: #f5f0e1 url("/book-page-bg.png") center / cover;
+  color: #2c1810;
+  padding: 40px 54px;
+}
+
+.markdown-document { display: grid; gap: 12px; }
+.markdown-document h1,
+.markdown-document h2,
+.markdown-document h3,
+.markdown-document h4,
+.markdown-document p,
+.markdown-document ul { margin: 0; color: #2c1810; }
+.markdown-document p,
+.markdown-document li { font-size: 15px; line-height: 1.8; white-space: pre-wrap; }
+.markdown-document h1 { font-size: 28px; text-align: center; }
+.markdown-document h2 { border-bottom: 1px solid rgba(123, 33, 30, 0.28); padding-bottom: 7px; font-size: 20px; }
+.markdown-document h3 { font-size: 17px; }
+
+.source-document-view { display: grid; height: calc(100vh - 92px); grid-template-rows: auto 1fr; gap: 14px; }
+.source-document-view h2 { margin: 4px 0 0; }
+.source-document-view iframe { width: 100%; height: 100%; border: 1px solid var(--line); background: #fff; }
+.source-document-text { overflow: auto; border: 1px solid var(--line); background: var(--panel); padding: 20px; }
+.source-document-text pre { margin: 0; color: var(--text); white-space: pre-wrap; }
 
 .book-continuous-editor {
   display: grid;
