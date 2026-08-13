@@ -286,6 +286,11 @@ export type ProjectAnalysis = {
   };
 };
 
+export type KPNotes = {
+  stageViewOverrides?: Record<string, Record<string, string>>;
+  actViewOverrides?: Record<string, Record<string, string>>;
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -299,6 +304,7 @@ export type Project = {
   pages: DocumentPage[];
   chapters: Chapter[];
   analysis: ProjectAnalysis;
+  kpNotes?: KPNotes;
 };
 
 export type ModelConfig = {

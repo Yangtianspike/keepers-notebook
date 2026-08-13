@@ -1034,6 +1034,88 @@ button:disabled {
   padding: 0;
 }
 
+.analysis-run-all {
+  margin-top: 12px;
+}
+
+/* V0.7.5: keep the seven analysis stages as one readable vertical progress list. */
+.pipeline.pipeline-major {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.pipeline-major .pipeline-card {
+  min-height: 0;
+  border-radius: 7px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.pipeline-major .pipeline-card:hover,
+.pipeline-major .pipeline-card:focus-visible {
+  border-color: var(--teal);
+  outline: none;
+}
+
+.pipeline-major .pipeline-body {
+  display: grid;
+  min-height: 92px;
+  grid-template-columns: 42px minmax(170px, 0.75fr) minmax(260px, 1.4fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+}
+
+.pipeline-major .pipeline-title,
+.pipeline-major .pipeline-actions {
+  margin-top: 0;
+}
+
+.pipeline-major .pipeline-body > p {
+  margin: 0;
+}
+
+.pipeline-state-icon {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--faint);
+  font-weight: 800;
+}
+
+.pipeline-complete .pipeline-state-icon {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.pipeline-error .pipeline-state-icon {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.pipeline-state-icon .analysis-loading-spinner {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 760px) {
+  .pipeline-major .pipeline-body {
+    grid-template-columns: 34px 1fr auto;
+  }
+
+  .pipeline-major .pipeline-body > p {
+    grid-column: 2 / -1;
+  }
+
+  .pipeline-major .pipeline-actions {
+    grid-column: 2 / -1;
+  }
+}
+
 .analysis-log {
   border: 1px solid var(--line);
   background: var(--panel);
@@ -3683,6 +3765,59 @@ button:disabled {
   flex-direction: column;
   align-items: center;
   margin: 0 auto;
+}
+
+.book-edit-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-bottom: 10px;
+}
+
+.book-edit-toggle button {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.book-edit-toggle button.active {
+  border-color: #d9a856;
+  color: #f4d69b;
+}
+
+.book-edit-toggle span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
+.editable-text {
+  cursor: text;
+  outline: 1px dashed rgba(123, 33, 30, 0.38);
+  outline-offset: 3px;
+}
+
+.editable-text:hover {
+  outline-style: solid;
+  background: rgba(255, 252, 239, 0.48);
+}
+
+.editable-text-input {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  border: 1px solid #7b211e;
+  border-radius: 4px;
+  background: rgba(255, 252, 239, 0.94);
+  color: #2c1810;
+  padding: 8px;
+  font: inherit;
+  line-height: 1.8;
+  resize: vertical;
 }
 
 .stage-view,

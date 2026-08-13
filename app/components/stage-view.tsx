@@ -84,6 +84,11 @@ export type PageSliceResult = {
   pageBreaks: number[];
 };
 
+type BlockMeasurement = {
+  height: number;
+  protectedRanges: Array<{ top: number; bottom: number; splittable: boolean }>;
+};
+
 type ElementWithChildren = ReactElement<{ children?: ReactNode }>;
 
 function contentBlocks(content: ReactNode) {
@@ -100,7 +105,7 @@ export function measureAndSlice(
   content: ReactNode,
   pageHeight: number,
   pageWidth: number,
-  measuredHeights: number[] = [],
+  measuredHeights: Array<number | BlockMeasurement> = [],
 ): PageSliceResult {
   void pageWidth;
   const { root, blocks } = contentBlocks(content);
@@ -126,7 +131,13 @@ export function measureAndSlice(
       : undefined;
 
   blocks.forEach((block, index) => {
-    const blockHeight = measuredHeights[index] ?? pageHeight;
+    const measurement = measuredHeights[index] ?? pageHeight;
+    const blockHeight = typeof measurement === "number"
+      ? measurement
+      : measurement.height;
+    const protectedRanges = typeof measurement === "number"
+      ? []
+      : measurement.protectedRanges;
     const blockStageKey = stageKeyFor(block);
     const previousStageKey = stageKeyFor(currentBlocks[0]);
 
@@ -142,10 +153,22 @@ export function measureAndSlice(
 
     if (blockHeight > pageHeight) {
       finishPage();
-      const sliceCount = Math.ceil(blockHeight / pageHeight);
-      for (let sliceIndex = 0; sliceIndex < sliceCount; sliceIndex += 1) {
-        const offset = sliceIndex * pageHeight;
-        const sliceHeight = Math.min(pageHeight, blockHeight - offset);
+      let offset = 0;
+      let sliceIndex = 0;
+      while (offset < blockHeight) {
+        const naturalEnd = Math.min(blockHeight, offset + pageHeight);
+        const crossingRange = protectedRanges.find(
+          (range) => range.top > offset && range.top < naturalEnd && range.bottom > naturalEnd,
+        );
+        const containingRange = protectedRanges.find(
+          (range) => range.top <= offset && range.bottom > naturalEnd,
+        );
+        const sliceEnd = crossingRange && crossingRange.top - offset >= 80
+          ? crossingRange.top
+          : containingRange && !containingRange.splittable
+            ? containingRange.bottom
+            : naturalEnd;
+        const sliceHeight = sliceEnd - offset;
         pageBreaks.push(index);
         pageGroups.push([
           <div
@@ -157,6 +180,8 @@ export function measureAndSlice(
             <div style={{ transform: `translateY(-${offset}px)` }}>{block}</div>
           </div>,
         ]);
+        offset = sliceEnd;
+        sliceIndex += 1;
       }
       currentStart = index + 1;
       return;
@@ -304,12 +329,36 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
     measure.style.overflow = "hidden";
     const root = measure.firstElementChild;
     const nodes = root ? Array.from(root.children) : Array.from(measure.children);
-    const heights = nodes.map((node) => {
+    const heights = nodes.map((node): BlockMeasurement => {
       const element = node as HTMLElement;
       const styles = window.getComputedStyle(element);
-      return element.offsetHeight +
+      const height = element.offsetHeight +
         Number.parseFloat(styles.marginTop || "0") +
         Number.parseFloat(styles.marginBottom || "0");
+      const rootRect = element.getBoundingClientRect();
+      const protectedElements = Array.from(element.querySelectorAll<HTMLElement>(
+        ".stage-inset-card, .act-person-card, .act-clue-card, .act-event-list article, .act-branch-list button",
+      ));
+      const headings = Array.from(element.querySelectorAll<HTMLElement>("h1, h2, h3, h4"));
+      const protectedRanges = protectedElements.map((protectedElement) => {
+        const rect = protectedElement.getBoundingClientRect();
+        let top = rect.top - rootRect.top;
+        const precedingHeading = headings
+          .filter((heading) => heading.getBoundingClientRect().bottom <= rect.top)
+          .at(-1);
+        if (precedingHeading) {
+          const headingRect = precedingHeading.getBoundingClientRect();
+          if (rect.top - headingRect.bottom < 80) {
+            top = headingRect.top - rootRect.top;
+          }
+        }
+        return {
+          top: Math.max(0, top),
+          bottom: Math.min(height, rect.bottom - rootRect.top),
+          splittable: rect.height > PAGE_HEIGHT,
+        };
+      });
+      return { height, protectedRanges };
     });
     const result = measureAndSlice(content, PAGE_HEIGHT, PAGE_WIDTH, heights);
     destroyTurnBook();
@@ -465,11 +514,15 @@ export function StageView({
   activeSectionKey,
   contentKey,
   onActiveSectionChange,
+  editing = false,
+  onEditingChange,
 }: {
   sections: StageBookSection[];
   activeSectionKey: string;
   contentKey?: unknown;
   onActiveSectionChange: (sectionKey: string) => void;
+  editing?: boolean;
+  onEditingChange?: (editing: boolean) => void;
 }) {
   const activeSectionChangeRef = useRef(onActiveSectionChange);
   useEffect(() => {
@@ -570,6 +623,23 @@ export function StageView({
 
   return (
     <div className="book-reader">
+      {onEditingChange && (
+        <div className="book-edit-toggle">
+          <button
+            className={editing ? "active" : ""}
+            type="button"
+            onClick={() => {
+              if (editing && document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur();
+              }
+              onEditingChange(!editing);
+            }}
+          >
+            {editing ? "完成编辑" : "编辑书页"}
+          </button>
+          {editing && <span>点击虚线文字进行修改，失焦保存，Esc 取消。</span>}
+        </div>
+      )}
       <div className="book-measure" ref={measureRef}>{content}</div>
       <TurnBookPages
         key={bookRevision}

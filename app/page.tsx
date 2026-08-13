@@ -22,6 +22,7 @@ import {
 import { SettingsModal } from "@/app/components/settings-modal";
 import { StageView } from "@/app/components/stage-view";
 import { PersonDetailPanel } from "@/app/components/person-detail-panel";
+import { EditableText } from "@/app/components/editable-text";
 import {
   deleteProject,
   listProjects,
@@ -467,6 +468,7 @@ function AnalysisView({
   onEditReview,
   onPause,
   onRun,
+  onRunAll,
   onNavigate,
 }: {
   project: Project;
@@ -478,6 +480,7 @@ function AnalysisView({
   onEditReview: (item: ReviewItem, changes: Partial<ReviewItem>) => void;
   onPause: () => void;
   onRun: (stage: AnalysisStage) => void;
+  onRunAll: () => void;
   onNavigate: (view: View) => void;
 }) {
   const stages: Record<
@@ -559,7 +562,6 @@ function AnalysisView({
       requires?: AnalysisStage;
       target: View;
     },
-    compact = false,
   ) => {
     const state = project.analysis.stages[stage.id] ?? {
       status: "idle" as const,
@@ -569,7 +571,7 @@ function AnalysisView({
       project.analysis.stages[stage.requires].status !== "complete";
     return (
       <section
-        className={`${compact ? "pipeline-substage" : "pipeline-body"} pipeline-${state.status}`}
+        className={`pipeline-body pipeline-${state.status}${activeStage === stage.id ? " pipeline-running" : ""}`}
         key={stage.id}
       >
         <div className="pipeline-number">{stage.number}</div>
@@ -580,10 +582,26 @@ function AnalysisView({
         <p>{stage.description}</p>
         {state.error && <p className="inline-error">{state.error}</p>}
         <div className="pipeline-actions">
+          <span className="pipeline-state-icon" aria-label={stateLabel(state.status)}>
+            {activeStage === stage.id ? (
+              <span className="analysis-loading-spinner" />
+            ) : state.status === "complete" ? (
+              "✓"
+            ) : state.status === "error" ? (
+              "!"
+            ) : state.status === "paused" ? (
+              "…"
+            ) : (
+              "—"
+            )}
+          </span>
           <button
             className="primary-button compact"
             disabled={!configReady || blocked || activeStage !== null}
-            onClick={() => onRun(stage.id)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRun(stage.id);
+            }}
           >
             {activeStage === stage.id
               ? "正在分析…"
@@ -594,7 +612,10 @@ function AnalysisView({
           {state.status === "complete" && (
             <button
               className="text-button"
-              onClick={() => onNavigate(stage.target)}
+              onClick={(event) => {
+                event.stopPropagation();
+                onNavigate(stage.target);
+              }}
             >
               查看结果
             </button>
@@ -618,6 +639,13 @@ function AnalysisView({
             tokens
           </strong>
           <small>实际用量以模型服务为准</small>
+          <button
+            className="primary-button compact analysis-run-all"
+            disabled={!configReady || activeStage !== null}
+            onClick={onRunAll}
+          >
+            {activeStage ? "分析进行中…" : "分析剧本"}
+          </button>
         </div>
       </header>
 
@@ -645,12 +673,21 @@ function AnalysisView({
 
       <div className="pipeline pipeline-major">
         {STAGE_ORDER.map((stage) => (
-          <article
+          <section
             className={`pipeline-card pipeline-${project.analysis.stages[stage]?.status ?? "idle"}`}
             key={stage}
+            role="button"
+            tabIndex={0}
+            onClick={() => onNavigate(stages[stage].target)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onNavigate(stages[stage].target);
+              }
+            }}
           >
             {renderStage(stages[stage])}
-          </article>
+          </section>
         ))}
       </div>
       {activeStage && streamPreview && (
@@ -744,9 +781,16 @@ function AnalysisView({
 function BackgroundStageView({
   project,
   onOpenSource,
+  editing,
+  override,
 }: {
   project: Project;
   onOpenSource: (source: SourceRef) => void;
+  editing: boolean;
+  override: (key: string, fallback: string) => {
+    text: string;
+    onChange: (value: string) => void;
+  };
 }): ReactNode {
   const overview = project.analysis.overview;
   if (!overview) {
@@ -756,22 +800,22 @@ function BackgroundStageView({
     <>
       <section>
         <h2>起因</h2>
-        <p>{overview.cause}</p>
+        <EditableText as="p" editing={editing} {...override("cause", overview.cause)} />
       </section>
       <section>
         <h2>开团前的历史</h2>
-        <p>{overview.history}</p>
+        <EditableText as="p" editing={editing} {...override("history", overview.history)} />
       </section>
       <section>
         <h2>当前状态</h2>
-        <p>{overview.currentState}</p>
+        <EditableText as="p" editing={editing} {...override("currentState", overview.currentState)} />
       </section>
       <section>
         <h2>各方计划</h2>
         {overview.plans.map((plan, index) => (
           <article className="stage-inset-card" key={`${plan.faction}-${index}`}>
-            <h3>{plan.faction}</h3>
-            <p>{plan.plan}</p>
+            <EditableText as="h3" editing={editing} {...override(`plan:${index}:faction`, plan.faction)} />
+            <EditableText as="p" editing={editing} {...override(`plan:${index}:plan`, plan.plan)} />
           </article>
         ))}
       </section>
@@ -802,7 +846,7 @@ function BackgroundStageView({
   );
 }
 
-function TimePlaceStageView({ project }: { project: Project }): ReactNode {
+function TimePlaceStageView({ project, editing, override }: StageContentProps): ReactNode {
   const timePlace = project.analysis.timePlace;
   if (!timePlace) {
     return <EmptyState title="尚无时间地点" description="请先完成时间地点分析。" />;
@@ -814,8 +858,8 @@ function TimePlaceStageView({ project }: { project: Project }): ReactNode {
         <div className="stage-card-grid">
           {timePlace.places.map((place) => (
             <article className="stage-inset-card" key={place.id}>
-              <h3>{place.name}</h3>
-              <p>{place.description || place.summary}</p>
+              <EditableText as="h3" editing={editing} {...override(`place:${place.id}:name`, place.name)} />
+              <EditableText as="p" editing={editing} {...override(`place:${place.id}:description`, place.description || place.summary)} />
               {place.regionHint && <small>{place.regionHint}</small>}
             </article>
           ))}
@@ -825,7 +869,16 @@ function TimePlaceStageView({ project }: { project: Project }): ReactNode {
   );
 }
 
-function CharactersStageView({ project }: { project: Project }): ReactNode {
+type StageContentProps = {
+  project: Project;
+  editing: boolean;
+  override: (key: string, fallback: string) => {
+    text: string;
+    onChange: (value: string) => void;
+  };
+};
+
+function CharactersStageView({ project, editing, override }: StageContentProps): ReactNode {
   const groups: Array<{ key: Person["importance"]; label: string }> = [
     { key: "core", label: "核心人物" },
     { key: "important", label: "重要人物" },
@@ -847,15 +900,15 @@ function CharactersStageView({ project }: { project: Project }): ReactNode {
             <div className="stage-card-grid">
               {members.map((person) => (
                 <article className="stage-inset-card" key={person.id}>
-                  <h3>{person.name}</h3>
-                  <p>{person.role}</p>
+                  <EditableText as="h3" editing={editing} {...override(`person:${person.id}:name`, person.name)} />
+                  <EditableText as="p" editing={editing} {...override(`person:${person.id}:role`, person.role)} />
                   <dl>
                     <dt>公开身份</dt>
-                    <dd>{person.publicIdentity || "未知"}</dd>
+                    <EditableText as="dd" editing={editing} {...override(`person:${person.id}:publicIdentity`, person.publicIdentity || "未知")} />
                     <dt>真实身份</dt>
-                    <dd>{person.trueIdentity || "未知"}</dd>
+                    <EditableText as="dd" editing={editing} {...override(`person:${person.id}:trueIdentity`, person.trueIdentity || "未知")} />
                     <dt>动机</dt>
-                    <dd>{person.motivation || "未知"}</dd>
+                    <EditableText as="dd" editing={editing} {...override(`person:${person.id}:motivation`, person.motivation || "未知")} />
                   </dl>
                 </article>
               ))}
@@ -867,7 +920,7 @@ function CharactersStageView({ project }: { project: Project }): ReactNode {
   );
 }
 
-function CharacterArcsStageView({ project }: { project: Project }): ReactNode {
+function CharacterArcsStageView({ project, editing, override }: StageContentProps): ReactNode {
   const arcs = project.analysis.characterArcs ?? [];
   if (arcs.length === 0) {
     return <EmptyState title="尚无人物经历" description="请先完成人物经历与动机分析。" />;
@@ -881,22 +934,22 @@ function CharacterArcsStageView({ project }: { project: Project }): ReactNode {
               ?.name || arc.personId}
           </h2>
           <h3>经历</h3>
-          <p>{arc.experience}</p>
+          <EditableText as="p" editing={editing} {...override(`arc:${arc.personId}:experience`, arc.experience)} />
           <h3>动机</h3>
-          <p>{arc.motivation}</p>
+          <EditableText as="p" editing={editing} {...override(`arc:${arc.personId}:motivation`, arc.motivation)} />
         </section>
       ))}
     </>
   );
 }
 
-function OpeningHookStageView({ project }: { project: Project }): ReactNode {
+function OpeningHookStageView({ project, editing, override }: StageContentProps): ReactNode {
   return (
-    <p>{project.analysis.openingHook || "请先完成开篇钩子分析。"}</p>
+    <EditableText as="p" editing={editing} {...override("openingHook", project.analysis.openingHook || "请先完成开篇钩子分析。")} />
   );
 }
 
-function CluesStageView({ project }: { project: Project }): ReactNode {
+function CluesStageView({ project, editing, override }: StageContentProps): ReactNode {
   const groups: Array<{ key: Clue["importance"]; label: string }> = [
     { key: "key", label: "关键线索" },
     { key: "secondary", label: "次要线索" },
@@ -918,13 +971,13 @@ function CluesStageView({ project }: { project: Project }): ReactNode {
             <div className="stage-card-grid">
               {clues.map((clue) => (
                 <article className="stage-inset-card" key={clue.id}>
-                  <h3>{clue.name}</h3>
-                  <p>{clue.summary}</p>
+                  <EditableText as="h3" editing={editing} {...override(`clue:${clue.id}:name`, clue.name)} />
+                  <EditableText as="p" editing={editing} {...override(`clue:${clue.id}:summary`, clue.summary)} />
                   <dl>
                     <dt>来源</dt>
-                    <dd>{clue.source}</dd>
+                    <EditableText as="dd" editing={editing} {...override(`clue:${clue.id}:source`, clue.source)} />
                     <dt>获取方式</dt>
-                    <dd>{clue.acquisition || "待补充"}</dd>
+                    <EditableText as="dd" editing={editing} {...override(`clue:${clue.id}:acquisition`, clue.acquisition || "待补充")} />
                     <dt>指向</dt>
                     <dd>
                       {clue.targets.map((target) => target.label).join("、") ||
@@ -1257,6 +1310,7 @@ export default function Home() {
   const [activeStage, setActiveStage] = useState<AnalysisStage | null>(null);
   const [wizardStage, setWizardStage] = useState<AnalysisStage | null>(null);
   const [isContinuing, setIsContinuing] = useState(false);
+  const [bookEditing, setBookEditing] = useState(false);
   const [streamPreview, setStreamPreview] = useState("");
   const analysisAbortRef = useRef<AbortController | null>(null);
   const [modelConfig, setModelConfig] = useState<ModelConfig>(() => {
@@ -1345,6 +1399,28 @@ export default function Home() {
     });
     await saveProject(project);
   }, []);
+
+  const stageOverride = useCallback((sectionKey: string, key: string, fallback: string) => ({
+    text: activeProject?.kpNotes?.stageViewOverrides?.[sectionKey]?.[key] ?? fallback,
+    onChange: (value: string) => {
+      if (!activeProject) return;
+      const stageViewOverrides = activeProject.kpNotes?.stageViewOverrides ?? {};
+      void persistProject({
+        ...activeProject,
+        updatedAt: new Date().toISOString(),
+        kpNotes: {
+          ...activeProject.kpNotes,
+          stageViewOverrides: {
+            ...stageViewOverrides,
+            [sectionKey]: {
+              ...stageViewOverrides[sectionKey],
+              [key]: value,
+            },
+          },
+        },
+      });
+    },
+  }), [activeProject, persistProject]);
 
   const handleImport = async (file: File) => {
     setImporting(true);
@@ -2630,6 +2706,12 @@ export default function Home() {
               onEditReview={editReview}
               onPause={() => analysisAbortRef.current?.abort()}
               onRun={runStage}
+              onRunAll={() => {
+                const firstIncomplete = STAGE_ORDER.find(
+                  (stage) => activeProject.analysis.stages[stage].status !== "complete",
+                ) ?? "background";
+                void runStage(firstIncomplete);
+              }}
               onNavigate={setView}
             />
           )}
@@ -2642,32 +2724,54 @@ export default function Home() {
                   content: BackgroundStageView({
                     project: activeProject,
                     onOpenSource: setSourceRef,
+                    editing: bookEditing,
+                    override: (key, fallback) => stageOverride("stage-background", key, fallback),
                   }),
                 },
                 {
                   key: "stage-timeplace",
                   name: "时间地点",
-                  content: TimePlaceStageView({ project: activeProject }),
+                  content: TimePlaceStageView({
+                    project: activeProject,
+                    editing: bookEditing,
+                    override: (key, fallback) => stageOverride("stage-timeplace", key, fallback),
+                  }),
                 },
                 {
                   key: "stage-characters",
                   name: "核心人物",
-                  content: CharactersStageView({ project: activeProject }),
+                  content: CharactersStageView({
+                    project: activeProject,
+                    editing: bookEditing,
+                    override: (key, fallback) => stageOverride("stage-characters", key, fallback),
+                  }),
                 },
                 {
                   key: "stage-characterArcs",
                   name: "人物经历与动机",
-                  content: CharacterArcsStageView({ project: activeProject }),
+                  content: CharacterArcsStageView({
+                    project: activeProject,
+                    editing: bookEditing,
+                    override: (key, fallback) => stageOverride("stage-characterArcs", key, fallback),
+                  }),
                 },
                 {
                   key: "stage-openingHook",
                   name: "开篇钩子",
-                  content: OpeningHookStageView({ project: activeProject }),
+                  content: OpeningHookStageView({
+                    project: activeProject,
+                    editing: bookEditing,
+                    override: (key, fallback) => stageOverride("stage-openingHook", key, fallback),
+                  }),
                 },
                 {
                   key: "stage-clues",
                   name: "关键线索安排",
-                  content: CluesStageView({ project: activeProject }),
+                  content: CluesStageView({
+                    project: activeProject,
+                    editing: bookEditing,
+                    override: (key, fallback) => stageOverride("stage-clues", key, fallback),
+                  }),
                 },
                 ...activeProject.analysis.acts
                   .slice()
@@ -2729,6 +2833,8 @@ export default function Home() {
                   : view
               }
               contentKey={`${activeProject.id}:${activeProject.updatedAt}`}
+              editing={bookEditing}
+              onEditingChange={setBookEditing}
               onActiveSectionChange={(sectionKey) => {
                 if (sectionKey.startsWith("acts:")) {
                   setSelectedActId(sectionKey.slice("acts:".length));
