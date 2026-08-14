@@ -205,11 +205,23 @@ export function measureAndSlice(
     }
 
     if (blockHeight > pageHeight) {
-      finishPage();
+      const headingPrefix = currentBlocks.length > 0 && currentBlocks.every(keepsWithNext)
+        ? [...currentBlocks]
+        : [];
+      const headingPrefixHeight = headingPrefix.length > 0 ? accumulatedHeight : 0;
+      const prefixStart = currentStart;
+      if (headingPrefix.length === 0) finishPage();
+      else {
+        currentBlocks = [];
+        accumulatedHeight = 0;
+      }
       let offset = 0;
       let sliceIndex = 0;
       while (offset < blockHeight) {
-        const naturalEnd = Math.min(blockHeight, offset + pageHeight);
+        const availableHeight = sliceIndex === 0
+          ? Math.max(160, pageHeight - headingPrefixHeight)
+          : pageHeight;
+        const naturalEnd = Math.min(blockHeight, offset + availableHeight);
         const crossingRange = protectedRanges.find(
           (range) => range.top > offset && range.top < naturalEnd && range.bottom > naturalEnd,
         );
@@ -222,8 +234,9 @@ export function measureAndSlice(
             ? containingRange.bottom
             : naturalEnd;
         const sliceHeight = sliceEnd - offset;
-        pageBreaks.push(index);
+        pageBreaks.push(sliceIndex === 0 && headingPrefix.length > 0 ? prefixStart : index);
         pageGroups.push([
+          ...(sliceIndex === 0 ? headingPrefix : []),
           <div
             className="book-block-slice"
             data-stage-key={blockStageKey}

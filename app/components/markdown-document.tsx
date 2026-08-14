@@ -266,6 +266,12 @@ function CharacterCardRenderer({
     if (value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) return [];
     return [{ label, value: Array.isArray(value) ? value.join("、") : String(value) }];
   });
+  const leadRow = importance === "core"
+    ? fieldRows.find((row) => row.label === "摘要")
+    : undefined;
+  const profileRows = leadRow
+    ? fieldRows.filter((row) => row !== leadRow)
+    : fieldRows;
   const visibleStats = COC_STAT_LABELS.flatMap(([key, label]) => {
     const value = stats?.[key];
     if (value === undefined || typeof value === "object") return [];
@@ -307,9 +313,12 @@ function CharacterCardRenderer({
           {entity.source === "source" ? "剧本资料" : entity.source === "inference" ? "模型推断" : "KP 创建"}
         </span>
       </header>
-      {importance !== "minor" && fieldRows.length > 0 && (
+      {leadRow && (
+        <p className="character-card-lead"><strong>{leadRow.label}</strong><span>{leadRow.value}</span></p>
+      )}
+      {importance !== "minor" && profileRows.length > 0 && (
         <dl className="character-profile-grid">
-          {fieldRows.map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}
+          {profileRows.map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}
         </dl>
       )}
       {importance !== "minor" && visibleStats.length > 0 && (
