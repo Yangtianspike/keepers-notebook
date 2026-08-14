@@ -22,6 +22,16 @@ const project = {
     clues: [{ id: "ledger", name: "账本", summary: "被涂改的账本", source: "咖啡馆", importance: "key", targets: [], provenance: "source" }],
     places: [],
     openingHookDetails: { readAloud: "雨落在窗沿。", initialSituation: "调查员同处咖啡馆。" },
+    personRelations: [{
+      id: "core-leads-minor",
+      sourcePersonId: "core",
+      targetPersonId: "minor",
+      label: "指挥调查",
+      summary: "林墨要求老张监视咖啡馆。",
+      importance: "primary",
+      provenance: "source",
+      sources: [{ page: 12, quote: "林墨让老张留在门口" }],
+    }],
     acts: [{
       id: "act-1",
       title: "咖啡馆",
@@ -55,6 +65,8 @@ test("character template stores entity references instead of duplicated fields",
   const markdown = buildCharacterMarkdown(project);
   assert.match(markdown, /person:core/);
   assert.match(markdown, /person:minor/);
+  assert.equal(markdown.match(/:::character-card/g)?.length, 1);
+  assert.match(markdown, /## 全部人物索引/);
   assert.doesNotMatch(markdown, /追查真相|自保/);
 });
 
@@ -70,11 +82,14 @@ test("opening and act templates use structured analysis with legacy fallbacks", 
   assert.match(act, /## 本幕剧情/);
 });
 
-test("entity appearances and inferred same-act relations cover the whole act graph", () => {
+test("entity appearances use semantic person relations without same-act labels", () => {
   const entities = buildProjectEntities(project);
   const core = entities.find((entity) => entity.ref === "person:core");
   assert.deepEqual(core?.appearances.map((appearance) => appearance.sectionKey), ["stage-characters", "acts:act-1"]);
-  const relatedRefs = getRelatedEntities("person:core", project).map((item) => item.entity.ref);
+  const related = getRelatedEntities("person:core", project);
+  const relatedRefs = related.map((item) => item.entity.ref);
   assert.ok(relatedRefs.includes("person:minor"));
   assert.ok(relatedRefs.includes("clue:ledger"));
+  assert.equal(related.find((item) => item.entity.ref === "person:minor")?.relation.label, "指挥调查");
+  assert.ok(!related.some((item) => item.entity.kind === "person" && item.relation.label?.includes("同见于")));
 });

@@ -37,7 +37,7 @@ type EntityWindowProps = {
   onClose: () => void;
   onFocus: () => void;
   onMove: (x: number, y: number) => void;
-  onEntityRefChange: (ref: string) => void;
+  onOpenRelated: (ref: string) => void;
   onJump: (entity: EntityCard) => void;
   onJumpToAppearance: (entity: EntityCard, sectionKey: string) => void;
   onSave: (entity: EntityCard, override: EntityOverrides) => void;
@@ -56,21 +56,19 @@ export function EntityWindow({
   onClose,
   onFocus,
   onMove,
-  onEntityRefChange,
+  onOpenRelated,
   onJump,
   onJumpToAppearance,
   onSave,
   onCreate,
   onDelete,
 }: EntityWindowProps) {
-  const [history, setHistory] = useState([initialRef]);
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createKind, setCreateKind] = useState<EntityKind>("person");
   const [createName, setCreateName] = useState("");
   const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
-  const currentRef = history.at(-1) ?? initialRef;
-  const entity = entities.find((candidate) => candidate.ref === currentRef);
+  const entity = entities.find((candidate) => candidate.ref === initialRef);
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
@@ -120,18 +118,7 @@ export function EntityWindow({
             offsetY: event.clientY - y,
           };
         }}>
-          <button
-            className="entity-back"
-            type="button"
-            disabled={history.length === 1}
-            onClick={() => setHistory((current) => {
-              const next = current.slice(0, -1);
-              onEntityRefChange(next.at(-1) ?? initialRef);
-              return next;
-            })}
-          >
-            ← 返回
-          </button>
+          <span aria-hidden="true" />
           <div>
             <small>{ENTITY_KIND_LABELS[entity.kind]} · {entity.source === "keeper" ? "KP 创建" : entity.source === "inference" ? "模型推断" : "剧本资料"}</small>
             <h2>{entityName(entity)}</h2>
@@ -168,14 +155,16 @@ export function EntityWindow({
                 <input value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="实体名称" />
                 <button type="button" disabled={!createName.trim()} onClick={() => {
                   const created = onCreate(createKind, createName.trim(), entity);
-                  setHistory((current) => [...current, created.ref]);
-                  onEntityRefChange(created.ref);
+                  onOpenRelated(created.ref);
                   setCreateName("");
                   setCreating(false);
                 }}>创建并关联</button>
               </div>
             )}
             <EntityReadView entity={entity} />
+            {entity.kind === "person" && (
+              <PersonTrajectory entity={entity} project={project} />
+            )}
             <section className="entity-appearances">
               <h3>出现位置</h3>
               <div>
@@ -200,12 +189,18 @@ export function EntityWindow({
                 <div className="entity-related-list">
                   {items.map((item) => (
                     <button type="button" key={item.relation.id} onClick={() => {
-                      setHistory((current) => [...current, item.entity.ref]);
-                      onEntityRefChange(item.entity.ref);
+                      onOpenRelated(item.entity.ref);
                       setEditing(false);
                     }}>
                       <strong>{entityName(item.entity)}</strong>
-                      <span>{item.relation.label || ENTITY_KIND_LABELS[item.entity.kind]}</span>
+                      <span>{
+                        entity.kind === "person" && item.entity.kind === "person" && item.relation.label
+                          ? item.relation.sourceRef === entity.ref
+                            ? `${item.relation.label} →`
+                            : `← ${item.relation.label}`
+                          : item.relation.label || ENTITY_KIND_LABELS[item.entity.kind]
+                      }</span>
+                      {item.relation.summary && <em>{item.relation.summary}</em>}
                     </button>
                   ))}
                 </div>
@@ -215,6 +210,41 @@ export function EntityWindow({
           {related.length === 0 && <div className="entity-empty-related"><p>暂无相关实体。</p><button type="button" onClick={() => setCreating(true)}>新建关联实体</button></div>}
         </section>
     </article>
+  );
+}
+
+function PersonTrajectory({ entity, project }: { entity: EntityCard; project: Project }) {
+  const arc = project.analysis.characterArcs?.find(
+    (candidate) => candidate.personId === entity.id,
+  );
+  const actions = [...project.analysis.acts]
+    .sort((left, right) => left.sequence - right.sequence)
+    .flatMap((act) => {
+      const action = act.personActions?.find(
+        (candidate) => candidate.personId === entity.id,
+      );
+      if (!action || action.provenance === "none" || !action.summary.trim()) return [];
+      return [{ act, action }];
+    });
+  if (!arc?.experience && actions.length === 0) return null;
+  return (
+    <section className="entity-person-trajectory">
+      <h3>剧本行动轨迹</h3>
+      {arc?.experience && (
+        <p className="entity-trajectory-overview">{arc.experience}</p>
+      )}
+      {actions.length > 0 && (
+        <ol>
+          {actions.map(({ act, action }) => (
+            <li key={act.id}>
+              <strong>第 {act.sequence} 幕 · {act.title}</strong>
+              <span>{action.summary}</span>
+              <small>{action.provenance === "source" ? "剧本资料" : "模型归纳"}</small>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }
 

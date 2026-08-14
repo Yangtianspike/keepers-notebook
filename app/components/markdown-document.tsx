@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, type ReactNode, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ENTITY_KIND_LABELS,
   entityAliases,
@@ -30,6 +31,7 @@ type MarkdownDocumentProps = {
   markdown: string;
   entities?: EntityCard[];
   onEntityAction?: (action: MarkdownEntityAction) => void;
+  sectionKey?: string;
 };
 
 export function parseMarkdownBlocks(markdown: string): MarkdownBlock[] {
@@ -61,22 +63,72 @@ function InlineEntityLink({
   onEntityAction?: MarkdownDocumentProps["onEntityAction"];
 }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLSpanElement>(null);
+  const [menuPosition, setMenuPosition] = useState({ left: 8, top: 8 });
+
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current || !menuRef.current) return;
+    const anchor = triggerRef.current.getBoundingClientRect();
+    const menu = menuRef.current.getBoundingClientRect();
+    const gap = 7;
+    const viewportPadding = 8;
+    const left = anchor.left + menu.width <= window.innerWidth - viewportPadding
+      ? anchor.left
+      : Math.max(viewportPadding, anchor.right - menu.width);
+    const top = anchor.bottom + gap + menu.height <= window.innerHeight - viewportPadding
+      ? anchor.bottom + gap
+      : Math.max(viewportPadding, anchor.top - menu.height - gap);
+    setMenuPosition({ left, top });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event?: Event) => {
+      const target = event?.target as Node | null;
+      if (
+        target &&
+        (triggerRef.current?.contains(target) || menuRef.current?.contains(target))
+      ) {
+        return;
+      }
+      setOpen(false);
+    };
+    const closeForViewportChange = () => setOpen(false);
+    document.addEventListener("pointerdown", close, true);
+    window.addEventListener("scroll", closeForViewportChange, true);
+    window.addEventListener("resize", closeForViewportChange);
+    window.addEventListener("pagehide", closeForViewportChange);
+    return () => {
+      document.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("scroll", closeForViewportChange, true);
+      window.removeEventListener("resize", closeForViewportChange);
+      window.removeEventListener("pagehide", closeForViewportChange);
+    };
+  }, [open]);
+
+  const triggerRect = () => triggerRef.current?.getBoundingClientRect();
   return (
     <span className={`entity-inline entity-${entity.kind}`}>
-      <button type="button" onClick={() => setOpen((value) => !value)}>{children}</button>
-      {open && (
-        <span className="entity-inline-menu">
+      <button ref={triggerRef} type="button" onClick={() => setOpen((value) => !value)}>{children}</button>
+      {open && typeof document !== "undefined" && createPortal(
+        <span
+          className="entity-inline-menu entity-inline-menu-portal"
+          ref={menuRef}
+          style={menuPosition}
+        >
           <strong>{entityName(entity)}</strong>
           <small>{ENTITY_KIND_LABELS[entity.kind]}</small>
-          {behavior.jump && <button type="button" onClick={(event) => {
+          {behavior.jump && <button type="button" onClick={() => {
             setOpen(false);
-            onEntityAction?.({ entity, behavior, action: "jump", anchorRect: event.currentTarget.getBoundingClientRect() });
+            onEntityAction?.({ entity, behavior, action: "jump", anchorRect: triggerRect() });
           }}>跳转到 {entityName(entity)}</button>}
-          {behavior.preview && <button type="button" onClick={(event) => {
+          {behavior.preview && <button type="button" onClick={() => {
             setOpen(false);
-            onEntityAction?.({ entity, behavior, action: "preview", anchorRect: event.currentTarget.getBoundingClientRect() });
+            onEntityAction?.({ entity, behavior, action: "preview", anchorRect: triggerRect() });
           }}>打开资料窗口</button>}
-        </span>
+        </span>,
+        document.body,
       )}
     </span>
   );
@@ -234,15 +286,27 @@ function CharacterCardRenderer({
   );
 }
 
-export function markdownToReactBlocks({ markdown, entities = [], onEntityAction }: MarkdownDocumentProps) {
+export function markdownHeadingId(sectionKey: string, blockIndex: number) {
+  return `${sectionKey}:heading:${blockIndex}`;
+}
+
+export function markdownToReactBlocks({ markdown, entities = [], onEntityAction, sectionKey = "document" }: MarkdownDocumentProps) {
   return parseMarkdownBlocks(markdown).flatMap((block, index) => {
     const content = block.text ? inlineMarkdown(block.text, entities, onEntityAction) : null;
     const common = { className: "markdown-block", "data-keep-with-next": block.kind === "heading" ? "true" : undefined };
     if (block.kind === "heading") {
-      if (block.level === 1) return <h1 {...common} key={index}>{content}</h1>;
-      if (block.level === 2) return <h2 {...common} key={index}>{content}</h2>;
-      if (block.level === 3) return <h3 {...common} key={index}>{content}</h3>;
-      return <h4 {...common} key={index}>{content}</h4>;
+      const headingProps = {
+        ...common,
+        "data-heading-id": markdownHeadingId(sectionKey, index),
+        "data-heading-level": block.level,
+        "data-heading-title": block.text,
+      };
+      if (block.level === 1) return <h1 {...headingProps} key={index}>{content}</h1>;
+      if (block.level === 2) return <h2 {...headingProps} key={index}>{content}</h2>;
+      if (block.level === 3) return <h3 {...headingProps} key={index}>{content}</h3>;
+      if (block.level === 4) return <h4 {...headingProps} key={index}>{content}</h4>;
+      if (block.level === 5) return <h5 {...headingProps} key={index}>{content}</h5>;
+      return <h6 {...headingProps} key={index}>{content}</h6>;
     }
     if (block.kind === "quote") return <blockquote {...common} key={index}>{content}</blockquote>;
     if (block.kind === "divider") return <hr {...common} key={index} />;

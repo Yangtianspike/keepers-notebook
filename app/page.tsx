@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type CSSProperties,
   useCallback,
   useEffect,
   useRef,
@@ -16,11 +17,15 @@ import {
 import { ConfirmWizard } from "@/app/components/confirm-wizard";
 import { ActTreeView } from "@/app/components/act-tree-view";
 import { SettingsModal } from "@/app/components/settings-modal";
-import { StageView } from "@/app/components/stage-view";
+import { StageView, type BookHeading } from "@/app/components/stage-view";
 import { PersonDetailPanel } from "@/app/components/person-detail-panel";
 import { BookEditor } from "@/app/components/book-editor";
 import { AnalysisLogModal } from "@/app/components/analysis-log-modal";
-import { markdownToReactBlocks } from "@/app/components/markdown-document";
+import {
+  markdownHeadingId,
+  markdownToReactBlocks,
+  parseMarkdownBlocks,
+} from "@/app/components/markdown-document";
 import { EntityWindow } from "@/app/components/entity-window";
 import { SourceDocumentView } from "@/app/components/source-document-view";
 import {
@@ -50,6 +55,7 @@ import {
   type ModelConfig,
   type OpeningHookDetails,
   type Person,
+  type PersonRelation,
   type PersonCoCStatKey,
   type PersonCoCStats,
   type Project,
@@ -84,8 +90,8 @@ type FloatingEntityWindow = {
 const stageLabels: Record<AnalysisStage, string> = {
   background: "故事背景",
   timeplace: "时间地点",
-  characters: "核心人物",
-  characterArcs: "核心人物与动机",
+  characters: "人物",
+  characterArcs: "人物经历与动机",
   openingHook: "开篇钩子",
   clues: "关键线索安排",
   acts: "幕",
@@ -125,41 +131,121 @@ function pausedStageFor(project: Project): AnalysisStage | null {
   );
 }
 
-const navGroups: Array<{
-  label: string;
-  items: Array<{ view: View; label: string; short: string }>;
-}> = [
-  {
-    label: "前期准备",
-    items: [
-      { view: "dashboard", label: "项目仪表盘", short: "总" },
-      { view: "structure", label: "文档结构", short: "章" },
-      { view: "analysis", label: "分析流程", short: "析" },
-    ],
-  },
-  {
-    label: "剧本解析",
-    items: [
-      { view: "stage-background", label: "故事背景", short: "景" },
-      { view: "stage-timeplace", label: "时间地点", short: "时" },
-      { view: "stage-characters", label: "核心人物", short: "人" },
-      {
-        view: "stage-characterArcs",
-        label: "核心人物与动机",
-        short: "历",
-      },
-      { view: "stage-openingHook", label: "开篇钩子", short: "钩" },
-      { view: "stage-clues", label: "关键线索安排", short: "索" },
-      { view: "acts", label: "幕", short: "幕" },
-    ],
-  },
-  {
-    label: "原始资料",
-    items: [
-      { view: "source-document", label: "原始文档", short: "PDF" },
-    ],
-  },
+const PREPARATION_NAV: Array<{ view: View; label: string }> = [
+  { view: "dashboard", label: "项目仪表盘" },
+  { view: "structure", label: "文档结构" },
+  { view: "analysis", label: "分析流程" },
 ];
+
+function analysisStageForSectionKey(sectionKey: string): AnalysisStage | undefined {
+  if (sectionKey.startsWith("acts:")) return "acts";
+  return ({
+    "stage-background": "background",
+    "stage-timeplace": "timeplace",
+    "stage-characters": "characters",
+    "stage-characterArcs": "characterArcs",
+    "stage-openingHook": "openingHook",
+    "stage-clues": "clues",
+  } as Record<string, AnalysisStage>)[sectionKey];
+}
+
+function stageHasReadableAnalysis(project: Project, stage: AnalysisStage) {
+  switch (stage) {
+    case "background":
+      return Boolean(project.analysis.overview);
+    case "timeplace":
+      return Boolean(project.analysis.timePlace?.timeline || project.analysis.timePlace?.places.length);
+    case "characters":
+      return project.analysis.people.length > 0;
+    case "characterArcs":
+      return Boolean(project.analysis.characterArcs?.length);
+    case "openingHook":
+      return Boolean(project.analysis.openingHook || project.analysis.openingHookDetails);
+    case "clues":
+      return project.analysis.clues.length > 0;
+    case "acts":
+      return project.analysis.acts.length > 0;
+  }
+}
+
+type NotebookHeading = BookHeading & { parentId?: string; hasChildren: boolean };
+
+function organizeNotebookHeadings(headings: BookHeading[]): NotebookHeading[] {
+  return headings.map((heading, index) => {
+    let parentId: string | undefined;
+    for (let candidateIndex = index - 1; candidateIndex >= 0; candidateIndex -= 1) {
+      if (headings[candidateIndex].level < heading.level) {
+        parentId = headings[candidateIndex].id;
+        break;
+      }
+    }
+    const next = headings[index + 1];
+    return {
+      ...heading,
+      parentId,
+      hasChildren: Boolean(next && next.level > heading.level),
+    };
+  });
+}
+
+function NotebookToc({
+  headings,
+  activeHeadingId,
+  onSelect,
+}: {
+  headings: NotebookHeading[];
+  activeHeadingId?: string;
+  onSelect: (heading: NotebookHeading) => void;
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(headings.filter((heading) => heading.level === 1).map((heading) => heading.id)),
+  );
+  const byId = new Map(headings.map((heading) => [heading.id, heading]));
+  const visible = headings.filter((heading) => {
+    let current = heading;
+    while (current.parentId) {
+      if (!expanded.has(current.parentId)) return false;
+      const parent = byId.get(current.parentId);
+      if (!parent) break;
+      current = parent;
+    }
+    return true;
+  });
+  if (headings.length === 0) {
+    return <p className="notebook-toc-empty">完成分析后将在这里生成目录。</p>;
+  }
+  return (
+    <div className="notebook-toc">
+      {visible.map((heading) => (
+        <div
+          className={`notebook-toc-row${activeHeadingId === heading.id ? " active" : ""}`}
+          style={{ "--toc-depth": Math.min(heading.level - 1, 4) } as CSSProperties}
+          key={heading.id}
+        >
+          {heading.hasChildren ? (
+            <button
+              className="notebook-toc-toggle"
+              type="button"
+              aria-label={`${expanded.has(heading.id) ? "收起" : "展开"}${heading.title}`}
+              aria-expanded={expanded.has(heading.id)}
+              onClick={() => setExpanded((previous) => {
+                const next = new Set(previous);
+                if (next.has(heading.id)) next.delete(heading.id);
+                else next.add(heading.id);
+                return next;
+              })}
+            >
+              {expanded.has(heading.id) ? "▾" : "▸"}
+            </button>
+          ) : <span className="notebook-toc-spacer" />}
+          <button className="notebook-toc-link" type="button" onClick={() => onSelect(heading)}>
+            {heading.title}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function parseModelJson(content: string): Record<string, unknown> {
   const clean = content
@@ -900,7 +986,7 @@ function DashboardView({
         <button onClick={() => onNavigate("stage-characters")}>
           <span>人物</span>
           <strong>{project.analysis.people.length}</strong>
-          <small>核心人物</small>
+          <small>人物资料</small>
         </button>
         <button onClick={() => onNavigate("acts")}>
           <span>幕</span>
@@ -1130,6 +1216,7 @@ function hydrateProject(project: Project): Project {
       acts: project.analysis.acts ?? [],
       chapterSummaries: project.analysis.chapterSummaries ?? [],
       characterArcs: project.analysis.characterArcs ?? [],
+      personRelations: project.analysis.personRelations ?? [],
       openingHook: project.analysis.openingHook ?? "",
       openingHookDetails: normalizeOpeningHookDetails(project.analysis.openingHookDetails),
       activityLog: project.analysis.activityLog ?? [],
@@ -1164,6 +1251,13 @@ export default function Home() {
   const [bookEditing, setBookEditing] = useState(false);
   const [showAnalysisLog, setShowAnalysisLog] = useState(false);
   const [entityWindows, setEntityWindows] = useState<FloatingEntityWindow[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window === "undefined"
+      ? true
+      : localStorage.getItem("keeper-atlas:sidebar-open") !== "false",
+  );
+  const [requestedHeadingId, setRequestedHeadingId] = useState<string>();
+  const [activeNotebookHeadingId, setActiveNotebookHeadingId] = useState<string>();
   const [pendingReadingPosition, setPendingReadingPosition] = useState<Project["lastReadingPosition"]>();
   const [streamPreview, setStreamPreview] = useState("");
   const analysisAbortRef = useRef<AbortController | null>(null);
@@ -1223,6 +1317,10 @@ export default function Home() {
     else sessionStorage.removeItem("keeper-atlas:api-key");
   }, [apiKey]);
 
+  useEffect(() => {
+    localStorage.setItem("keeper-atlas:sidebar-open", String(sidebarOpen));
+  }, [sidebarOpen]);
+
   const activeProjectId = activeProject?.id;
   useEffect(() => {
     let currentUrl = "";
@@ -1238,11 +1336,9 @@ export default function Home() {
   }, [activeProjectId]);
 
   useEffect(() => {
-    if (!activeProjectId || !STAGE_VIEWS.includes(view) || bookEditing) {
-      const timeout = window.setTimeout(() => setEntityWindows([]), 0);
-      return () => window.clearTimeout(timeout);
-    }
-  }, [activeProjectId, bookEditing, view]);
+    const timeout = window.setTimeout(() => setEntityWindows([]), 0);
+    return () => window.clearTimeout(timeout);
+  }, [activeProjectId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -1383,7 +1479,7 @@ export default function Home() {
         const chunks = await hybridSearch(
           runningProject,
           stageQuery(stage, runningProject.analysis),
-          12,
+          stage === "characters" || stage === "characterArcs" ? 24 : 12,
           modelConfig,
           apiKey,
         );
@@ -1662,7 +1758,7 @@ export default function Home() {
             );
             if (!detailPerson) {
               throw new Error(
-                `模型遗漏了人物“${String(skeletonPerson.name ?? skeletonPerson.id ?? "未知人物")}”，请重试核心人物阶段。`,
+                `模型遗漏了人物“${String(skeletonPerson.name ?? skeletonPerson.id ?? "未知人物")}”，请重试人物阶段。`,
               );
             }
             detailedPeople.push({
@@ -1904,7 +2000,33 @@ export default function Home() {
             mainlineRelation: arc.mainlineRelation ? String(arc.mainlineRelation) : undefined,
           }),
         );
-        nextAnalysis = { ...nextAnalysis, characterArcs };
+        const personIds = new Set(nextAnalysis.people.map((person) => person.id));
+        const personRelations = Array.isArray(data.personRelations)
+          ? (data.personRelations as Partial<PersonRelation>[]).flatMap((relation, index) => {
+              const sourcePersonId = String(relation.sourcePersonId ?? "");
+              const targetPersonId = String(relation.targetPersonId ?? "");
+              const label = String(relation.label ?? "").trim();
+              if (
+                !personIds.has(sourcePersonId) ||
+                !personIds.has(targetPersonId) ||
+                sourcePersonId === targetPersonId ||
+                !label
+              ) {
+                return [];
+              }
+              return [{
+                id: String(relation.id ?? `person-relation-${index}`),
+                sourcePersonId,
+                targetPersonId,
+                label,
+                summary: String(relation.summary ?? ""),
+                importance: relation.importance === "secondary" ? "secondary" as const : "primary" as const,
+                provenance: relation.provenance === "source" ? "source" as const : "inference" as const,
+                sources: normalizeSourceList(relation.sources),
+              }];
+            })
+          : nextAnalysis.personRelations ?? [];
+        nextAnalysis = { ...nextAnalysis, characterArcs, personRelations };
       }
       if (stage === "openingHook" && (data.openingHook !== undefined || data.openingHookDetails !== undefined)) {
         nextAnalysis = {
@@ -2630,7 +2752,6 @@ export default function Home() {
       setView("acts");
     } else setView(sectionKey as View);
     setActView("detail");
-    setEntityWindows([]);
   };
 
   const sectionMarkdown = activeProject?.kpNotes?.sectionMarkdown ?? {};
@@ -2667,11 +2788,32 @@ export default function Home() {
     customized: sectionMarkdown[key] !== undefined,
   }));
 
+  const notebookHeadings = organizeNotebookHeadings(
+    markdownSections.flatMap((section) => {
+      const stage = analysisStageForSectionKey(section.key);
+      const readable = section.customized || (stage && activeProject
+        ? activeProject.analysis.stages[stage].status === "complete" ||
+          stageHasReadableAnalysis(activeProject, stage)
+        : false);
+      if (!readable) return [];
+      return parseMarkdownBlocks(section.markdown).flatMap((block, blockIndex) => {
+        if (block.kind !== "heading" || !block.text?.trim()) return [];
+        return [{
+          id: markdownHeadingId(section.key, blockIndex),
+          title: block.text.trim(),
+          level: Math.max(1, Math.min(6, Number(block.level ?? 1))),
+          sectionKey: section.key,
+        }];
+      });
+    }),
+  );
+
   const renderedBookSections = markdownSections.map((section) => ({
     key: section.key,
     name: section.name,
     content: markdownToReactBlocks({
       markdown: section.markdown,
+      sectionKey: section.key,
       entities,
       onEntityAction: ({ entity, action, anchorRect }) => {
         if (action === "jump") jumpToEntity(entity);
@@ -2721,44 +2863,48 @@ export default function Home() {
   }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <button
-          className="sidebar-brand"
-          onClick={() => {
-            setActiveProject(null);
-            setView("dashboard");
-          }}
-        >
-          <span>KA</span>
-          <div>
-            <strong>守秘人图谱</strong>
-            <small>LOCAL WORKBENCH</small>
-          </div>
-        </button>
+    <div className={`app-shell${sidebarOpen ? "" : " sidebar-hidden"}`}>
+      <aside className="sidebar" aria-hidden={!sidebarOpen} inert={!sidebarOpen}>
         <nav>
-          {navGroups.map((group, groupIndex) => (
-            <div className="nav-group" key={group.label}>
-              <span
-                className={`nav-label ${groupIndex > 0 ? "nav-second" : ""}`}
+          <div className="nav-group">
+            <span className="nav-label">前期准备</span>
+            {PREPARATION_NAV.map((item) => (
+              <button
+                key={item.view}
+                className={view === item.view ? "active" : ""}
+                onClick={() => setView(item.view)}
               >
-                {group.label}
-              </span>
-              {group.items.map((item) => (
-                <button
-                  key={item.view}
-                  className={view === item.view ? "active" : ""}
-                  onClick={() => {
-                    if (item.view === "acts") setActView("detail");
-                    setView(item.view);
-                  }}
-                >
-                  <i>{item.short}</i>
-                  <span>{item.label}</span>
-                </button>
-              ))}
-            </div>
-          ))}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="nav-group nav-group-separated">
+            <span className="nav-label">模组笔记本</span>
+            <NotebookToc
+              headings={notebookHeadings}
+              activeHeadingId={activeNotebookHeadingId}
+              onSelect={(heading) => {
+                setRequestedHeadingId(heading.id);
+                setBookEditing(false);
+                setActView("detail");
+                if (heading.sectionKey.startsWith("acts:")) {
+                  setSelectedActId(heading.sectionKey.slice("acts:".length));
+                  setView("acts");
+                } else {
+                  setView(heading.sectionKey as View);
+                }
+              }}
+            />
+          </div>
+          <div className="nav-group nav-group-separated">
+            <span className="nav-label">原始资料</span>
+            <button
+              className={view === "source-document" ? "active" : ""}
+              onClick={() => setView("source-document")}
+            >
+              <span>原始文档</span>
+            </button>
+          </div>
         </nav>
         <div className="sidebar-foot">
           <span className="local-dot" />
@@ -2771,12 +2917,42 @@ export default function Home() {
 
       <section className="workspace">
         <header className="workspace-topbar">
-          <div className="breadcrumb">
-            <button onClick={() => setActiveProject(null)}>项目</button>
-            <span>/</span>
+          <div className="topbar-leading">
+            <button
+              className="topbar-icon-button"
+              type="button"
+              aria-label={sidebarOpen ? "隐藏菜单" : "展开菜单"}
+              title={sidebarOpen ? "隐藏菜单" : "展开菜单"}
+              onClick={() => setSidebarOpen((value) => !value)}
+            >
+              ☰
+            </button>
+            <button
+              className="topbar-icon-button"
+              type="button"
+              aria-label="返回项目首页"
+              title="返回项目首页"
+              onClick={() => {
+                setActiveProject(null);
+                setView("dashboard");
+              }}
+            >
+              ⌂
+            </button>
             <strong>{activeProject.name}</strong>
           </div>
+          <div className="topbar-book-tools" id="book-toolbar-slot" />
           <div className="topbar-actions">
+            {entityWindows.length > 0 && (
+              <button
+                className="topbar-card-counter"
+                type="button"
+                onClick={() => setEntityWindows([])}
+                title="关闭全部资料卡"
+              >
+                资料卡 {entityWindows.length} · 全部关闭
+              </button>
+            )}
             <button
               className="icon-button settings-trigger"
               aria-label="打开模型连接设置"
@@ -2851,6 +3027,7 @@ export default function Home() {
                   status: "structured",
                   analysis: {
                     ...activeProject.analysis,
+                    personRelations: [],
                     stages: Object.fromEntries(STAGE_ORDER.map((stage) => [stage, { status: "idle" }])) as Project["analysis"]["stages"],
                     pendingAskUserCall: undefined,
                   },
@@ -2893,6 +3070,13 @@ export default function Home() {
                   : view
               }
               contentKey={`${activeProject.id}:${activeProject.updatedAt}`}
+              requestedHeadingId={requestedHeadingId}
+              onHeadingStateChange={(_headings, activeHeadingId) => {
+                setActiveNotebookHeadingId(activeHeadingId);
+                if (activeHeadingId === requestedHeadingId) {
+                  setRequestedHeadingId(undefined);
+                }
+              }}
               editing={bookEditing}
               onEditingChange={setBookEditing}
               onOpenActTree={() => setActView("tree")}
@@ -3055,18 +3239,7 @@ export default function Home() {
           onClose={() => setEntityWindows((current) => current.filter((item) => item.id !== floatingWindow.id))}
           onFocus={() => focusEntityWindow(floatingWindow.id)}
           onMove={(x, y) => setEntityWindows((current) => current.map((item) => item.id === floatingWindow.id ? { ...item, x, y } : item))}
-          onEntityRefChange={(entityRef) => {
-            setEntityWindows((current) => {
-              const zIndex = Math.max(110, ...current.map((item) => item.zIndex)) + 1;
-              const duplicate = current.find((item) => item.id !== floatingWindow.id && item.entityRef === entityRef);
-              if (duplicate) {
-                return current
-                  .filter((item) => item.id !== floatingWindow.id)
-                  .map((item) => item.id === duplicate.id ? { ...item, zIndex } : item);
-              }
-              return current.map((item) => item.id === floatingWindow.id ? { ...item, entityRef, zIndex } : item);
-            });
-          }}
+          onOpenRelated={(entityRef) => openEntityWindow(entityRef)}
           onJump={jumpToEntity}
           onJumpToAppearance={jumpToEntity}
           onSave={saveEntityOverride}

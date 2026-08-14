@@ -14,6 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 const MOBILE_BREAKPOINT = 760;
 const TURN_DURATION = 800;
@@ -82,6 +83,14 @@ declare global {
 export type PageSliceResult = {
   pages: ReactNode[];
   pageBreaks: number[];
+  pageHeadings: BookHeading[][];
+};
+
+export type BookHeading = {
+  id: string;
+  title: string;
+  level: number;
+  sectionKey: string;
 };
 
 type BlockMeasurement = {
@@ -101,6 +110,30 @@ function contentBlocks(content: ReactNode) {
   return { root: null, blocks: Children.toArray(content) };
 }
 
+function headingsIn(node: ReactNode, sectionKey = ""): BookHeading[] {
+  if (!isValidElement(node)) return [];
+  const props = node.props as {
+    children?: ReactNode;
+    "data-stage-key"?: string;
+    "data-heading-id"?: string;
+    "data-heading-title"?: string;
+    "data-heading-level"?: number | string;
+  };
+  const currentSectionKey = props["data-stage-key"] || sectionKey;
+  const headingId = props["data-heading-id"];
+  const title = props["data-heading-title"];
+  const level = Number(props["data-heading-level"]);
+  const current = headingId && title && Number.isFinite(level)
+    ? [{ id: headingId, title, level, sectionKey: currentSectionKey }]
+    : [];
+  return [
+    ...current,
+    ...Children.toArray(props.children).flatMap((child) =>
+      headingsIn(child, currentSectionKey),
+    ),
+  ];
+}
+
 export function measureAndSlice(
   content: ReactNode,
   pageHeight: number,
@@ -109,7 +142,9 @@ export function measureAndSlice(
 ): PageSliceResult {
   void pageWidth;
   const { root, blocks } = contentBlocks(content);
-  if (blocks.length === 0) return { pages: [content], pageBreaks: [0] };
+  if (blocks.length === 0) {
+    return { pages: [content], pageBreaks: [0], pageHeadings: [headingsIn(content)] };
+  }
 
   const pageBreaks: number[] = [];
   const pageGroups: ReactNode[][] = [];
@@ -233,7 +268,11 @@ export function measureAndSlice(
     );
   });
 
-  return { pages, pageBreaks };
+  return {
+    pages,
+    pageBreaks,
+    pageHeadings: pageGroups.map((pageBlocks) => pageBlocks.flatMap((block) => headingsIn(block))),
+  };
 }
 
 let scriptPromise: Promise<void> | null = null;
@@ -290,6 +329,7 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
   const pendingPageRef = useRef<number | null>(null);
   const pageChangeRef = useRef(options.onPageChange);
   const [pages, setPages] = useState<ReactNode[]>([]);
+  const [headingPages, setHeadingPages] = useState<Array<BookHeading & { page: number }>>([]);
   const [bookRevision, setBookRevision] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [resizeVersion, setResizeVersion] = useState(0);
@@ -386,6 +426,11 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
     const result = measureAndSlice(content, PAGE_HEIGHT, PAGE_WIDTH, heights);
     destroyTurnBook();
     setPages(result.pages);
+    setHeadingPages(
+      result.pageHeadings.flatMap((headings, pageIndex) =>
+        headings.map((heading) => ({ ...heading, page: pageIndex + 1 })),
+      ),
+    );
     setBookRevision((revision) => revision + 1);
     setCurrentPage(1);
     // contentKey is the explicit invalidation signal. Depending on `content`
@@ -520,6 +565,7 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
     isAnimating,
     displayCurrentPage: currentPage,
     displayTotalPages: totalPages,
+    headingPages,
   };
 }
 
@@ -543,6 +589,8 @@ export function StageView({
   onPageChange,
   onOpenActTree,
   initialPage,
+  requestedHeadingId,
+  onHeadingStateChange,
 }: {
   sections: StageBookSection[];
   activeSectionKey: string;
@@ -553,12 +601,21 @@ export function StageView({
   onPageChange?: (sectionKey: string, page: number) => void;
   onOpenActTree?: () => void;
   initialPage?: number;
+  requestedHeadingId?: string;
+  onHeadingStateChange?: (
+    headings: Array<BookHeading & { page: number }>,
+    activeHeadingId?: string,
+  ) => void;
 }) {
   const activeSectionChangeRef = useRef(onActiveSectionChange);
+  const headingStateChangeRef = useRef(onHeadingStateChange);
   const pageSectionsRef = useRef<string[]>([]);
   useEffect(() => {
     activeSectionChangeRef.current = onActiveSectionChange;
   }, [onActiveSectionChange]);
+  useEffect(() => {
+    headingStateChangeRef.current = onHeadingStateChange;
+  }, [onHeadingStateChange]);
   const content = (
     <div className="stage-book-document">
       {sections.flatMap((section, index) => {
@@ -601,6 +658,7 @@ export function StageView({
     displayCurrentPage,
     displayTotalPages,
     isAnimating,
+    headingPages,
   } = useTurnBook(content, {
     contentKey,
     enabled: !editing,
@@ -627,6 +685,10 @@ export function StageView({
   const pageNavigationSections = pageSections.map(sectionNavigationKey);
   const currentSectionKey = pageSections[Math.max(0, currentPage - 1)] ?? "";
   const actPage = currentSectionKey.startsWith("acts:");
+  const activeHeading = headingPages.reduce<(BookHeading & { page: number }) | undefined>(
+    (found, heading) => heading.page <= currentPage ? heading : found,
+    undefined,
+  );
 
   const activeSectionIndex = sections.findIndex(
     (section) =>
@@ -659,6 +721,16 @@ export function StageView({
   }, [initialPage, pages.length, requestPage]);
 
   useEffect(() => {
+    if (!requestedHeadingId) return;
+    const heading = headingPages.find((candidate) => candidate.id === requestedHeadingId);
+    if (heading) requestPage(heading.page);
+  }, [headingPages, requestPage, requestedHeadingId]);
+
+  useEffect(() => {
+    headingStateChangeRef.current?.(headingPages, activeHeading?.id);
+  }, [activeHeading?.id, headingPages]);
+
+  useEffect(() => {
     const pageSection = pageNavigationSections[Math.max(0, currentPage - 1)];
     const exactPageSection = pageSections[Math.max(0, currentPage - 1)];
     if (pageSection && exactPageSection !== activeSectionKey) {
@@ -683,26 +755,32 @@ export function StageView({
     return () => window.removeEventListener("keydown", handleKey, true);
   }, [nextPage, previousPage]);
 
+  const toolbarTarget = typeof document === "undefined"
+    ? null
+    : document.getElementById("book-toolbar-slot");
+
+  const toolbar = !editing && (
+    <nav className="book-reader-toolbar" aria-label="书页工具">
+      <button className="cb-action-button" type="button" onClick={previousPage} disabled={isAnimating || (!hasPrevious && activeSectionIndex === 0)}>← 上一页</button>
+      <span className="stage-page-number">{displayCurrentPage} / {displayTotalPages}</span>
+      <form onSubmit={(event) => {
+        event.preventDefault();
+        const page = Number.parseInt(jumpDraft, 10);
+        if (Number.isFinite(page)) requestPage(Math.max(1, Math.min(displayTotalPages, page)));
+        setJumpDraft("");
+      }}>
+        <label>跳至 <input inputMode="numeric" aria-label="跳转页码" value={jumpDraft} onChange={(event) => setJumpDraft(event.target.value.replace(/\D/g, ""))} /> 页</label>
+        <button className="cb-action-button" type="submit" disabled={!jumpDraft}>跳页</button>
+      </form>
+      {onEditingChange && <button className="cb-action-button book-editor-trigger" type="button" onClick={() => onEditingChange(true)}>编辑书页</button>}
+      {actPage && onOpenActTree && <button className="cb-action-button" type="button" onClick={onOpenActTree}>幕树</button>}
+      <button className="cb-action-button" type="button" onClick={nextPage} disabled={isAnimating || (!hasNext && activeSectionIndex === sections.length - 1)}>下一页 →</button>
+    </nav>
+  );
+
   return (
     <div className="book-reader">
-      {!editing && (
-        <nav className="book-reader-toolbar" aria-label="书页工具">
-          <button className="cb-action-button" type="button" onClick={previousPage} disabled={isAnimating || (!hasPrevious && activeSectionIndex === 0)}>← 上一页</button>
-          <span className="stage-page-number">{displayCurrentPage} / {displayTotalPages}</span>
-          <form onSubmit={(event) => {
-            event.preventDefault();
-            const page = Number.parseInt(jumpDraft, 10);
-            if (Number.isFinite(page)) requestPage(Math.max(1, Math.min(displayTotalPages, page)));
-            setJumpDraft("");
-          }}>
-            <label>跳至 <input inputMode="numeric" aria-label="跳转页码" value={jumpDraft} onChange={(event) => setJumpDraft(event.target.value.replace(/\D/g, ""))} /> 页</label>
-            <button className="cb-action-button" type="submit" disabled={!jumpDraft}>跳页</button>
-          </form>
-          {onEditingChange && <button className="cb-action-button book-editor-trigger" type="button" onClick={() => onEditingChange(true)}>编辑书页</button>}
-          {actPage && onOpenActTree && <button className="cb-action-button" type="button" onClick={onOpenActTree}>幕树</button>}
-          <button className="cb-action-button" type="button" onClick={nextPage} disabled={isAnimating || (!hasNext && activeSectionIndex === sections.length - 1)}>下一页 →</button>
-        </nav>
-      )}
+      {toolbarTarget ? createPortal(toolbar, toolbarTarget) : toolbar}
       {editing && onEditingChange && (
         <div className="book-edit-toggle">
           <button

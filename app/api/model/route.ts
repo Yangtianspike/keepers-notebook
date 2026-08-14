@@ -112,7 +112,7 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
     characters: `${common}
 ${
   phase === "skeleton"
-    ? `识别所有有名人物与超自然存在。疑似同一人的不同称呼不得自动合并。
+    ? `识别所有有名人物、无姓名 NPC 群体、敌人模板与超自然存在。守秘人笔记中的“建议数据”“战斗”“技能”人物模板也必须纳入。疑似同一人的不同称呼不得自动合并。
 只有原文明确说明的别名才可直接放入 aliases；其余写入 mergeCandidates。
 本次只生成人物索引，不生成 cocStats。务必覆盖核心、重要和次要人物，并保持内容简洁。
 返回：
@@ -167,12 +167,18 @@ ${phase === "skeleton" ? "" : `
 }`}`,
     characterArcs: `${common}
 基于已确认的人物列表，逐一分析人物在故事中的经历、行动变化和深层动机。personId 必须引用已确认人物 id。每人的 experience 写 150-200 字，motivation 写 100 字左右，并总结初始动机、关键变化节点、最终动机和与主线的关系。
+同时提取人物之间有实际语义的关系。不得用“同见于某幕”“共同出现”冒充人物关系。关系 label 使用简短、有方向的动词或身份描述，例如“领导”“雇佣”“威胁”“保护”“父亲”“同盟”。同一人物对存在多种关系时，primary 只保留对剧情最重要的一条，其余可标记 secondary。没有原文或可靠上下文依据时不要生成关系。
 返回：
 {
   "characterArcs":[{
     "personId":"人物id","experience":"经历概述（150-200字）","motivation":"动机详解（100字左右）",
     "motivationChanges":{"initial":"初始动机","turningPoints":["变化节点"],"final":"最终动机"},
     "mainlineRelation":"该人物与主线冲突、谜团或结局的关系"
+  }],
+  "personRelations":[{
+    "id":"relation-short-id","sourcePersonId":"人物id","targetPersonId":"人物id",
+    "label":"有方向的关系标签","summary":"关系依据与剧情意义",
+    "importance":"primary|secondary","provenance":"source|inference","sources":[]
   }],
   "reviewItems":[]
 }`,
@@ -454,7 +460,7 @@ ${selectedText}
               error:
                 finishReason === "length"
                   ? body.stage === "characters"
-                    ? "模型输出达到上限，人物索引未能形成完整 JSON。应用会分批补全人物资料，请重试核心人物阶段。"
+                    ? "模型输出达到上限，人物索引未能形成完整 JSON。应用会分批补全人物资料，请重试人物阶段。"
                     : "模型输出达到上限，未能形成完整 JSON。请减少纳入分析的章节后重试当前阶段。"
                   : "模型没有返回合法 JSON 对象。请重试当前阶段；若仍失败，请检查模型是否支持 JSON 输出。",
             },

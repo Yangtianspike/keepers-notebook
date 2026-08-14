@@ -267,6 +267,17 @@ export type ActPersonAction = {
   sources: SourceRef[];
 };
 
+export type PersonRelation = {
+  id: string;
+  sourcePersonId: string;
+  targetPersonId: string;
+  label: string;
+  summary: string;
+  importance: "primary" | "secondary";
+  provenance: "source" | "inference";
+  sources: SourceRef[];
+};
+
 export type ChapterSummary = {
   chapterId: string;
   background: string;
@@ -330,6 +341,7 @@ export type ProjectAnalysis = {
   people: Person[];
   unresolvedRelationCount: number;
   characterArcs?: CharacterArc[];
+  personRelations?: PersonRelation[];
   openingHook?: string;
   openingHookDetails?: OpeningHookDetails;
   clues: Clue[];
@@ -391,6 +403,9 @@ export type EntityRelation = {
   targetRef: string;
   label?: string;
   level: EntityRelationLevel;
+  summary?: string;
+  importance?: "primary" | "secondary";
+  sources?: SourceRef[];
 };
 
 export type EntityFields = Record<string, string | string[] | boolean>;
@@ -482,6 +497,7 @@ export const emptyAnalysis = (): ProjectAnalysis => ({
   people: [],
   unresolvedRelationCount: 0,
   characterArcs: [],
+  personRelations: [],
   openingHook: "",
   openingHookDetails: undefined,
   clues: [],

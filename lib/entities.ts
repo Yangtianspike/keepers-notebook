@@ -3,6 +3,7 @@ import type {
   EntityFields,
   EntityKind,
   EntityRelation,
+  Person,
   Project,
 } from "@/lib/types";
 
@@ -123,7 +124,7 @@ export function buildProjectEntities(project: Project): EntityCard[] {
     },
     "stage-characters", person.provenance === "inference" ? "inference" : "source", person.cocStats,
   ), appearances: [
-    { sectionKey: "stage-characters", label: "核心人物" },
+    { sectionKey: "stage-characters", label: "人物" },
     ...actAppearances((act) => act.personIds.includes(person.id)),
   ] }));
   const clues = project.analysis.clues.map((clue) => ({ ...card(
@@ -177,13 +178,40 @@ export function entityCoCStats(entity: EntityCard) {
 export function buildEntityRelations(project: Project, entities: EntityCard[]): EntityRelation[] {
   const refs = new Set(entities.map((entity) => entity.ref));
   const relations: EntityRelation[] = [...(project.kpNotes?.entityRelations ?? [])];
-  const push = (sourceRef: string, targetRef: string, label: string, level: EntityRelation["level"] = "direct") => {
+  const push = (
+    sourceRef: string,
+    targetRef: string,
+    label: string,
+    level: EntityRelation["level"] = "direct",
+    details: Pick<EntityRelation, "summary" | "importance" | "sources"> = {},
+  ) => {
     if (!refs.has(sourceRef) || !refs.has(targetRef)) return;
     const id = `${sourceRef}>${targetRef}>${label}`;
     if (!relations.some((relation) => relation.id === id)) {
-      relations.push({ id, sourceRef, targetRef, label, level });
+      relations.push({ id, sourceRef, targetRef, label, level, ...details });
     }
   };
+  const semanticPairs = new Set<string>();
+  [...(project.analysis.personRelations ?? [])]
+    .sort((left, right) => Number(right.importance === "primary") - Number(left.importance === "primary"))
+    .forEach((relation) => {
+      const sourceRef = entityRef("person", relation.sourcePersonId);
+      const targetRef = entityRef("person", relation.targetPersonId);
+      const pairKey = [sourceRef, targetRef].sort().join("|");
+      if (semanticPairs.has(pairKey)) return;
+      semanticPairs.add(pairKey);
+      push(
+        sourceRef,
+        targetRef,
+        relation.label,
+        relation.provenance === "source" ? "direct" : "inference",
+        {
+          summary: relation.summary,
+          importance: relation.importance,
+          sources: relation.sources,
+        },
+      );
+    });
   project.analysis.acts.forEach((act) => {
     const actRefs = [
       ...act.personIds.map((id) => entityRef("person", id)),
@@ -192,6 +220,7 @@ export function buildEntityRelations(project: Project, entities: EntityCard[]): 
       ...act.keyEvents.map((_, index) => entityRef("event", `${act.id}-${index}`)),
     ].filter((ref, index, all) => refs.has(ref) && all.indexOf(ref) === index);
     actRefs.forEach((sourceRef, sourceIndex) => actRefs.slice(sourceIndex + 1).forEach((targetRef) => {
+      if (sourceRef.startsWith("person:") && targetRef.startsWith("person:")) return;
       push(sourceRef, targetRef, `同见于第 ${act.sequence} 幕`, "indirect");
     }));
   });
@@ -206,12 +235,30 @@ export function buildEntityRelations(project: Project, entities: EntityCard[]): 
 export function getRelatedEntities(entityReference: string, project: Project) {
   const entities = buildProjectEntities(project);
   const relatedByRef = new Map(entities.map((entity) => [entity.ref, entity]));
-  return buildEntityRelations(project, entities).flatMap((relation) => {
+  const sourceEntity = relatedByRef.get(entityReference);
+  const candidates = buildEntityRelations(project, entities).flatMap((relation) => {
     if (relation.sourceRef !== entityReference && relation.targetRef !== entityReference) return [];
     const relatedRef = relation.sourceRef === entityReference ? relation.targetRef : relation.sourceRef;
     const entity = relatedByRef.get(relatedRef);
     return entity ? [{ relation, entity }] : [];
   });
+  if (sourceEntity?.kind !== "person") return candidates;
+  const rank = (relation: EntityRelation) =>
+    ({ keeper: 5, direct: 4, inference: 3, indirect: 2 }[relation.level] ?? 0) +
+    (relation.importance === "primary" ? 1 : 0);
+  const bestByPerson = new Map<string, (typeof candidates)[number]>();
+  const others: typeof candidates = [];
+  candidates.forEach((candidate) => {
+    if (candidate.entity.kind !== "person") {
+      others.push(candidate);
+      return;
+    }
+    const previous = bestByPerson.get(candidate.entity.ref);
+    if (!previous || rank(candidate.relation) > rank(previous.relation)) {
+      bestByPerson.set(candidate.entity.ref, candidate);
+    }
+  });
+  return [...bestByPerson.values(), ...others];
 }
 
 export function createKeeperEntity(kind: EntityKind, name: string, sectionKey: string): EntityCard {
@@ -230,23 +277,31 @@ function markdownText(value: string | undefined) {
 }
 
 export function buildCharacterMarkdown(project: Project) {
-  const groups: Array<{ importance: "core" | "important" | "minor"; title: string }> = [
+  const corePeople = project.analysis.people.filter((person) => person.importance === "core");
+  const coreCards = corePeople.map((person) => `:::character-card${JSON.stringify({
+    ref: entityRef("person", person.id),
+    importance: "core",
+  })}`);
+  const groups: Array<{ importance: Person["importance"]; title: string }> = [
     { importance: "core", title: "核心人物" },
     { importance: "important", title: "重要人物" },
     { importance: "minor", title: "次要人物" },
   ];
-  const sections = groups.flatMap((group) => {
+  const indexSections = groups.flatMap((group) => {
     const people = project.analysis.people.filter((person) => person.importance === group.importance);
     if (people.length === 0) return [];
     return [
-      `## ${group.title}`,
-      ...people.map((person) => `:::character-card${JSON.stringify({
-        ref: entityRef("person", person.id),
-        importance: group.importance,
-      })}`),
-    ].join("\n\n");
+      `### ${group.title}`,
+      ...people.map((person) => `- [${markdownText(person.name)}](${keeperEntityUri(entityRef("person", person.id))})${person.role ? `：${markdownText(person.role)}` : ""}`),
+    ].join("\n");
   });
-  return ["# 核心人物", ...sections].join("\n\n");
+  return [
+    "# 人物",
+    "## 核心人物",
+    ...(coreCards.length > 0 ? coreCards : ["暂无核心人物。"]),
+    "## 全部人物索引",
+    ...indexSections,
+  ].join("\n\n");
 }
 
 export function buildCharacterArcsMarkdown(project: Project) {
@@ -271,7 +326,7 @@ ${turningPoints}
 ### 与主线关系
 ${arc?.mainlineRelation || "待补充"}`;
   });
-  return ["# 核心人物与动机", ...sections].join("\n\n");
+  return ["# 人物经历与动机", ...sections].join("\n\n");
 }
 
 export function buildOpeningHookMarkdown(project: Project) {
