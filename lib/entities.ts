@@ -172,3 +172,135 @@ export function createKeeperEntity(kind: EntityKind, name: string, sectionKey: s
     createdAt: now, updatedAt: now,
   };
 }
+
+function markdownText(value: string | undefined) {
+  return (value ?? "").replace(/\r?\n/g, " ").trim();
+}
+
+export function buildCharacterMarkdown(project: Project) {
+  const groups: Array<{ importance: "core" | "important" | "minor"; title: string }> = [
+    { importance: "core", title: "核心人物" },
+    { importance: "important", title: "重要人物" },
+    { importance: "minor", title: "次要人物" },
+  ];
+  const sections = groups.flatMap((group) => {
+    const people = project.analysis.people.filter((person) => person.importance === group.importance);
+    if (people.length === 0) return [];
+    return [
+      `## ${group.title}`,
+      ...people.map((person) => `:::character-card${JSON.stringify({
+        ref: entityRef("person", person.id),
+        importance: group.importance,
+      })}`),
+    ].join("\n\n");
+  });
+  return ["# 核心人物", ...sections].join("\n\n");
+}
+
+export function buildCharacterArcsMarkdown(project: Project) {
+  const people = project.analysis.people.filter((person) => person.importance === "core");
+  const sections = people.map((person) => {
+    const arc = project.analysis.characterArcs?.find((candidate) => candidate.personId === person.id);
+    const changes = arc?.motivationChanges;
+    const turningPoints = changes?.turningPoints?.length
+      ? changes.turningPoints.map((point) => `- ${point}`).join("\n")
+      : "待补充";
+    return `## ${markdownText(person.name)}
+
+### 成长弧线
+${arc?.experience || "待补充"}
+
+### 动机变化
+- **初始动机**：${changes?.initial || arc?.motivation || person.motivation || "待补充"}
+- **变化节点**：
+${turningPoints}
+- **最终动机**：${changes?.final || "待补充"}
+
+### 与主线关系
+${arc?.mainlineRelation || "待补充"}`;
+  });
+  return ["# 核心人物与动机", ...sections].join("\n\n");
+}
+
+export function buildOpeningHookMarkdown(project: Project) {
+  const details = project.analysis.openingHookDetails;
+  return `# 开篇钩子
+
+## GM 开场朗读文本
+${details?.readAloud || project.analysis.openingHook || "待补充"}
+
+## 玩家初始处境
+${details?.initialSituation || "待补充"}
+
+## 第一个冲突触发方式
+${details?.firstConflict || "待补充"}
+
+## 氛围与感官描写建议
+${details?.atmosphere || "待补充"}
+
+## 导入技巧
+${details?.introductionTips || "待补充"}`;
+}
+
+export function buildActTitle(originalTitle: string, sequence: number) {
+  const title = markdownText(originalTitle);
+  if (/^(?:第\s*[一二三四五六七八九十百\d]+\s*幕|序幕|终幕)/.test(title)) return title;
+  const safeSequence = Number.isFinite(sequence) && sequence > 0 ? Math.floor(sequence) : 1;
+  return title ? `第 ${safeSequence} 幕 · ${title}` : `第 ${safeSequence} 幕`;
+}
+
+function legacyPersonAction(project: Project, actId: string, personId: string) {
+  const act = project.analysis.acts.find((candidate) => candidate.id === actId);
+  const person = project.analysis.people.find((candidate) => candidate.id === personId);
+  if (!act || !person) return null;
+  const names = [person.name, ...person.aliases].filter(Boolean);
+  const sentences = act.description
+    .split(/(?<=[。！？!?])|\r?\n/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence && names.some((name) => sentence.includes(name)));
+  if (sentences.length === 0) return null;
+  return sentences.slice(0, 2).join("");
+}
+
+export function buildActMarkdown(project: Project, actId: string) {
+  const act = project.analysis.acts.find((candidate) => candidate.id === actId);
+  if (!act) return "# 幕\n\n暂无内容";
+  const peopleById = new Map(project.analysis.people.map((person) => [person.id, person]));
+  const actions = act.personIds.map((personId) => {
+    const person = peopleById.get(personId);
+    const explicit = act.personActions?.find((action) => action.personId === personId);
+    const legacy = explicit ? null : legacyPersonAction(project, act.id, personId);
+    const summary = explicit?.summary || legacy || "本幕无明确行动";
+    const provenance = explicit?.provenance ?? (legacy ? "inference" : "none");
+    const sourcePages = explicit?.sources.map((source) => source.printedPage || String(source.page)).join("、");
+    const provenanceLabel = provenance === "source"
+      ? `剧本资料${sourcePages ? `，第 ${sourcePages} 页` : ""}`
+      : provenance === "inference" ? "模型归纳" : "无明确行动";
+    const name = person?.name || personId;
+    const link = person ? `[${name}](${keeperEntityUri(entityRef("person", person.id))})` : name;
+    return `- ${link}：${summary}（${provenanceLabel}）`;
+  }).join("\n") || "暂无明确人物行动";
+  const keyEvents = act.keyEvents.map((event) => `### ${markdownText(event.title)}\n${event.description}`).join("\n\n") || "暂无关键节点";
+  const branches = act.branches.map((branch) => {
+    const next = branch.nextActId
+      ? project.analysis.acts.find((candidate) => candidate.id === branch.nextActId)?.title || branch.nextActId
+      : branch.isEnding ? "结局" : "待定";
+    return `- ${branch.condition || "条件待补充"} → ${next}`;
+  }).join("\n") || "暂无分支";
+  return `# ${buildActTitle(act.title, act.sequence)}
+
+${act.placeText || "地点未定"} · ${act.time || "时间未定"}
+
+## 本幕剧情
+
+${actions}
+
+### 主要剧情
+${act.description || "待补充"}
+
+### 关键节点
+${keyEvents}
+
+### 分支与结局
+${branches}`;
+}
