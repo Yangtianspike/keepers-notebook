@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ENTITY_FIELD_LABELS,
   ENTITY_KIND_LABELS,
   entityAliases,
   entityCoCStats,
   entityFields,
+  entityImage,
   entityName,
   getRelatedEntities,
 } from "@/lib/entities";
@@ -39,7 +40,6 @@ type EntityWindowProps = {
   onMove: (x: number, y: number) => void;
   onOpenRelated: (ref: string) => void;
   onJump: (entity: EntityCard) => void;
-  onJumpToAppearance: (entity: EntityCard, sectionKey: string) => void;
   onSave: (entity: EntityCard, override: EntityOverrides) => void;
   onCreate: (kind: EntityKind, name: string, relatedTo?: EntityCard) => EntityCard;
   onDelete: (entity: EntityCard) => void;
@@ -58,7 +58,6 @@ export function EntityWindow({
   onMove,
   onOpenRelated,
   onJump,
-  onJumpToAppearance,
   onSave,
   onCreate,
   onDelete,
@@ -161,55 +160,94 @@ export function EntityWindow({
                 }}>创建并关联</button>
               </div>
             )}
-            <EntityReadView entity={entity} />
-            {entity.kind === "person" && (
-              <PersonTrajectory entity={entity} project={project} />
-            )}
-            <section className="entity-appearances">
-              <h3>出现位置</h3>
-              <div>
-                {entity.appearances.map((appearance) => (
-                  <button type="button" key={appearance.sectionKey} onClick={() => onJumpToAppearance(entity, appearance.sectionKey)}>
-                    {appearance.label || appearance.sectionKey}
-                  </button>
-                ))}
-              </div>
-            </section>
+            <EntityPagedContent resetKey={`${entity.ref}:${entity.updatedAt}`}>
+              <EntityReadView entity={entity} />
+              {entity.kind === "person" && (
+                <PersonTrajectory entity={entity} project={project} />
+              )}
+              <section className="entity-relations">
+                <h3>关联资料</h3>
+                {(["direct", "indirect", "inference", "keeper"] as const).map((level) => {
+                  const items = related.filter((item) => item.relation.level === level);
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={level}>
+                      <small>{({ direct: "直接关联", indirect: "间接关联", inference: "模型推断", keeper: "KP 关联" })[level]}</small>
+                      <div className="entity-related-list">
+                        {items.map((item) => (
+                          <button type="button" key={item.relation.id} onClick={() => {
+                            onOpenRelated(item.entity.ref);
+                            setEditing(false);
+                          }}>
+                            <strong>{entityName(item.entity)}</strong>
+                            <span>{
+                              entity.kind === "person" && item.entity.kind === "person" && item.relation.label
+                                ? item.relation.sourceRef === entity.ref
+                                  ? `${item.relation.label} →`
+                                  : `← ${item.relation.label}`
+                                : item.relation.label || ENTITY_KIND_LABELS[item.entity.kind]
+                            }</span>
+                            {item.relation.summary && <em>{item.relation.summary}</em>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                {related.length === 0 && <div className="entity-empty-related"><p>暂无相关实体。</p><button type="button" onClick={() => setCreating(true)}>新建关联实体</button></div>}
+              </section>
+            </EntityPagedContent>
           </>
         )}
-
-        <section className="entity-relations">
-          <h3>关联资料</h3>
-          {(["direct", "indirect", "inference", "keeper"] as const).map((level) => {
-            const items = related.filter((item) => item.relation.level === level);
-            if (items.length === 0) return null;
-            return (
-              <div key={level}>
-                <small>{({ direct: "直接关联", indirect: "间接关联", inference: "模型推断", keeper: "KP 关联" })[level]}</small>
-                <div className="entity-related-list">
-                  {items.map((item) => (
-                    <button type="button" key={item.relation.id} onClick={() => {
-                      onOpenRelated(item.entity.ref);
-                      setEditing(false);
-                    }}>
-                      <strong>{entityName(item.entity)}</strong>
-                      <span>{
-                        entity.kind === "person" && item.entity.kind === "person" && item.relation.label
-                          ? item.relation.sourceRef === entity.ref
-                            ? `${item.relation.label} →`
-                            : `← ${item.relation.label}`
-                          : item.relation.label || ENTITY_KIND_LABELS[item.entity.kind]
-                      }</span>
-                      {item.relation.summary && <em>{item.relation.summary}</em>}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-          {related.length === 0 && <div className="entity-empty-related"><p>暂无相关实体。</p><button type="button" onClick={() => setCreating(true)}>新建关联实体</button></div>}
-        </section>
     </article>
+  );
+}
+
+function EntityPagedContent({ children, resetKey }: { children: ReactNode; resetKey: string }) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
+  const [pageWidth, setPageWidth] = useState(1);
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content) return;
+    const update = () => {
+      const width = viewport.clientWidth;
+      if (!width) return;
+      content.style.columnWidth = `${width}px`;
+      setPageWidth(width);
+      const count = Math.max(1, Math.ceil(content.scrollWidth / width));
+      setPageCount(count);
+      setPage((current) => Math.min(current, count - 1));
+    };
+    setPage(0);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(viewport);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [resetKey]);
+
+  return (
+    <div className="entity-pager">
+      <div className="entity-page-viewport" ref={viewportRef}>
+        <div
+          className="entity-page-flow"
+          ref={contentRef}
+          style={{ transform: `translateX(-${page * pageWidth}px)` }}
+        >
+          {children}
+        </div>
+      </div>
+      <footer className="entity-page-controls">
+        <button type="button" disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>← 上一页</button>
+        <span>{page + 1} / {pageCount}</span>
+        <button type="button" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}>下一页 →</button>
+      </footer>
+    </div>
   );
 }
 
@@ -250,11 +288,19 @@ function PersonTrajectory({ entity, project }: { entity: EntityCard; project: Pr
 
 function EntityReadView({ entity }: { entity: EntityCard }) {
   const fields = entityFields(entity);
+  const image = entityImage(entity);
   const aliases = entityAliases(entity);
   const playerVisible = entity.overrides?.playerVisible ?? entity.original.playerVisible;
   const keeperPrivate = entity.overrides?.keeperPrivate ?? entity.original.keeperPrivate;
   return (
     <div className="entity-read-view">
+      {image && (
+        <figure className="entity-card-image">
+          {/* Entity images are local data URLs selected by the KP. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={image} alt={entityName(entity)} />
+        </figure>
+      )}
       {aliases.length > 0 && <p><strong>别名</strong><span>{aliases.join("、")}</span></p>}
       {ENTITY_FIELD_LABELS[entity.kind].map(([key, label]) => {
         const value = fields[key];
@@ -290,6 +336,28 @@ function CoCStatsReadView({ entity }: { entity: EntityCard }) {
   );
 }
 
+function resizeEntityImage(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("图片读取失败。"));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("图片格式无法识别。"));
+      image.onload = () => {
+        const maximum = 768;
+        const scale = Math.min(1, maximum / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function EntityEditForm({ entity, onCancel, onSave }: {
   entity: EntityCard;
   onCancel: () => void;
@@ -302,6 +370,8 @@ function EntityEditForm({ entity, onCancel, onSave }: {
   ));
   const [playerVisible, setPlayerVisible] = useState(entity.overrides?.playerVisible ?? entity.original.playerVisible);
   const [keeperPrivate, setKeeperPrivate] = useState(entity.overrides?.keeperPrivate ?? entity.original.keeperPrivate);
+  const [image, setImage] = useState(entityImage(entity) ?? "");
+  const [imageTouched, setImageTouched] = useState(false);
   const [jump, setJump] = useState(entity.linkBehavior.jump);
   const [preview, setPreview] = useState(entity.linkBehavior.preview);
   const mergedCocStats = entityCoCStats(entity);
@@ -349,9 +419,33 @@ function EntityEditForm({ entity, onCancel, onSave }: {
       onSave({
         name: name.trim(), aliases: aliases.split(/[、,，]/).map((item) => item.trim()).filter(Boolean),
         fields, cocStats: cocChanged ? nextCocStats : entity.overrides?.cocStats,
+        image: imageTouched ? image : entity.overrides?.image,
+        imageSource: imageTouched && image ? "manual" : entity.overrides?.imageSource,
         playerVisible, keeperPrivate, linkBehavior: { jump, preview }, updatedAt: new Date().toISOString(),
       });
     }}>
+      <div className="entity-image-editor">
+        {image ? (
+          <>
+            {/* Entity images are local data URLs selected by the KP. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={image} alt="实体主图预览" />
+            <button type="button" onClick={() => { setImage(""); setImageTouched(true); }}>删除图片</button>
+          </>
+        ) : <span>尚未添加图片</span>}
+        <label>
+          {image ? "更换图片" : "添加图片"}
+          <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            void resizeEntityImage(file).then((dataUrl) => {
+              setImage(dataUrl);
+              setImageTouched(true);
+            });
+            event.currentTarget.value = "";
+          }} />
+        </label>
+      </div>
       <label>名称<input value={name} onChange={(event) => setName(event.target.value)} required /></label>
       <label>别名<input value={aliases} onChange={(event) => setAliases(event.target.value)} placeholder="用顿号分隔" /></label>
       {ENTITY_FIELD_LABELS[entity.kind].map(([key, label]) => (

@@ -7,6 +7,7 @@ import {
   entityAliases,
   entityCoCStats,
   entityFields,
+  entityImage,
   entityName,
   keeperEntityUri,
   parseKeeperEntityUri,
@@ -229,6 +230,7 @@ function CharacterCardRenderer({
   onEntityAction?: MarkdownDocumentProps["onEntityAction"];
 }) {
   const fields = entityFields(entity);
+  const image = entityImage(entity);
   const stats = entityCoCStats(entity);
   const fieldRows = [
     ["summary", "摘要"], ["publicIdentity", "公开身份"], ["trueIdentity", "真实身份"],
@@ -247,8 +249,13 @@ function CharacterCardRenderer({
     return [{ key, label, value: String(value), provenance }];
   });
   return (
-    <article className={`character-card character-card-${importance}`} data-page-atomic="true">
+    <article className={`character-card character-card-${importance}`}>
       <header>
+        {image && (
+          // Entity images are locally stored data URLs selected by the KP.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img className="character-card-image" src={image} alt={entityName(entity)} />
+        )}
         <div>
           <small>{importance === "core" ? "核心人物" : importance === "important" ? "重要人物" : "次要人物"}</small>
           <button type="button" onClick={(event) => onEntityAction?.({ entity, behavior: entity.linkBehavior, action: "preview", anchorRect: event.currentTarget.getBoundingClientRect() })}>

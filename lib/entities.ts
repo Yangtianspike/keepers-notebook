@@ -62,6 +62,13 @@ export function entityFields(entity: EntityCard): EntityFields {
   return { ...entity.original.fields, ...(entity.overrides?.fields ?? {}) };
 }
 
+export function entityImage(entity: EntityCard) {
+  if (entity.overrides && "image" in entity.overrides) {
+    return entity.overrides.image || undefined;
+  }
+  return entity.original.image;
+}
+
 export function entityRef(kind: EntityKind, id: string) {
   return `${kind}:${id}`;
 }
@@ -93,12 +100,17 @@ function card(
   sectionKey: string,
   source: EntityCard["source"] = "source",
   cocStats?: EntityCard["original"]["cocStats"],
+  image?: string,
+  imageSource?: EntityCard["original"]["imageSource"],
 ): EntityCard {
   const ref = entityRef(kind, id);
   const overrides = project.kpNotes?.entityOverrides?.[ref];
   return {
     ref, id, kind, source, confirmed: source !== "inference",
-    original: { name, aliases, tags: [], playerVisible: "", keeperPrivate: "", fields, cocStats },
+    original: {
+      name, aliases, tags: [], playerVisible: "", keeperPrivate: "", fields,
+      cocStats, image, imageSource,
+    },
     overrides,
     appearances: [{ sectionKey }],
     linkBehavior: overrides?.linkBehavior ?? { jump: true, preview: true },
@@ -122,7 +134,11 @@ export function buildProjectEntities(project: Project): EntityCard[] {
       appearance: person.appearance ?? "", personality: person.personality ?? "",
       state: person.state ?? "", performanceHints: person.performanceHints ?? "",
     },
-    "stage-characters", person.provenance === "inference" ? "inference" : "source", person.cocStats,
+    "stage-characters", person.provenance === "inference" ? "inference" : "source",
+    person.cocStats, person.portrait,
+    person.portraitSource === "manual" || person.portraitSource === "extracted"
+      ? person.portraitSource
+      : undefined,
   ), appearances: [
     { sectionKey: "stage-characters", label: "人物" },
     ...actAppearances((act) => act.personIds.includes(person.id)),
@@ -369,7 +385,7 @@ function legacyPersonAction(project: Project, actId: string, personId: string) {
   return sentences.slice(0, 2).join("");
 }
 
-export function buildActMarkdown(project: Project, actId: string) {
+export function buildActMarkdown(project: Project, actId: string, includeActsHeading = false) {
   const act = project.analysis.acts.find((candidate) => candidate.id === actId);
   if (!act) return "# 幕\n\n暂无内容";
   const peopleById = new Map(project.analysis.people.map((person) => [person.id, person]));
@@ -394,20 +410,20 @@ export function buildActMarkdown(project: Project, actId: string) {
       : branch.isEnding ? "结局" : "待定";
     return `- ${branch.condition || "条件待补充"} → ${next}`;
   }).join("\n") || "暂无分支";
-  return `# ${buildActTitle(act.title, act.sequence)}
+  return `${includeActsHeading ? "# 幕\n\n" : ""}## ${buildActTitle(act.title, act.sequence)}
 
 ${act.placeText || "地点未定"} · ${act.time || "时间未定"}
 
-## 本幕剧情
+### 本幕剧情
 
 ${actions}
 
-### 主要剧情
+#### 主要剧情
 ${act.description || "待补充"}
 
-### 关键节点
+#### 关键节点
 ${keyEvents}
 
-### 分支与结局
+#### 分支与结局
 ${branches}`;
 }

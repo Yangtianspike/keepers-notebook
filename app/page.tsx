@@ -9,6 +9,10 @@ import {
 } from "react";
 import { parseScenarioFile } from "@/lib/parser";
 import { hybridSearch, stageQuery } from "@/lib/retrieval";
+import {
+  extractExplicitCoCStats,
+  mergeExplicitCoCStats,
+} from "@/lib/coc-stat-extractor";
 import { ensureVectorIndex, probeEmbedding } from "@/lib/embedding";
 import {
   flagUnverifiedSourceRefs,
@@ -197,9 +201,7 @@ function NotebookToc({
   activeHeadingId?: string;
   onSelect: (heading: NotebookHeading) => void;
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(headings.filter((heading) => heading.level === 1).map((heading) => heading.id)),
-  );
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const byId = new Map(headings.map((heading) => [heading.id, heading]));
   const visible = headings.filter((heading) => {
     let current = heading;
@@ -1694,10 +1696,46 @@ export default function Home() {
         const detailReviews: unknown[] = [];
         const detailMergeCandidates: unknown[] = [];
         const batchSize = 6;
+        const includedSourcePages = runningProject.pages.filter((page) =>
+          runningProject.chapters.some((chapter) =>
+            chapter.included &&
+            page.pageNumber >= chapter.startPage &&
+            page.pageNumber <= chapter.endPage,
+          ),
+        );
 
         for (let index = 0; index < characterSkeleton.length; index += batchSize) {
           const batch = characterSkeleton.slice(index, index + batchSize);
           const completed = Math.min(index + batch.length, characterSkeleton.length);
+          const batchNames = batch.flatMap((person) => [
+            String(person.name ?? ""),
+            ...(Array.isArray(person.aliases) ? person.aliases.map(String) : []),
+          ]).filter(Boolean);
+          let batchScenarioText = scenarioText;
+          try {
+            const detailChunks = await hybridSearch(
+              runningProject,
+              `${batchNames.join(" ")} 守秘人笔记 建议数据 力量 体质 体型 敏捷 灵感 外貌 意志 教育 理智 HP MP DB 体格 移动 战斗 技能 伤害`,
+              18,
+              modelConfig,
+              apiKey,
+            );
+            if (detailChunks.length > 0) {
+              batchScenarioText = detailChunks
+                .sort((left, right) => left.chunk.startPage - right.chunk.startPage)
+                .map(({ chunk }) => {
+                  const page = runningProject.pages.find(
+                    (candidate) => candidate.pageNumber === chunk.startPage,
+                  );
+                  return `[[PDF_PAGE:${chunk.startPage}]]${
+                    page?.printedPage ? `[[PRINTED_PAGE:${page.printedPage}]]` : ""
+                  }\n${chunk.text}`;
+                })
+                .join("\n\n");
+            }
+          } catch {
+            // The first-stage retrieval remains a valid fallback.
+          }
           setStreamPreview(
             `正在补全人物属性与主持资料（${completed} / ${characterSkeleton.length}）…`,
           );
@@ -1714,7 +1752,7 @@ export default function Home() {
               confirmMode: modelConfig.confirmMode ?? "tier1",
               document: {
                 name: runningProject.name,
-                text: scenarioText,
+                text: batchScenarioText,
                 chapters: runningProject.chapters
                   .filter((chapter) => chapter.included)
                   .map(({ title, startPage, endPage }) => ({
@@ -1766,6 +1804,18 @@ export default function Home() {
               ...detailPerson,
               id: skeletonPerson.id,
               name: skeletonPerson.name,
+              cocStats: mergeExplicitCoCStats(
+                normalizePersonCoCStats(detailPerson.cocStats),
+                extractExplicitCoCStats(
+                  includedSourcePages,
+                  [
+                    String(skeletonPerson.name ?? ""),
+                    ...(Array.isArray(skeletonPerson.aliases)
+                      ? skeletonPerson.aliases.map(String)
+                      : []),
+                  ],
+                ),
+              ),
             });
           }
           if (Array.isArray(detailPayload.data?.reviewItems)) {
@@ -2765,9 +2815,9 @@ export default function Home() {
     "stage-characterArcs": `${buildCharacterArcsMarkdown(activeProject)}${noteMarkdown("stage-characterArcs")}`,
     "stage-openingHook": `${buildOpeningHookMarkdown(activeProject)}${noteMarkdown("stage-openingHook")}`,
     "stage-clues": `# 关键线索安排\n\n${activeProject.analysis.clues.map((clue) => `## ${clue.name}\n${clue.summary}\n\n- 来源：${clue.source}\n- 获取方式：${clue.acquisition || "待补充"}\n- 指向：${clue.targets.map((target) => target.label).join("、") || "待补充"}`).join("\n\n")}${noteMarkdown("stage-clues")}`,
-    ...Object.fromEntries(activeProject.analysis.acts.map((act) => [
+    ...Object.fromEntries(activeProject.analysis.acts.map((act, index) => [
       `acts:${act.id}`,
-      `${buildActMarkdown(activeProject, act.id)}${noteMarkdown(`acts:${act.id}`)}`,
+      `${buildActMarkdown(activeProject, act.id, index === 0)}${noteMarkdown(`acts:${act.id}`)}`,
     ])),
   } : {};
 
@@ -3241,7 +3291,6 @@ export default function Home() {
           onMove={(x, y) => setEntityWindows((current) => current.map((item) => item.id === floatingWindow.id ? { ...item, x, y } : item))}
           onOpenRelated={(entityRef) => openEntityWindow(entityRef)}
           onJump={jumpToEntity}
-          onJumpToAppearance={jumpToEntity}
           onSave={saveEntityOverride}
           onCreate={(kind, name, relatedTo) => addKeeperEntity(kind, name, relatedTo?.appearances[0]?.sectionKey ?? "stage-background", relatedTo)}
           onDelete={(entity) => {

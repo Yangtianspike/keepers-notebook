@@ -129,6 +129,7 @@ ${
     : `只补全“待补全的人物索引”中列出的人物，不得增加或遗漏人物，并保留其 id、name、aliases、role、importance、publicIdentity、trueIdentity 和来源。
 为每个人物补全可直接供 KP 使用的摘要、外貌、性格、当前状态和扮演提示。
 所有人物（包括 important 和 minor）都要给出 CoC 7版人物属性。原文明示的每个数值逐项标记 source 并附来源；缺失值允许依据年龄、身份和剧情作用合理推断，但必须逐项标记 inference，不能把推断伪装成原文数据。
+中文属性名必须按 CoC 7版字段直接读取：力量=str、体质=con、体型=siz、敏捷=dex、外貌=app、灵感/智力=int、意志=pow、教育=edu、理智=san、移动=mov、体格=build、DB=damageBonus。若人物附近存在“建议数据”“战斗”“技能”等明确数据块，必须逐项抄录原值，不得以合理化数值替换；只有该字段在原文数据块中确实缺失时才能推断。
 属性通常为 1-100，MOV 通常为 0-20，Build 通常为 -2 到 5；技能和攻击也必须分别标记 provenance。技能最多保留 8 项，攻击最多保留 4 项。`
 }
 ${phase === "skeleton" ? "" : `

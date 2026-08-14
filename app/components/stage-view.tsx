@@ -183,6 +183,16 @@ export function measureAndSlice(
     const nextHeight = typeof nextMeasurement === "number"
       ? nextMeasurement
       : nextMeasurement?.height ?? 0;
+    let keepChainHeight = blockHeight;
+    if (keepsWithNext(block)) {
+      for (let nextIndex = index + 1; nextIndex < blocks.length; nextIndex += 1) {
+        const chainedMeasurement = measuredHeights[nextIndex];
+        keepChainHeight += typeof chainedMeasurement === "number"
+          ? chainedMeasurement
+          : chainedMeasurement?.height ?? 0;
+        if (!keepsWithNext(blocks[nextIndex])) break;
+      }
+    }
 
     if (
       currentBlocks.length > 0 &&
@@ -233,7 +243,7 @@ export function measureAndSlice(
     if (
       currentBlocks.length > 0 &&
       keepsWithNext(block) &&
-      accumulatedHeight + blockHeight + nextHeight > pageHeight
+      accumulatedHeight + Math.max(blockHeight + nextHeight, keepChainHeight) > pageHeight
     ) {
       finishPage();
       currentStart = index;
@@ -400,7 +410,7 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
         Number.parseFloat(styles.marginBottom || "0");
       const rootRect = element.getBoundingClientRect();
       const protectedElements = Array.from(element.querySelectorAll<HTMLElement>(
-        ".stage-inset-card, .act-person-card, .act-clue-card, .act-event-list article, .act-branch-list button, .character-card, .markdown-table-wrap, .markdown-image",
+        ".stage-inset-card, .act-person-card, .act-clue-card, .act-event-list article, .act-branch-list button, .character-card > header, .character-profile-grid > div, .character-stat-grid > div, .character-skill-list > span, .markdown-table-wrap, .markdown-image",
       ));
       const headings = Array.from(element.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"));
       const protectedRanges = protectedElements.map((protectedElement) => {

@@ -418,6 +418,8 @@ export type EntityOverrides = {
   keeperPrivate?: string;
   fields?: EntityFields;
   cocStats?: Partial<PersonCoCStats>;
+  image?: string;
+  imageSource?: "manual" | "extracted";
   linkBehavior?: EntityLinkBehavior;
   updatedAt: string;
 };
@@ -436,6 +438,8 @@ export type EntityCard = {
     keeperPrivate: string;
     fields: EntityFields;
     cocStats?: PersonCoCStats;
+    image?: string;
+    imageSource?: "manual" | "extracted";
   };
   overrides?: EntityOverrides;
   appearances: EntityAppearance[];

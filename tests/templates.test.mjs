@@ -75,11 +75,11 @@ test("opening and act templates use structured analysis with legacy fallbacks", 
   assert.match(opening, /## GM 开场朗读文本\n雨落在窗沿。/);
   assert.match(opening, /## 导入技巧\n待补充/);
 
-  const act = buildActMarkdown(project, "act-1");
-  assert.match(act, /^# 第 1 幕 · 咖啡馆/m);
+  const act = buildActMarkdown(project, "act-1", true);
+  assert.match(act, /^# 幕\n\n## 第 1 幕 · 咖啡馆/m);
   assert.match(act, /林墨.*翻看账本并发现涂改.*剧本资料，第 12 页/);
   assert.match(act, /老张.*没有采取行动.*模型归纳/);
-  assert.match(act, /## 本幕剧情/);
+  assert.match(act, /### 本幕剧情/);
 });
 
 test("entity appearances use semantic person relations without same-act labels", () => {
