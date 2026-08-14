@@ -8,6 +8,7 @@ import {
   buildOpeningHookMarkdown,
   buildProjectEntities,
   getRelatedEntities,
+  normalizeActMarkdownHierarchy,
 } from "../lib/entities.ts";
 
 const project = {
@@ -80,6 +81,21 @@ test("opening and act templates use structured analysis with legacy fallbacks", 
   assert.match(act, /林墨.*翻看账本并发现涂改.*剧本资料，第 12 页/);
   assert.match(act, /老张.*没有采取行动.*模型归纳/);
   assert.match(act, /### 本幕剧情/);
+});
+
+test("legacy saved act markdown is grouped below one acts heading", () => {
+  assert.equal(
+    normalizeActMarkdownHierarchy("# 第 1 幕 · 旧标题\n\n## 场景", true),
+    "# 幕\n\n## 第 1 幕 · 旧标题\n\n### 场景",
+  );
+  assert.equal(
+    normalizeActMarkdownHierarchy("# 第二幕 · 后续\n\n正文", false),
+    "## 第二幕 · 后续\n\n正文",
+  );
+  assert.equal(
+    normalizeActMarkdownHierarchy("# 幕\n\n## 第 1 幕 · 新标题", true),
+    "# 幕\n\n## 第 1 幕 · 新标题",
+  );
 });
 
 test("entity appearances use semantic person relations without same-act labels", () => {

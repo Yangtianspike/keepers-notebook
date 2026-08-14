@@ -39,6 +39,7 @@ import {
   buildCharacterMarkdown,
   buildOpeningHookMarkdown,
   createKeeperEntity,
+  normalizeActMarkdownHierarchy,
 } from "@/lib/entities";
 import {
   deleteProject,
@@ -2821,22 +2822,28 @@ export default function Home() {
     ])),
   } : {};
 
-  const markdownSections = Object.keys(defaultMarkdown).map((key) => ({
-    key,
-    name: key.startsWith("acts:")
-      ? activeProject?.analysis.acts.find((act) => `acts:${act.id}` === key)?.title ?? "幕"
-      : stageLabels[({
-          "stage-background": "background",
-          "stage-timeplace": "timeplace",
-          "stage-characters": "characters",
-          "stage-characterArcs": "characterArcs",
-          "stage-openingHook": "openingHook",
-          "stage-clues": "clues",
-        } as Record<string, AnalysisStage>)[key]],
-    markdown: sectionMarkdown[key] ?? defaultMarkdown[key],
-    templateMarkdown: defaultMarkdown[key],
-    customized: sectionMarkdown[key] !== undefined,
-  }));
+  const markdownSections = Object.keys(defaultMarkdown).map((key) => {
+    const actIndex = activeProject?.analysis.acts.findIndex((act) => `acts:${act.id}` === key) ?? -1;
+    const savedMarkdown = sectionMarkdown[key] ?? defaultMarkdown[key];
+    return {
+      key,
+      name: key.startsWith("acts:")
+        ? activeProject?.analysis.acts.find((act) => `acts:${act.id}` === key)?.title ?? "幕"
+        : stageLabels[({
+            "stage-background": "background",
+            "stage-timeplace": "timeplace",
+            "stage-characters": "characters",
+            "stage-characterArcs": "characterArcs",
+            "stage-openingHook": "openingHook",
+            "stage-clues": "clues",
+          } as Record<string, AnalysisStage>)[key]],
+      markdown: key.startsWith("acts:")
+        ? normalizeActMarkdownHierarchy(savedMarkdown, actIndex === 0)
+        : savedMarkdown,
+      templateMarkdown: defaultMarkdown[key],
+      customized: sectionMarkdown[key] !== undefined,
+    };
+  });
 
   const notebookHeadings = organizeNotebookHeadings(
     markdownSections.flatMap((section) => {
@@ -2868,6 +2875,14 @@ export default function Home() {
       onEntityAction: ({ entity, action, anchorRect }) => {
         if (action === "jump") jumpToEntity(entity);
         else openEntityWindow(entity.ref, anchorRect);
+      },
+      onEntityImageChange: (entity, image) => {
+        saveEntityOverride(entity, {
+          ...entity.overrides,
+          image,
+          imageSource: "manual",
+          updatedAt: new Date().toISOString(),
+        });
       },
     }),
   }));

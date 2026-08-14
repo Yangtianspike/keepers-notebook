@@ -372,6 +372,30 @@ export function buildActTitle(originalTitle: string, sequence: number) {
   return title ? `第 ${safeSequence} 幕 · ${title}` : `第 ${safeSequence} 幕`;
 }
 
+export function normalizeActMarkdownHierarchy(markdown: string, includeActsHeading: boolean) {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const firstHeading = lines.findIndex((line) => /^#{1,6}\s+\S/.test(line.trim()));
+  if (firstHeading >= 0 && /^#\s+幕\s*$/.test(lines[firstHeading].trim())) {
+    lines.splice(firstHeading, 1);
+    while (lines[firstHeading]?.trim() === "") lines.splice(firstHeading, 1);
+  }
+  const actHeading = lines.findIndex((line) => /^#{1,6}\s+\S/.test(line.trim()));
+  if (actHeading >= 0) {
+    const legacyHierarchy = /^#\s+/.test(lines[actHeading].trim());
+    if (legacyHierarchy) {
+      lines.forEach((line, index) => {
+        const match = line.match(/^(#{1,6})(\s+\S.*)$/);
+        if (!match) return;
+        lines[index] = `${"#".repeat(Math.min(6, match[1].length + 1))}${match[2]}`;
+      });
+    } else {
+      lines[actHeading] = lines[actHeading].replace(/^#{1,6}(\s+)/, "##$1");
+    }
+  }
+  const body = lines.join("\n").replace(/^\s+/, "");
+  return `${includeActsHeading ? "# 幕\n\n" : ""}${body}`.trim();
+}
+
 function legacyPersonAction(project: Project, actId: string, personId: string) {
   const act = project.analysis.acts.find((candidate) => candidate.id === actId);
   const person = project.analysis.people.find((candidate) => candidate.id === personId);

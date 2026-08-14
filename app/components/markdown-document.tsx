@@ -32,6 +32,7 @@ type MarkdownDocumentProps = {
   markdown: string;
   entities?: EntityCard[];
   onEntityAction?: (action: MarkdownEntityAction) => void;
+  onEntityImageChange?: (entity: EntityCard, image: string) => void;
   sectionKey?: string;
 };
 
@@ -220,14 +221,38 @@ const COC_STAT_LABELS: Array<[PersonCoCStatKey, string]> = [
   ["mov", "MOV"], ["build", "体格"], ["damageBonus", "伤害加值"], ["armor", "护甲"],
 ];
 
+function resizeCharacterImage(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("图片读取失败。"));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("图片格式无法识别。"));
+      image.onload = () => {
+        const maximum = 768;
+        const scale = Math.min(1, maximum / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function CharacterCardRenderer({
   entity,
   importance,
   onEntityAction,
+  onEntityImageChange,
 }: {
   entity: EntityCard;
   importance: "core" | "important" | "minor";
   onEntityAction?: MarkdownDocumentProps["onEntityAction"];
+  onEntityImageChange?: MarkdownDocumentProps["onEntityImageChange"];
 }) {
   const fields = entityFields(entity);
   const image = entityImage(entity);
@@ -250,12 +275,27 @@ function CharacterCardRenderer({
   });
   return (
     <article className={`character-card character-card-${importance}`}>
+      {importance === "core" && (
+        <div className="character-card-portrait">
+          {image ? (
+            // Entity images are locally stored data URLs selected by the KP.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={image} alt={entityName(entity)} />
+          ) : (
+            <span aria-hidden="true">肖像</span>
+          )}
+          <label>
+            {image ? "更换图片" : "添加图片"}
+            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              void resizeCharacterImage(file).then((dataUrl) => onEntityImageChange?.(entity, dataUrl));
+              event.currentTarget.value = "";
+            }} />
+          </label>
+        </div>
+      )}
       <header>
-        {image && (
-          // Entity images are locally stored data URLs selected by the KP.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img className="character-card-image" src={image} alt={entityName(entity)} />
-        )}
         <div>
           <small>{importance === "core" ? "核心人物" : importance === "important" ? "重要人物" : "次要人物"}</small>
           <button type="button" onClick={(event) => onEntityAction?.({ entity, behavior: entity.linkBehavior, action: "preview", anchorRect: event.currentTarget.getBoundingClientRect() })}>
@@ -297,7 +337,7 @@ export function markdownHeadingId(sectionKey: string, blockIndex: number) {
   return `${sectionKey}:heading:${blockIndex}`;
 }
 
-export function markdownToReactBlocks({ markdown, entities = [], onEntityAction, sectionKey = "document" }: MarkdownDocumentProps) {
+export function markdownToReactBlocks({ markdown, entities = [], onEntityAction, onEntityImageChange, sectionKey = "document" }: MarkdownDocumentProps) {
   return parseMarkdownBlocks(markdown).flatMap((block, index) => {
     const content = block.text ? inlineMarkdown(block.text, entities, onEntityAction) : null;
     const common = { className: "markdown-block", "data-keep-with-next": block.kind === "heading" ? "true" : undefined };
@@ -340,6 +380,7 @@ export function markdownToReactBlocks({ markdown, entities = [], onEntityAction,
         entity={entity}
         importance={block.character.importance ?? "minor"}
         onEntityAction={onEntityAction}
+        onEntityImageChange={onEntityImageChange}
         key={index}
       />;
     }
@@ -356,10 +397,10 @@ export function markdownToReactBlocks({ markdown, entities = [], onEntityAction,
 }
 
 export function MarkdownDocument(props: MarkdownDocumentProps) {
-  const { markdown, entities, onEntityAction } = props;
+  const { markdown, entities, onEntityAction, onEntityImageChange } = props;
   const blocks = useMemo(
-    () => markdownToReactBlocks({ markdown, entities, onEntityAction }),
-    [markdown, entities, onEntityAction],
+    () => markdownToReactBlocks({ markdown, entities, onEntityAction, onEntityImageChange }),
+    [markdown, entities, onEntityAction, onEntityImageChange],
   );
   return <div className="markdown-document">{blocks}</div>;
 }
