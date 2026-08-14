@@ -49,6 +49,7 @@ test("URL allowlists reject active content and transient blob URLs", () => {
   assert.equal(isSafeLinkUrl("keeper://person:lin-mo?jump=1"), true);
   assert.equal(isSafeLinkUrl("javascript:alert(1)"), false);
   assert.equal(isSafeImageUrl("https://example.com/a.png"), true);
+  assert.equal(isSafeImageUrl("/relative-image.png"), false);
   assert.equal(isSafeImageUrl("data:image/png;base64,aGVsbG8="), true);
   assert.equal(isSafeImageUrl("blob:http://localhost/id"), false);
   assert.equal(isSafeImageUrl("data:text/html;base64,PHNjcmlwdD4="), false);

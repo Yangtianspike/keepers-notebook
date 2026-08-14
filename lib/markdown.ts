@@ -32,9 +32,10 @@ export type MarkdownBlock = {
 const SAFE_DATA_IMAGE = /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i;
 
 export function isSafeImageUrl(value: string) {
+  if (SAFE_DATA_IMAGE.test(value)) return true;
   try {
-    const url = new URL(value, "https://keeper-atlas.local");
-    return url.protocol === "https:" || url.protocol === "http:" || SAFE_DATA_IMAGE.test(value);
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
   } catch {
     return false;
   }
@@ -43,7 +44,7 @@ export function isSafeImageUrl(value: string) {
 export function isSafeLinkUrl(value: string) {
   if (value.startsWith("keeper://")) return true;
   try {
-    const url = new URL(value, "https://keeper-atlas.local");
+    const url = new URL(value);
     return url.protocol === "https:" || url.protocol === "http:";
   } catch {
     return false;

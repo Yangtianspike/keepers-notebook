@@ -16,7 +16,8 @@ export const ENTITY_KIND_LABELS: Record<EntityKind, string> = {
 
 export const ENTITY_FIELD_LABELS: Record<EntityKind, Array<[string, string]>> = {
   person: [
-    ["role", "角色类型"], ["importance", "重要程度"], ["publicIdentity", "公开身份"],
+    ["summary", "人物摘要"], ["role", "角色类型"], ["importance", "重要程度"],
+    ["organization", "所属组织"], ["publicIdentity", "公开身份"],
     ["trueIdentity", "真实身份"], ["appearance", "外貌"], ["personality", "性格"],
     ["motivation", "动机"], ["secrets", "秘密"], ["state", "当前状态"],
     ["firstAppearance", "初次登场"], ["performanceHints", "扮演提示"], ["voice", "声音"],
@@ -148,11 +149,11 @@ export function buildProjectEntities(project: Project): EntityCard[] {
     { sectionKey: "stage-timeplace", label: "时间地点" },
     ...actAppearances((act) => act.placeId === place.id || (!act.placeId && act.placeText === place.name)),
   ] }));
-  const events = project.analysis.acts.flatMap((act) => act.keyEvents.map((event, index) => card(
+  const events = project.analysis.acts.flatMap((act) => act.keyEvents.map((event, index) => ({ ...card(
     project, "event", `${act.id}-${index}`, event.title, [],
     { type: event.type, process: event.description, time: act.time, place: act.placeText ?? "" },
     `acts:${act.id}`,
-  )));
+  ), appearances: [{ sectionKey: `acts:${act.id}`, label: `第 ${act.sequence} 幕 · ${act.title}` }] })));
   return [...people, ...clues, ...places, ...events, ...(project.kpNotes?.keeperEntities ?? [])];
 }
 
@@ -331,7 +332,7 @@ export function buildActMarkdown(project: Project, actId: string) {
     const link = person ? `[${name}](${keeperEntityUri(entityRef("person", person.id))})` : name;
     return `- ${link}：${summary}（${provenanceLabel}）`;
   }).join("\n") || "暂无明确人物行动";
-  const keyEvents = act.keyEvents.map((event) => `### ${markdownText(event.title)}\n${event.description}`).join("\n\n") || "暂无关键节点";
+  const keyEvents = act.keyEvents.map((event) => `#### ${markdownText(event.title)}\n${event.description}`).join("\n\n") || "暂无关键节点";
   const branches = act.branches.map((branch) => {
     const next = branch.nextActId
       ? project.analysis.acts.find((candidate) => candidate.id === branch.nextActId)?.title || branch.nextActId

@@ -282,33 +282,43 @@ function EntityEditForm({ entity, onCancel, onSave }: {
     .map((skill) => `${skill.name}: ${skill.value}`).join("\n"));
   const [attacksText, setAttacksText] = useState(() => (mergedCocStats?.attacks ?? [])
     .map((attack) => `${attack.name} | ${attack.value ?? ""} | ${attack.damage}`).join("\n"));
-  const [cocTouched, setCocTouched] = useState(false);
+  const [cocTouchedKeys, setCocTouchedKeys] = useState<PersonCoCStatKey[]>([]);
+  const [skillsTouched, setSkillsTouched] = useState(false);
+  const [attacksTouched, setAttacksTouched] = useState(false);
   return (
     <form className="entity-edit-form" onSubmit={(event) => {
       event.preventDefault();
-      const nextCocStats: Partial<PersonCoCStats> = {};
-      COC_FIELDS.forEach(([key]) => {
+      const nextCocStats: Partial<PersonCoCStats> = { ...(entity.overrides?.cocStats ?? {}) };
+      cocTouchedKeys.forEach((key) => {
         const value = cocValues[key]?.trim();
-        if (!value) return;
+        if (!value) {
+          delete (nextCocStats as Record<string, unknown>)[key];
+          return;
+        }
         if (key === "damageBonus" || key === "armor") nextCocStats[key] = value;
         else {
           const number = Number(value);
           if (Number.isFinite(number)) (nextCocStats as Record<string, unknown>)[key] = number;
         }
       });
-      nextCocStats.skills = skillsText.split(/\r?\n/).flatMap((line) => {
-        const match = line.match(/^\s*(.+?)\s*[:：]\s*(\d+(?:\.\d+)?)\s*%?\s*$/);
-        return match ? [{ name: match[1], value: Number(match[2]), provenance: "keeper" as const }] : [];
-      });
-      nextCocStats.attacks = attacksText.split(/\r?\n/).flatMap((line) => {
-        const [name = "", value = "", damage = ""] = line.split("|").map((part) => part.trim());
-        if (!name || !damage) return [];
-        const numericValue = Number(value);
-        return [{ name, value: Number.isFinite(numericValue) ? numericValue : undefined, damage, provenance: "keeper" as const }];
-      });
+      if (skillsTouched) {
+        nextCocStats.skills = skillsText.split(/\r?\n/).flatMap((line) => {
+          const match = line.match(/^\s*(.+?)\s*[:：]\s*(\d+(?:\.\d+)?)\s*%?\s*$/);
+          return match ? [{ name: match[1], value: Number(match[2]), provenance: "keeper" as const }] : [];
+        });
+      }
+      if (attacksTouched) {
+        nextCocStats.attacks = attacksText.split(/\r?\n/).flatMap((line) => {
+          const [name = "", value = "", damage = ""] = line.split("|").map((part) => part.trim());
+          if (!name || !damage) return [];
+          const numericValue = value ? Number(value) : Number.NaN;
+          return [{ name, value: Number.isFinite(numericValue) ? numericValue : undefined, damage, provenance: "keeper" as const }];
+        });
+      }
+      const cocChanged = cocTouchedKeys.length > 0 || skillsTouched || attacksTouched;
       onSave({
         name: name.trim(), aliases: aliases.split(/[、,，]/).map((item) => item.trim()).filter(Boolean),
-        fields, cocStats: cocTouched ? nextCocStats : entity.overrides?.cocStats,
+        fields, cocStats: cocChanged ? nextCocStats : entity.overrides?.cocStats,
         playerVisible, keeperPrivate, linkBehavior: { jump, preview }, updatedAt: new Date().toISOString(),
       });
     }}>
@@ -320,10 +330,10 @@ function EntityEditForm({ entity, onCancel, onSave }: {
       {entity.kind === "person" && <fieldset className="entity-coc-edit">
         <legend>CoC 7版属性（修改后作为 KP 覆盖值保存）</legend>
         <div className="entity-coc-edit-grid">
-          {COC_FIELDS.map(([key, label]) => <label key={key}>{label}<input value={cocValues[key] ?? ""} onChange={(event) => { setCocTouched(true); setCocValues((current) => ({ ...current, [key]: event.target.value })); }} /></label>)}
+          {COC_FIELDS.map(([key, label]) => <label key={key}>{label}<input value={cocValues[key] ?? ""} onChange={(event) => { setCocTouchedKeys((current) => current.includes(key) ? current : [...current, key]); setCocValues((current) => ({ ...current, [key]: event.target.value })); }} /></label>)}
         </div>
-        <label>技能（每行“名称: 数值”）<textarea value={skillsText} onChange={(event) => { setCocTouched(true); setSkillsText(event.target.value); }} /></label>
-        <label>攻击（每行“名称 | 命中 | 伤害”）<textarea value={attacksText} onChange={(event) => { setCocTouched(true); setAttacksText(event.target.value); }} /></label>
+        <label>技能（每行“名称: 数值”）<textarea value={skillsText} onChange={(event) => { setSkillsTouched(true); setSkillsText(event.target.value); }} /></label>
+        <label>攻击（每行“名称 | 命中 | 伤害”）<textarea value={attacksText} onChange={(event) => { setAttacksTouched(true); setAttacksText(event.target.value); }} /></label>
       </fieldset>}
       <label>玩家可见<textarea value={playerVisible} onChange={(event) => setPlayerVisible(event.target.value)} /></label>
       <label>KP 私密<textarea value={keeperPrivate} onChange={(event) => setKeeperPrivate(event.target.value)} /></label>
