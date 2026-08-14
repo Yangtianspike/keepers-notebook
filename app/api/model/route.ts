@@ -32,6 +32,7 @@ type RequestBody = {
     keeperDecisions?: Array<{ title: string; description: string; note?: string }>;
     priorAnalysis?: unknown;
     actSkeleton?: unknown;
+    characterSkeleton?: unknown;
   };
 };
 
@@ -109,11 +110,29 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
   "reviewItems":[]
 }`,
     characters: `${common}
-识别所有有名人物与超自然存在。疑似同一人的不同称呼不得自动合并。
+${
+  phase === "skeleton"
+    ? `识别所有有名人物与超自然存在。疑似同一人的不同称呼不得自动合并。
 只有原文明确说明的别名才可直接放入 aliases；其余写入 mergeCandidates。
+本次只生成人物索引，不生成 cocStats。务必覆盖核心、重要和次要人物，并保持内容简洁。
+返回：
+{
+  "people": [{
+    "id":"稳定的英文或拼音短标识","name":"名称","aliases":[],
+    "role":"剧情作用","importance":"core|important|minor",
+    "publicIdentity":"公开身份","trueIdentity":"真实身份",
+    "confidence":0.9,"provenance":"source|inference|conflict","sources":[]
+  }],
+  "mergeCandidates":[{"names":["称呼A","称呼B"],"reason":"为什么可能是同一人","sources":[]}],
+  "reviewItems":[]
+}`
+    : `只补全“待补全的人物索引”中列出的人物，不得增加或遗漏人物，并保留其 id、name、aliases、role、importance、publicIdentity、trueIdentity 和来源。
 为每个人物补全可直接供 KP 使用的摘要、外貌、性格、当前状态和扮演提示。
 所有人物（包括 important 和 minor）都要给出 CoC 7版人物属性。原文明示的每个数值逐项标记 source 并附来源；缺失值允许依据年龄、身份和剧情作用合理推断，但必须逐项标记 inference，不能把推断伪装成原文数据。
-属性通常为 1-100，MOV 通常为 0-20，Build 通常为 -2 到 5；技能和攻击也必须分别标记 provenance。
+属性通常为 1-100，MOV 通常为 0-20，Build 通常为 -2 到 5；技能和攻击也必须分别标记 provenance。技能最多保留 8 项，攻击最多保留 4 项。`
+}
+${phase === "skeleton" ? "" : `
+只有原文明确说明的别名才可直接放入 aliases；其余写入 mergeCandidates。
 返回：
 {
   "people": [{
@@ -145,7 +164,7 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
   }],
   "mergeCandidates":[{"names":["称呼A","称呼B"],"reason":"为什么可能是同一人","sources":[]}],
   "reviewItems":[]
-}`,
+}`}`,
     characterArcs: `${common}
 基于已确认的人物列表，逐一分析人物在故事中的经历、行动变化和深层动机。personId 必须引用已确认人物 id。每人的 experience 写 150-200 字，motivation 写 100 字左右，并总结初始动机、关键变化节点、最终动机和与主线的关系。
 返回：
@@ -299,6 +318,9 @@ export async function POST(request: NextRequest) {
     const actContext = body.context?.actSkeleton
       ? `\n待补全的幕骨架：\n${JSON.stringify(body.context.actSkeleton)}`
       : "";
+    const characterContext = body.context?.characterSkeleton
+      ? `\n待补全的人物索引：\n${JSON.stringify(body.context.characterSkeleton)}`
+      : "";
     const userMessage = isTest
       ? "请只返回一个 JSON 对象：{\"ok\":true}"
       : `剧本名称：${body.document?.name}
@@ -307,6 +329,7 @@ ${peopleContext}
 ${keeperContext}
 ${analysisContext}
 ${actContext}
+${characterContext}
 
 以下是与本阶段最相关的剧本原文摘录（按页码排序）。[[PDF_PAGE:N]] 表示 PDF 实际第 N 页；如摘录不足以回答，基于已有信息给出结论并降低 confidence：
 <scenario>
@@ -314,6 +337,12 @@ ${selectedText}
 </scenario>`;
 
     const confirmMode = body.confirmMode ?? "tier3";
+    // 人物详情会按小批次生成，不应在批次内部再次触发确认工具；
+    // 人物识别阶段仍保留用户所选的三档确认模式。
+    const effectiveConfirmMode =
+      body.stage === "characters" && body.phase === "detail"
+        ? "tier3"
+        : confirmMode;
     const initialMessages: ModelMessage[] = [
       {
         role: "system",
@@ -332,10 +361,10 @@ ${selectedText}
         )
       : buildModelRequest(
           body.stage as AnalysisStage,
-          confirmMode,
+          effectiveConfirmMode,
           initialMessages,
         );
-    const requestStream = Boolean(body.stream) && confirmMode === "tier3";
+    const requestStream = Boolean(body.stream) && effectiveConfirmMode === "tier3";
     const modelRequest: Record<string, unknown> = {
       model: body.config.model,
       temperature: 0.1,
@@ -350,7 +379,7 @@ ${selectedText}
     // economical in non-thinking mode.
     if (isDeepSeekEndpoint(endpoint)) {
       modelRequest.thinking = { type: "disabled" };
-      if (confirmMode === "tier3" || isTest) {
+      if (effectiveConfirmMode === "tier3" || isTest) {
         modelRequest.response_format = { type: "json_object" };
       }
     }
@@ -397,8 +426,8 @@ ${selectedText}
       return NextResponse.json({ error: message }, { status: response.status });
     }
 
-    if (!isTest && confirmMode !== "tier3") {
-      const event = parseStreamResponse(raw, confirmMode);
+    if (!isTest && effectiveConfirmMode !== "tier3") {
+      const event = parseStreamResponse(raw, effectiveConfirmMode);
       const responseMessage = raw.choices?.[0]?.message;
       const previousMessages: ModelMessage[] = [
         ...adaptedRequest.messages,
@@ -419,8 +448,16 @@ ${selectedText}
       }
       if (event.type === "complete") {
         if (typeof event.data === "string") {
+          const finishReason = raw.choices?.[0]?.finish_reason;
           return NextResponse.json(
-            { error: "模型没有返回合法 JSON 对象。" },
+            {
+              error:
+                finishReason === "length"
+                  ? body.stage === "characters"
+                    ? "模型输出达到上限，人物索引未能形成完整 JSON。应用会分批补全人物资料，请重试核心人物阶段。"
+                    : "模型输出达到上限，未能形成完整 JSON。请减少纳入分析的章节后重试当前阶段。"
+                  : "模型没有返回合法 JSON 对象。请重试当前阶段；若仍失败，请检查模型是否支持 JSON 输出。",
+            },
             { status: 502 },
           );
         }

@@ -1459,7 +1459,10 @@ export default function Home() {
           apiKey,
           config: modelConfig,
           stage,
-          phase: stage === "acts" ? "skeleton" : undefined,
+          phase:
+            stage === "acts" || stage === "characters"
+              ? "skeleton"
+              : undefined,
           confirmMode: modelConfig.confirmMode ?? "tier1",
           document: {
             name: runningProject.name,
@@ -1581,6 +1584,121 @@ export default function Home() {
         setWizardStage(stage);
         return;
       }
+      }
+      if (
+        stage === "characters" &&
+        responseOk &&
+        payload.data &&
+        Array.isArray(payload.data.people)
+      ) {
+        const characterSkeleton = payload.data.people as Array<
+          Record<string, unknown>
+        >;
+        const detailedPeople: Array<Record<string, unknown>> = [];
+        const detailReviews: unknown[] = [];
+        const detailMergeCandidates: unknown[] = [];
+        const batchSize = 6;
+
+        for (let index = 0; index < characterSkeleton.length; index += batchSize) {
+          const batch = characterSkeleton.slice(index, index + batchSize);
+          const completed = Math.min(index + batch.length, characterSkeleton.length);
+          setStreamPreview(
+            `正在补全人物属性与主持资料（${completed} / ${characterSkeleton.length}）…`,
+          );
+          const detailResponse = await fetch("/api/model", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: analysisAbortRef.current.signal,
+            body: JSON.stringify({
+              action: "analyze",
+              apiKey,
+              config: modelConfig,
+              stage,
+              phase: "detail",
+              confirmMode: modelConfig.confirmMode ?? "tier1",
+              document: {
+                name: runningProject.name,
+                text: scenarioText,
+                chapters: runningProject.chapters
+                  .filter((chapter) => chapter.included)
+                  .map(({ title, startPage, endPage }) => ({
+                    title,
+                    startPage,
+                    endPage,
+                  })),
+              },
+              context: {
+                characterSkeleton: batch,
+                keeperDecisions: runningProject.analysis.reviewItems
+                  .filter((item) => item.status === "accepted")
+                  .map(({ title, description, keeperNote }) => ({
+                    title,
+                    description,
+                    note: keeperNote,
+                  })),
+              },
+            }),
+          });
+          const detailPayload = (await detailResponse.json()) as {
+            type?: "complete";
+            data?: Record<string, unknown>;
+            error?: string;
+          };
+          const returnedPeople = Array.isArray(detailPayload.data?.people)
+            ? detailPayload.data.people as Array<Record<string, unknown>>
+            : [];
+          if (!detailResponse.ok || returnedPeople.length === 0) {
+            throw new Error(
+              detailPayload.error ||
+                `人物资料第 ${Math.floor(index / batchSize) + 1} 批生成失败。`,
+            );
+          }
+
+          for (const skeletonPerson of batch) {
+            const detailPerson = returnedPeople.find(
+              (candidate) =>
+                String(candidate.id ?? "") === String(skeletonPerson.id ?? "") ||
+                String(candidate.name ?? "") === String(skeletonPerson.name ?? ""),
+            );
+            if (!detailPerson) {
+              throw new Error(
+                `模型遗漏了人物“${String(skeletonPerson.name ?? skeletonPerson.id ?? "未知人物")}”，请重试核心人物阶段。`,
+              );
+            }
+            detailedPeople.push({
+              ...skeletonPerson,
+              ...detailPerson,
+              id: skeletonPerson.id,
+              name: skeletonPerson.name,
+            });
+          }
+          if (Array.isArray(detailPayload.data?.reviewItems)) {
+            detailReviews.push(...detailPayload.data.reviewItems);
+          }
+          if (Array.isArray(detailPayload.data?.mergeCandidates)) {
+            detailMergeCandidates.push(...detailPayload.data.mergeCandidates);
+          }
+        }
+
+        payload = {
+          type: "complete",
+          data: {
+            ...payload.data,
+            people: detailedPeople,
+            reviewItems: [
+              ...(Array.isArray(payload.data.reviewItems)
+                ? payload.data.reviewItems
+                : []),
+              ...detailReviews,
+            ],
+            mergeCandidates: [
+              ...(Array.isArray(payload.data.mergeCandidates)
+                ? payload.data.mergeCandidates
+                : []),
+              ...detailMergeCandidates,
+            ],
+          },
+        };
       }
       if (
         stage === "acts" &&
