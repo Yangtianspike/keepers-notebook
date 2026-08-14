@@ -4050,6 +4050,9 @@ button:disabled {
 
 .entity-window-layer { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; background: rgba(6,12,13,.72); padding: 24px; }
 .entity-window { width: min(760px, 100%); max-height: min(860px, calc(100vh - 48px)); overflow: auto; border: 1px solid #9a7b58; border-radius: 8px; background: #f5f0e1 url("/book-page-bg.png") center / cover; color: #2c1810; padding: 24px 30px; box-shadow: 0 28px 90px rgba(0,0,0,.68); }
+.floating-entity-window { position: fixed; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); box-sizing: border-box; resize: horizontal; }
+.floating-entity-window > header { cursor: move; touch-action: none; user-select: none; }
+.floating-entity-window > header button { cursor: pointer; }
 .entity-window > header { display: grid; grid-template-columns: 90px 1fr 42px; align-items: start; border-bottom: 1px solid rgba(123,33,30,.28); padding-bottom: 14px; text-align: center; }
 .entity-window h2 { margin: 4px 0 0; }
 .entity-window button,

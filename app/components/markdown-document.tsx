@@ -23,6 +23,7 @@ export type MarkdownEntityAction = {
   entity: EntityCard;
   behavior: EntityLinkBehavior;
   action: "jump" | "preview";
+  anchorRect?: DOMRect;
 };
 
 type MarkdownDocumentProps = {
@@ -67,13 +68,13 @@ function InlineEntityLink({
         <span className="entity-inline-menu">
           <strong>{entityName(entity)}</strong>
           <small>{ENTITY_KIND_LABELS[entity.kind]}</small>
-          {behavior.jump && <button type="button" onClick={() => {
+          {behavior.jump && <button type="button" onClick={(event) => {
             setOpen(false);
-            onEntityAction?.({ entity, behavior, action: "jump" });
+            onEntityAction?.({ entity, behavior, action: "jump", anchorRect: event.currentTarget.getBoundingClientRect() });
           }}>跳转到 {entityName(entity)}</button>}
-          {behavior.preview && <button type="button" onClick={() => {
+          {behavior.preview && <button type="button" onClick={(event) => {
             setOpen(false);
-            onEntityAction?.({ entity, behavior, action: "preview" });
+            onEntityAction?.({ entity, behavior, action: "preview", anchorRect: event.currentTarget.getBoundingClientRect() });
           }}>打开资料窗口</button>}
         </span>
       )}
@@ -198,7 +199,7 @@ function CharacterCardRenderer({
       <header>
         <div>
           <small>{importance === "core" ? "核心人物" : importance === "important" ? "重要人物" : "次要人物"}</small>
-          <button type="button" onClick={() => onEntityAction?.({ entity, behavior: entity.linkBehavior, action: "preview" })}>
+          <button type="button" onClick={(event) => onEntityAction?.({ entity, behavior: entity.linkBehavior, action: "preview", anchorRect: event.currentTarget.getBoundingClientRect() })}>
             <em>{entityName(entity)}</em>
           </button>
           {fields.role && <span>{String(fields.role)}</span>}

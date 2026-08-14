@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ENTITY_FIELD_LABELS,
   ENTITY_KIND_LABELS,
@@ -29,10 +29,17 @@ type EntityWindowProps = {
   entities: EntityCard[];
   relations: EntityRelation[];
   initialRef: string;
+  x: number;
+  y: number;
+  width: number;
+  zIndex: number;
   onClose: () => void;
+  onFocus: () => void;
+  onMove: (x: number, y: number) => void;
+  onEntityRefChange: (ref: string) => void;
   onJump: (entity: EntityCard) => void;
   onSave: (entity: EntityCard, override: EntityOverrides) => void;
-  onCreate: (kind: EntityKind, name: string, relatedTo?: EntityCard) => void;
+  onCreate: (kind: EntityKind, name: string, relatedTo?: EntityCard) => EntityCard;
   onDelete: (entity: EntityCard) => void;
 };
 
@@ -40,7 +47,14 @@ export function EntityWindow({
   entities,
   relations,
   initialRef,
+  x,
+  y,
+  width,
+  zIndex,
   onClose,
+  onFocus,
+  onMove,
+  onEntityRefChange,
   onJump,
   onSave,
   onCreate,
@@ -51,8 +65,30 @@ export function EntityWindow({
   const [creating, setCreating] = useState(false);
   const [createKind, setCreateKind] = useState<EntityKind>("person");
   const [createName, setCreateName] = useState("");
+  const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
   const currentRef = history.at(-1) ?? initialRef;
   const entity = entities.find((candidate) => candidate.ref === currentRef);
+
+  useEffect(() => {
+    const handleMove = (event: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const nextX = Math.max(8, Math.min(window.innerWidth - width - 8, event.clientX - drag.offsetX));
+      const nextY = Math.max(8, Math.min(window.innerHeight - 96, event.clientY - drag.offsetY));
+      onMove(nextX, nextY);
+    };
+    const handleUp = (event: PointerEvent) => {
+      if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
+    };
+    window.addEventListener("pointermove", handleMove, true);
+    window.addEventListener("pointerup", handleUp, true);
+    window.addEventListener("pointercancel", handleUp, true);
+    return () => {
+      window.removeEventListener("pointermove", handleMove, true);
+      window.removeEventListener("pointerup", handleUp, true);
+      window.removeEventListener("pointercancel", handleUp, true);
+    };
+  }, [onMove, width]);
 
   const related = useMemo(() => {
     if (!entity) return [];
@@ -70,14 +106,34 @@ export function EntityWindow({
   if (!entity) return null;
 
   return (
-    <div className="entity-window-layer" role="dialog" aria-modal="true" aria-label={`${entityName(entity)}实体卡`}>
-      <article className="entity-window parchment-window">
-        <header>
+    <article
+      className="entity-window parchment-window floating-entity-window"
+      role="dialog"
+      aria-modal="false"
+      aria-label={`${entityName(entity)}实体卡`}
+      onPointerDown={onFocus}
+      style={{ left: x, top: y, width, zIndex }}
+    >
+        <header onPointerDown={(event) => {
+          if ((event.target as HTMLElement).closest("button, input, select, textarea")) return;
+          event.preventDefault();
+          event.stopPropagation();
+          onFocus();
+          dragRef.current = {
+            pointerId: event.pointerId,
+            offsetX: event.clientX - x,
+            offsetY: event.clientY - y,
+          };
+        }}>
           <button
             className="entity-back"
             type="button"
             disabled={history.length === 1}
-            onClick={() => setHistory((current) => current.slice(0, -1))}
+            onClick={() => setHistory((current) => {
+              const next = current.slice(0, -1);
+              onEntityRefChange(next.at(-1) ?? initialRef);
+              return next;
+            })}
           >
             ← 返回
           </button>
@@ -85,7 +141,7 @@ export function EntityWindow({
             <small>{ENTITY_KIND_LABELS[entity.kind]} · {entity.source === "keeper" ? "KP 创建" : entity.source === "inference" ? "模型推断" : "剧本资料"}</small>
             <h2>{entityName(entity)}</h2>
           </div>
-          <button className="entity-close" type="button" aria-label="关闭全部" onClick={onClose}>×</button>
+          <button className="entity-close" type="button" aria-label="关闭此窗口" onClick={onClose}>×</button>
         </header>
 
         {editing ? (
@@ -116,7 +172,9 @@ export function EntityWindow({
                 </select>
                 <input value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="实体名称" />
                 <button type="button" disabled={!createName.trim()} onClick={() => {
-                  onCreate(createKind, createName.trim(), entity);
+                  const created = onCreate(createKind, createName.trim(), entity);
+                  setHistory((current) => [...current, created.ref]);
+                  onEntityRefChange(created.ref);
                   setCreateName("");
                   setCreating(false);
                 }}>创建并关联</button>
@@ -138,6 +196,7 @@ export function EntityWindow({
                   {items.map((item) => (
                     <button type="button" key={item.relation.id} onClick={() => {
                       setHistory((current) => [...current, item.entity.ref]);
+                      onEntityRefChange(item.entity.ref);
                       setEditing(false);
                     }}>
                       <strong>{entityName(item.entity)}</strong>
@@ -150,8 +209,7 @@ export function EntityWindow({
           })}
           {related.length === 0 && <p>尚无关联资料。</p>}
         </section>
-      </article>
-    </div>
+    </article>
   );
 }
 

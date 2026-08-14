@@ -73,6 +73,15 @@ type View =
   | "source-document"
   | "settings";
 
+type FloatingEntityWindow = {
+  id: string;
+  entityRef: string;
+  x: number;
+  y: number;
+  width: number;
+  zIndex: number;
+};
+
 const stageLabels: Record<AnalysisStage, string> = {
   background: "故事背景",
   timeplace: "时间地点",
@@ -1155,7 +1164,7 @@ export default function Home() {
   const [isContinuing, setIsContinuing] = useState(false);
   const [bookEditing, setBookEditing] = useState(false);
   const [showAnalysisLog, setShowAnalysisLog] = useState(false);
-  const [entityWindowRef, setEntityWindowRef] = useState<string | null>(null);
+  const [entityWindows, setEntityWindows] = useState<FloatingEntityWindow[]>([]);
   const [pendingReadingPosition, setPendingReadingPosition] = useState<Project["lastReadingPosition"]>();
   const [streamPreview, setStreamPreview] = useState("");
   const analysisAbortRef = useRef<AbortController | null>(null);
@@ -1228,6 +1237,13 @@ export default function Home() {
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
   }, [activeProjectId]);
+
+  useEffect(() => {
+    if (!activeProjectId || !STAGE_VIEWS.includes(view) || bookEditing) {
+      const timeout = window.setTimeout(() => setEntityWindows([]), 0);
+      return () => window.clearTimeout(timeout);
+    }
+  }, [activeProjectId, bookEditing, view]);
 
   useEffect(() => {
     if (!toast) return;
@@ -2417,6 +2433,35 @@ export default function Home() {
   const entities = activeProject ? buildProjectEntities(activeProject) : [];
   const entityRelations = activeProject ? buildEntityRelations(activeProject, entities) : [];
 
+  const focusEntityWindow = (windowId: string) => {
+    setEntityWindows((current) => {
+      const zIndex = Math.max(110, ...current.map((item) => item.zIndex)) + 1;
+      return current.map((item) => item.id === windowId ? { ...item, zIndex } : item);
+    });
+  };
+
+  const openEntityWindow = (entityRef: string, anchorRect?: DOMRect) => {
+    setEntityWindows((current) => {
+      const zIndex = Math.max(110, ...current.map((item) => item.zIndex)) + 1;
+      const existing = current.find((item) => item.entityRef === entityRef);
+      if (existing) return current.map((item) => item.id === existing.id ? { ...item, zIndex } : item);
+      const width = Math.min(620, Math.max(360, window.innerWidth - 32));
+      const offset = current.length * 24;
+      const preferredX = anchorRect
+        ? (anchorRect.right + 16 + width <= window.innerWidth ? anchorRect.right + 16 : anchorRect.left - width - 16)
+        : window.innerWidth - width - 40 - offset;
+      const preferredY = anchorRect ? anchorRect.top : 92 + offset;
+      return [...current, {
+        id: crypto.randomUUID(),
+        entityRef,
+        x: Math.max(8, Math.min(window.innerWidth - width - 8, preferredX)),
+        y: Math.max(8, Math.min(window.innerHeight - 96, preferredY)),
+        width,
+        zIndex,
+      }];
+    });
+  };
+
   const saveEntityOverride = (entity: EntityCard, override: EntityOverrides) => {
     if (!activeProject) return;
     if (entity.source === "keeper") {
@@ -2469,7 +2514,7 @@ export default function Home() {
       setView("acts");
     } else setView(sectionKey as View);
     setActView("detail");
-    setEntityWindowRef(null);
+    setEntityWindows([]);
   };
 
   const sectionMarkdown = activeProject?.kpNotes?.sectionMarkdown ?? {};
@@ -2512,9 +2557,9 @@ export default function Home() {
     content: markdownToReactBlocks({
       markdown: section.markdown,
       entities,
-      onEntityAction: ({ entity, action }) => {
+      onEntityAction: ({ entity, action, anchorRect }) => {
         if (action === "jump") jumpToEntity(entity);
-        else setEntityWindowRef(entity.ref);
+        else openEntityWindow(entity.ref, anchorRect);
       },
     }),
   }));
@@ -2881,19 +2926,34 @@ export default function Home() {
           }
         />
       )}
-      {entityWindowRef && (
+      {entityWindows.map((floatingWindow) => (
         <EntityWindow
-          key={entityWindowRef}
+          key={floatingWindow.id}
           entities={entities}
           relations={entityRelations}
-          initialRef={entityWindowRef}
-          onClose={() => setEntityWindowRef(null)}
+          initialRef={floatingWindow.entityRef}
+          x={floatingWindow.x}
+          y={floatingWindow.y}
+          width={floatingWindow.width}
+          zIndex={floatingWindow.zIndex}
+          onClose={() => setEntityWindows((current) => current.filter((item) => item.id !== floatingWindow.id))}
+          onFocus={() => focusEntityWindow(floatingWindow.id)}
+          onMove={(x, y) => setEntityWindows((current) => current.map((item) => item.id === floatingWindow.id ? { ...item, x, y } : item))}
+          onEntityRefChange={(entityRef) => {
+            setEntityWindows((current) => {
+              const zIndex = Math.max(110, ...current.map((item) => item.zIndex)) + 1;
+              const duplicate = current.find((item) => item.id !== floatingWindow.id && item.entityRef === entityRef);
+              if (duplicate) {
+                return current
+                  .filter((item) => item.id !== floatingWindow.id)
+                  .map((item) => item.id === duplicate.id ? { ...item, zIndex } : item);
+              }
+              return current.map((item) => item.id === floatingWindow.id ? { ...item, entityRef, zIndex } : item);
+            });
+          }}
           onJump={jumpToEntity}
           onSave={saveEntityOverride}
-          onCreate={(kind, name, relatedTo) => {
-            const created = addKeeperEntity(kind, name, relatedTo.appearances[0]?.sectionKey ?? "stage-background", relatedTo);
-            setEntityWindowRef(created.ref);
-          }}
+          onCreate={(kind, name, relatedTo) => addKeeperEntity(kind, name, relatedTo?.appearances[0]?.sectionKey ?? "stage-background", relatedTo)}
           onDelete={(entity) => {
             if (entity.source !== "keeper" || !window.confirm(`删除“${entity.original.name}”实体卡？书页文字会保留。`)) return;
             void persistProject({
@@ -2904,10 +2964,10 @@ export default function Home() {
                 keeperEntities: (activeProject.kpNotes?.keeperEntities ?? []).filter((candidate) => candidate.ref !== entity.ref),
                 entityRelations: (activeProject.kpNotes?.entityRelations ?? []).filter((relation) => relation.sourceRef !== entity.ref && relation.targetRef !== entity.ref),
               },
-            }).then(() => setEntityWindowRef(null));
+            }).then(() => setEntityWindows((current) => current.filter((item) => item.id !== floatingWindow.id)));
           }}
         />
-      )}
+      ))}
       {toast && <div className="toast">{toast}</div>}
       {error && (
         <div className="error-toast">
