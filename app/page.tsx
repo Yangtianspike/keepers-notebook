@@ -2502,6 +2502,8 @@ export default function Home() {
           "stage-clues": "clues",
         } as Record<string, AnalysisStage>)[key]],
     markdown: sectionMarkdown[key] ?? defaultMarkdown[key],
+    templateMarkdown: defaultMarkdown[key],
+    customized: sectionMarkdown[key] !== undefined,
   }));
 
   const renderedBookSections = markdownSections.map((section) => ({
@@ -2707,13 +2709,16 @@ export default function Home() {
                 entities={entities}
                 onCreateEntity={(kind, name, sectionKey) => addKeeperEntity(kind, name, sectionKey)}
                 onCancel={() => setBookEditing(false)}
-                onSave={(markdown) => {
+                onSave={(markdown, appliedTemplateKeys) => {
                   void persistProject({
                     ...activeProject,
                     updatedAt: new Date().toISOString(),
                     kpNotes: {
                       ...activeProject.kpNotes,
                       sectionMarkdown: markdown,
+                      sectionTemplateVersion: appliedTemplateKeys.length > 0
+                        ? 8
+                        : activeProject.kpNotes?.sectionTemplateVersion,
                     },
                   }).then(() => setBookEditing(false));
                 }}

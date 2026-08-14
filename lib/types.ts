@@ -368,6 +368,7 @@ export type KPNotes = {
   entityOverrides?: Record<string, EntityOverrides>;
   keeperEntities?: EntityCard[];
   entityRelations?: EntityRelation[];
+  sectionTemplateVersion?: number;
 };
 
 export type EntityKind = "person" | "clue" | "place" | "event" | "custom";

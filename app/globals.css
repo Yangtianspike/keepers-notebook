@@ -4023,6 +4023,8 @@ button:disabled {
 .visual-format-toolbar button,
 .visual-format-toolbar select { border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text); padding: 8px 11px; }
 .visual-editor-tabs button.active { border-color: var(--teal); color: var(--teal); }
+.template-upgrade-bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid rgba(77,198,181,.35); background: rgba(17,31,31,.9); color: var(--muted); padding: 9px 12px; }
+.template-upgrade-bar button { border: 1px solid var(--teal); border-radius: 5px; background: rgba(8,14,15,.9); color: #f4fffc; padding: 7px 11px; }
 .visual-format-toolbar { position: sticky; top: 0; z-index: 5; border: 1px solid var(--line); background: #20282a; padding: 9px; }
 .visual-format-toolbar .entity-link-tool { border-color: var(--teal); color: var(--teal); }
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; white-space: nowrap !important; clip-path: inset(50%) !important; }

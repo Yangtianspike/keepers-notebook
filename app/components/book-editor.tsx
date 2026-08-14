@@ -67,10 +67,16 @@ export function BookEditor({
   onSave,
   onCancel,
 }: {
-  sections: Array<{ key: string; name: string; markdown: string }>;
+  sections: Array<{
+    key: string;
+    name: string;
+    markdown: string;
+    templateMarkdown: string;
+    customized: boolean;
+  }>;
   entities: EntityCard[];
   onCreateEntity: (kind: EntityKind, name: string, sectionKey: string) => EntityCard;
-  onSave: (markdown: Record<string, string>) => void;
+  onSave: (markdown: Record<string, string>, appliedTemplateKeys: string[]) => void;
   onCancel: () => void;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
@@ -89,7 +95,14 @@ export function BookEditor({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const selectionRef = useRef<Range | null>(null);
   const [toolError, setToolError] = useState("");
+  const [appliedTemplateKeys, setAppliedTemplateKeys] = useState<string[]>([]);
   const active = sections.find((section) => section.key === activeKey) ?? sections[0];
+  const templateEligible = Boolean(active && (
+    active.key === "stage-characters" ||
+    active.key === "stage-characterArcs" ||
+    active.key === "stage-openingHook" ||
+    active.key.startsWith("acts:")
+  ));
 
   useEffect(() => {
     if (!sourceMode && editorRef.current && active) {
@@ -203,7 +216,7 @@ export function BookEditor({
               ...(active && !sourceMode && editorRef.current
                 ? { [active.key]: editableHtmlToMarkdown(editorRef.current) }
                 : {}),
-            }), 0);
+            }, appliedTemplateKeys), 0);
           }}>保存并返回书页</button>
         </div>
       </header>
@@ -215,6 +228,19 @@ export function BookEditor({
           }}>{section.name}</button>
         ))}
       </nav>
+      {active && templateEligible && (
+        <div className="template-upgrade-bar">
+          <span>{active.customized ? "当前章节保存过自定义内容。" : "当前章节正在使用生成模板。"}</span>
+          <button type="button" onClick={() => {
+            if (!window.confirm(`应用 v0.8 模板会替换“${active.name}”当前编辑草稿；其他章节不受影响。是否继续？`)) return;
+            const next = { ...draftsRef.current, [active.key]: active.templateMarkdown };
+            draftsRef.current = next;
+            setDrafts(next);
+            setAppliedTemplateKeys((current) => current.includes(active.key) ? current : [...current, active.key]);
+            if (!sourceMode && editorRef.current) editorRef.current.innerHTML = markdownToEditableHtml(active.templateMarkdown);
+          }}>应用 v0.8 模板</button>
+        </div>
+      )}
       {!sourceMode && (
         <div className="visual-format-toolbar" aria-label="文档格式工具">
           <select aria-label="段落样式" defaultValue="p" onChange={(event) => command("formatBlock", event.target.value)}>
