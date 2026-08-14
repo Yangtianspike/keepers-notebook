@@ -63,6 +63,57 @@ export type Person = {
   organization?: string;
   portrait?: string;
   portraitSource?: "manual" | "extracted" | "generated";
+  summary?: string;
+  appearance?: string;
+  personality?: string;
+  state?: string;
+  performanceHints?: string;
+  cocStats?: PersonCoCStats;
+};
+
+export type PersonCoCStatKey =
+  | "str" | "con" | "siz" | "dex" | "app" | "int" | "pow" | "edu"
+  | "hp" | "mp" | "san" | "luck" | "mov" | "build"
+  | "damageBonus" | "armor";
+
+export type CoCValueProvenance = {
+  provenance: "source" | "inference";
+  sources?: SourceRef[];
+};
+
+export type PersonCoCStats = {
+  str?: number;
+  con?: number;
+  siz?: number;
+  dex?: number;
+  app?: number;
+  int?: number;
+  pow?: number;
+  edu?: number;
+  hp?: number;
+  mp?: number;
+  san?: number;
+  luck?: number;
+  mov?: number;
+  build?: number;
+  damageBonus?: string;
+  armor?: string;
+  skills?: Array<{
+    name: string;
+    value: number;
+    provenance: "source" | "inference";
+    sources?: SourceRef[];
+  }>;
+  attacks?: Array<{
+    name: string;
+    value?: number;
+    damage: string;
+    range?: string;
+    attacksPerRound?: string;
+    provenance: "source" | "inference";
+    sources?: SourceRef[];
+  }>;
+  fieldProvenance?: Partial<Record<PersonCoCStatKey, CoCValueProvenance>>;
 };
 
 export type Place = {
@@ -152,6 +203,20 @@ export type CharacterArc = {
   personId: string;
   experience: string;
   motivation: string;
+  motivationChanges?: {
+    initial: string;
+    turningPoints: string[];
+    final: string;
+  };
+  mainlineRelation?: string;
+};
+
+export type OpeningHookDetails = {
+  readAloud?: string;
+  initialSituation?: string;
+  firstConflict?: string;
+  atmosphere?: string;
+  introductionTips?: string;
 };
 
 export type CoCStats = {
@@ -192,6 +257,14 @@ export type Act = {
   branches: ActBranch[];
   keyEvents: KeyEvent[];
   description: string;
+  personActions?: ActPersonAction[];
+};
+
+export type ActPersonAction = {
+  personId: string;
+  summary: string;
+  provenance: "source" | "inference" | "none";
+  sources: SourceRef[];
 };
 
 export type ChapterSummary = {
@@ -258,6 +331,7 @@ export type ProjectAnalysis = {
   unresolvedRelationCount: number;
   characterArcs?: CharacterArc[];
   openingHook?: string;
+  openingHookDetails?: OpeningHookDetails;
   clues: Clue[];
   acts: Act[];
   chapterSummaries: ChapterSummary[];
@@ -406,6 +480,7 @@ export const emptyAnalysis = (): ProjectAnalysis => ({
   unresolvedRelationCount: 0,
   characterArcs: [],
   openingHook: "",
+  openingHookDetails: undefined,
   clues: [],
   acts: [],
   chapterSummaries: [],

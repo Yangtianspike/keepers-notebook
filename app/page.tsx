@@ -45,7 +45,10 @@ import {
   type EntityKind,
   type EntityOverrides,
   type ModelConfig,
+  type OpeningHookDetails,
   type Person,
+  type PersonCoCStatKey,
+  type PersonCoCStats,
   type Project,
   type ReviewItem,
   type SourceRef,
@@ -1003,6 +1006,101 @@ function SourcePanel({
   );
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function normalizeSourceList(value: unknown): SourceRef[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    const raw = asRecord(candidate);
+    const page = Number(raw.page);
+    if (!Number.isFinite(page) || page < 1) return [];
+    return [{
+      page: Math.floor(page),
+      printedPage: raw.printedPage ? String(raw.printedPage) : undefined,
+      chapter: raw.chapter ? String(raw.chapter) : undefined,
+      quote: String(raw.quote ?? "").slice(0, 120),
+      verified: typeof raw.verified === "boolean" ? raw.verified : undefined,
+    }];
+  });
+}
+
+const COC_NUMERIC_LIMITS: Partial<Record<PersonCoCStatKey, [number, number]>> = {
+  str: [1, 100], con: [1, 100], siz: [1, 100], dex: [1, 100], app: [1, 100],
+  int: [1, 100], pow: [1, 100], edu: [1, 100], hp: [0, 100], mp: [0, 100],
+  san: [0, 100], luck: [0, 100], mov: [0, 20], build: [-2, 5],
+};
+
+function normalizePersonCoCStats(value: unknown): PersonCoCStats | undefined {
+  const raw = asRecord(value);
+  if (Object.keys(raw).length === 0) return undefined;
+  const stats: PersonCoCStats = {};
+  Object.entries(COC_NUMERIC_LIMITS).forEach(([key, [minimum, maximum]]) => {
+    const number = Number(raw[key]);
+    if (Number.isFinite(number)) {
+      stats[key as keyof typeof COC_NUMERIC_LIMITS] = Math.max(minimum, Math.min(maximum, number)) as never;
+    }
+  });
+  if (raw.damageBonus !== undefined) stats.damageBonus = String(raw.damageBonus);
+  if (raw.armor !== undefined) stats.armor = String(raw.armor);
+  if (Array.isArray(raw.skills)) {
+    stats.skills = raw.skills.flatMap((candidate) => {
+      const skill = asRecord(candidate);
+      const name = String(skill.name ?? "").trim();
+      const value = Number(skill.value);
+      if (!name || !Number.isFinite(value)) return [];
+      return [{
+        name,
+        value: Math.max(0, Math.min(100, value)),
+        provenance: skill.provenance === "source" ? "source" as const : "inference" as const,
+        sources: normalizeSourceList(skill.sources),
+      }];
+    });
+  }
+  if (Array.isArray(raw.attacks)) {
+    stats.attacks = raw.attacks.flatMap((candidate) => {
+      const attack = asRecord(candidate);
+      const name = String(attack.name ?? "").trim();
+      const damage = String(attack.damage ?? "").trim();
+      if (!name || !damage) return [];
+      const value = Number(attack.value);
+      return [{
+        name,
+        value: Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : undefined,
+        damage,
+        range: attack.range ? String(attack.range) : undefined,
+        attacksPerRound: attack.attacksPerRound ? String(attack.attacksPerRound) : undefined,
+        provenance: attack.provenance === "source" ? "source" as const : "inference" as const,
+        sources: normalizeSourceList(attack.sources),
+      }];
+    });
+  }
+  const provenance = asRecord(raw.fieldProvenance);
+  stats.fieldProvenance = Object.fromEntries(
+    Object.keys({ ...COC_NUMERIC_LIMITS, damageBonus: true, armor: true }).flatMap((key) => {
+      const entry = asRecord(provenance[key]);
+      if (entry.provenance !== "source" && entry.provenance !== "inference") return [];
+      return [[key, { provenance: entry.provenance, sources: normalizeSourceList(entry.sources) }]];
+    }),
+  );
+  return stats;
+}
+
+function normalizeOpeningHookDetails(value: unknown): OpeningHookDetails | undefined {
+  const raw = asRecord(value);
+  if (Object.keys(raw).length === 0) return undefined;
+  return {
+    readAloud: raw.readAloud ? String(raw.readAloud) : undefined,
+    initialSituation: raw.initialSituation ? String(raw.initialSituation) : undefined,
+    firstConflict: raw.firstConflict ? String(raw.firstConflict) : undefined,
+    atmosphere: raw.atmosphere ? String(raw.atmosphere) : undefined,
+    introductionTips: raw.introductionTips ? String(raw.introductionTips) : undefined,
+  };
+}
+
 function hydrateProject(project: Project): Project {
   const defaults = emptyAnalysis();
   const stages = Object.fromEntries(
@@ -1021,6 +1119,7 @@ function hydrateProject(project: Project): Project {
       chapterSummaries: project.analysis.chapterSummaries ?? [],
       characterArcs: project.analysis.characterArcs ?? [],
       openingHook: project.analysis.openingHook ?? "",
+      openingHookDetails: normalizeOpeningHookDetails(project.analysis.openingHookDetails),
       activityLog: project.analysis.activityLog ?? [],
       unresolvedRelationCount:
         project.analysis.unresolvedRelationCount ?? 0,
@@ -1373,6 +1472,7 @@ export default function Home() {
                     people: runningAnalysis.people,
                     characterArcs: runningAnalysis.characterArcs,
                     openingHook: runningAnalysis.openingHook,
+                    openingHookDetails: runningAnalysis.openingHookDetails,
                     clues: runningAnalysis.clues,
                   }
                 : undefined,
@@ -1500,6 +1600,7 @@ export default function Home() {
                 timePlace: runningAnalysis.timePlace,
                 characterArcs: runningAnalysis.characterArcs,
                 openingHook: runningAnalysis.openingHook,
+                openingHookDetails: runningAnalysis.openingHookDetails,
                 clues: runningAnalysis.clues,
               },
               actSkeleton: payload.data.acts,
@@ -1605,6 +1706,12 @@ export default function Home() {
           trueIdentity: String(person.trueIdentity ?? ""),
           motivation: String(person.motivation ?? ""),
           secrets: Array.isArray(person.secrets) ? person.secrets : [],
+          summary: person.summary ? String(person.summary) : undefined,
+          appearance: person.appearance ? String(person.appearance) : undefined,
+          personality: person.personality ? String(person.personality) : undefined,
+          state: person.state ? String(person.state) : undefined,
+          performanceHints: person.performanceHints ? String(person.performanceHints) : undefined,
+          cocStats: normalizePersonCoCStats(person.cocStats),
           sources: Array.isArray(person.sources) ? person.sources : [],
           provenance: person.provenance || "source",
           confidence: Number(person.confidence ?? 0.5),
@@ -1650,14 +1757,27 @@ export default function Home() {
             personId: String(arc.personId ?? ""),
             experience: String(arc.experience ?? ""),
             motivation: String(arc.motivation ?? ""),
+            motivationChanges: arc.motivationChanges ? {
+              initial: String(arc.motivationChanges.initial ?? ""),
+              turningPoints: Array.isArray(arc.motivationChanges.turningPoints)
+                ? arc.motivationChanges.turningPoints.map(String)
+                : [],
+              final: String(arc.motivationChanges.final ?? ""),
+            } : undefined,
+            mainlineRelation: arc.mainlineRelation ? String(arc.mainlineRelation) : undefined,
           }),
         );
         nextAnalysis = { ...nextAnalysis, characterArcs };
       }
-      if (stage === "openingHook" && data.openingHook !== undefined) {
+      if (stage === "openingHook" && (data.openingHook !== undefined || data.openingHookDetails !== undefined)) {
         nextAnalysis = {
           ...nextAnalysis,
-          openingHook: String(data.openingHook ?? ""),
+          openingHook: data.openingHook !== undefined
+            ? String(data.openingHook ?? "")
+            : nextAnalysis.openingHook,
+          openingHookDetails: data.openingHookDetails !== undefined
+            ? normalizeOpeningHookDetails(data.openingHookDetails)
+            : nextAnalysis.openingHookDetails,
         };
       }
       if (stage === "clues" && Array.isArray(data.clues)) {
@@ -1775,6 +1895,22 @@ export default function Home() {
                 }))
               : [],
             keyEvents: Array.isArray(act.keyEvents) ? act.keyEvents : [],
+            personActions: Array.isArray(act.personActions)
+              ? act.personActions.flatMap((candidate) => {
+                  const action = asRecord(candidate);
+                  const personId = String(action.personId ?? "").trim();
+                  if (!personId) return [];
+                  const provenance = action.provenance === "source" || action.provenance === "inference"
+                    ? action.provenance
+                    : "none";
+                  return [{
+                    personId,
+                    summary: String(action.summary ?? (provenance === "none" ? "本幕无明确行动" : "")),
+                    provenance,
+                    sources: normalizeSourceList(action.sources),
+                  }];
+                })
+              : undefined,
             description: String(act.description || ""),
           }))
           .sort((left, right) => left.sequence - right.sequence);

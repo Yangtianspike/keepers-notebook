@@ -109,8 +109,11 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
   "reviewItems":[]
 }`,
     characters: `${common}
-识别所有有名人物、组织与超自然存在。疑似同一人的不同称呼不得自动合并。
+识别所有有名人物与超自然存在。疑似同一人的不同称呼不得自动合并。
 只有原文明确说明的别名才可直接放入 aliases；其余写入 mergeCandidates。
+为每个人物补全可直接供 KP 使用的摘要、外貌、性格、当前状态和扮演提示。
+所有人物（包括 important 和 minor）都要给出 CoC 7版人物属性。原文明示的每个数值逐项标记 source 并附来源；缺失值允许依据年龄、身份和剧情作用合理推断，但必须逐项标记 inference，不能把推断伪装成原文数据。
+属性通常为 1-100，MOV 通常为 0-20，Build 通常为 -2 到 5；技能和攻击也必须分别标记 provenance。
 返回：
 {
   "people": [{
@@ -124,6 +127,18 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
     "motivation":"目标与动机",
     "secrets":[],
     "organization":"所属组织；无则空字符串",
+    "summary":"人物摘要",
+    "appearance":"外貌",
+    "personality":"性格",
+    "state":"当前状态",
+    "performanceHints":"KP 扮演提示",
+    "cocStats":{
+      "str":50,"con":50,"siz":50,"dex":50,"app":50,"int":50,"pow":50,"edu":50,
+      "hp":10,"mp":10,"san":50,"luck":50,"mov":8,"build":0,"damageBonus":"0","armor":"0",
+      "skills":[{"name":"侦查","value":50,"provenance":"source|inference","sources":[]}],
+      "attacks":[{"name":"斗殴","value":40,"damage":"1D3+DB","provenance":"source|inference","sources":[]}],
+      "fieldProvenance":{"str":{"provenance":"source|inference","sources":[]}}
+    },
     "confidence":0.9,
     "provenance":"source|inference|conflict",
     "sources":[]
@@ -132,17 +147,28 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
   "reviewItems":[]
 }`,
     characterArcs: `${common}
-基于已确认的人物列表，逐一分析人物在故事中的经历、行动变化和深层动机。personId 必须引用已确认人物 id。每人的 experience 写 150-200 字，motivation 写 100 字左右。
+基于已确认的人物列表，逐一分析人物在故事中的经历、行动变化和深层动机。personId 必须引用已确认人物 id。每人的 experience 写 150-200 字，motivation 写 100 字左右，并总结初始动机、关键变化节点、最终动机和与主线的关系。
 返回：
 {
-  "characterArcs":[{"personId":"人物id","experience":"经历概述（150-200字）","motivation":"动机详解（100字左右）"}],
+  "characterArcs":[{
+    "personId":"人物id","experience":"经历概述（150-200字）","motivation":"动机详解（100字左右）",
+    "motivationChanges":{"initial":"初始动机","turningPoints":["变化节点"],"final":"最终动机"},
+    "mainlineRelation":"该人物与主线冲突、谜团或结局的关系"
+  }],
   "reviewItems":[]
 }`,
     openingHook: `${common}
-分析剧本开篇，提取促使调查员介入、制造紧迫感并吸引玩家继续调查的钩子。
+分析剧本开篇，提取促使调查员介入、制造紧迫感并吸引玩家继续调查的钩子。openingHook 保留一段兼容摘要；openingHookDetails 必须直接生成五部分可用内容。这里写的是 KP 的导入方式，不要复述玩家在序幕中实际经历的完整剧情。
 返回：
 {
   "openingHook":"可直接供 KP 使用的开篇钩子描述",
+  "openingHookDetails":{
+    "readAloud":"可直接朗读给玩家的开场文字",
+    "initialSituation":"调查员开始时的位置、状态和共同处境",
+    "firstConflict":"把调查员拉进主线的第一个冲突",
+    "atmosphere":"光线、声音、气味等感官建议",
+    "introductionTips":"把调查员目标与事件自然挂钩的主持技巧"
+  },
   "reviewItems":[]
 }`,
     clues: `${common}
@@ -173,7 +199,7 @@ importance 为 key、secondary、other。对没有替代入口或依赖特定技
     acts: `${common}
 ${
   phase === "detail"
-    ? `基于已生成的幕骨架，为每一幕补全详细描述和阶段性重要事件点。保留骨架中的 id、sequence、人物、线索和分支。关键事件类型只能是 boss、death、revelation、checkpoint；Boss 事件尽量给出 STR/CON/DEX/INT/POW/HP/MP 和 SAN 损失。`
+    ? `基于已生成的幕骨架，为每一幕补全详细描述、人物行动和阶段性重要事件点。保留骨架中的 id、sequence、人物、线索和分支。关键事件类型只能是 boss、death、revelation、checkpoint；Boss 事件尽量给出 STR/CON/DEX/INT/POW/HP/MP 和 SAN 损失。personActions 必须覆盖该幕全部 personIds：依据明确原文总结时标记 source 并附 sources；只能由上下文可靠推断时标记 inference；没有发现明确行动时 summary 写“本幕无明确行动”、provenance 写 none、sources 为空，不得编造。`
     : `基于前六阶段的全局分析把剧本划分为多个幕。每幕给出稳定 id、标题、序号、地点、时间、涉及人物 id、涉及线索 id和幕末分支。分支必须有稳定 id、条件和下一幕 id；结局分支标记 isEnding。${phase === "skeleton" ? "本次只生成幕骨架，description 可简短且 keyEvents 为空数组。" : "能力足够时同时补全 description 和 keyEvents。"}`
 }
 返回：
@@ -184,6 +210,7 @@ ${
     "personIds":[],"clueIds":[],
     "branches":[{"id":"branch-short-id","condition":"分支条件","nextActId":"下一幕id","isEnding":false,"endingType":"good|bad|neutral"}],
     "keyEvents":[{"title":"事件","type":"boss|death|revelation|checkpoint","description":"说明","stats":{"str":0,"con":0,"dex":0,"int":0,"pow":0,"hp":0,"mp":0,"sanLoss":"0/1D6"}}],
+    "personActions":[{"personId":"人物id","summary":"本幕行动摘要或本幕无明确行动","provenance":"source|inference|none","sources":[]}],
     "description":"幕的详细描述"
   }],
   "reviewItems":[]
