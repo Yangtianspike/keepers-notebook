@@ -148,7 +148,7 @@ export function ActDetailView({
             </label>
           </div>
           <label className="field">
-            <span>幕描述</span>
+            <span>本幕剧情</span>
             <textarea
               rows={8}
               value={draft.description}
@@ -362,8 +362,8 @@ export function ActDetailView({
           </section>
 
           <section className="act-detail-section">
-            <h3>幕描述</h3>
-            <p className="act-description">{act.description || "尚无幕描述。"}</p>
+            <h3>本幕剧情</h3>
+            <p className="act-description">{act.description || "尚无本幕剧情。"}</p>
           </section>
         </>
       )}

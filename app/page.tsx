@@ -26,6 +26,10 @@ import { SourceDocumentView } from "@/app/components/source-document-view";
 import {
   buildEntityRelations,
   buildProjectEntities,
+  buildActMarkdown,
+  buildCharacterArcsMarkdown,
+  buildCharacterMarkdown,
+  buildOpeningHookMarkdown,
   createKeeperEntity,
 } from "@/lib/entities";
 import {
@@ -73,7 +77,7 @@ const stageLabels: Record<AnalysisStage, string> = {
   background: "故事背景",
   timeplace: "时间地点",
   characters: "核心人物",
-  characterArcs: "人物经历与动机",
+  characterArcs: "核心人物与动机",
   openingHook: "开篇钩子",
   clues: "关键线索安排",
   acts: "幕",
@@ -133,7 +137,7 @@ const navGroups: Array<{
       { view: "stage-characters", label: "核心人物", short: "人" },
       {
         view: "stage-characterArcs",
-        label: "人物经历与动机",
+        label: "核心人物与动机",
         short: "历",
       },
       { view: "stage-openingHook", label: "开篇钩子", short: "钩" },
@@ -2475,11 +2479,14 @@ export default function Home() {
   const defaultMarkdown: Record<string, string> = activeProject ? {
     "stage-background": `# 故事背景\n\n## 起因\n${activeProject.analysis.overview?.cause ?? ""}\n\n## 开团前的历史\n${activeProject.analysis.overview?.history ?? ""}\n\n## 当前状态\n${activeProject.analysis.overview?.currentState ?? ""}${noteMarkdown("stage-background")}`,
     "stage-timeplace": `# 时间地点\n\n${activeProject.analysis.timePlace?.places.map((place) => `## ${place.name}\n${place.description || place.summary}`).join("\n\n") ?? ""}${noteMarkdown("stage-timeplace")}`,
-    "stage-characters": `# 核心人物\n\n${activeProject.analysis.people.map((person) => `## ${person.name}\n${person.role}\n\n- 公开身份：${person.publicIdentity || "未知"}\n- 真实身份：${person.trueIdentity || "未知"}\n- 动机：${person.motivation || "未知"}`).join("\n\n")}${noteMarkdown("stage-characters")}`,
-    "stage-characterArcs": `# 人物经历与动机\n\n${(activeProject.analysis.characterArcs ?? []).map((arc) => `## ${activeProject.analysis.people.find((person) => person.id === arc.personId)?.name ?? arc.personId}\n\n### 经历\n${arc.experience}\n\n### 动机\n${arc.motivation}`).join("\n\n")}${noteMarkdown("stage-characterArcs")}`,
-    "stage-openingHook": `# 开篇钩子\n\n${activeProject.analysis.openingHook ?? ""}${noteMarkdown("stage-openingHook")}`,
+    "stage-characters": `${buildCharacterMarkdown(activeProject)}${noteMarkdown("stage-characters")}`,
+    "stage-characterArcs": `${buildCharacterArcsMarkdown(activeProject)}${noteMarkdown("stage-characterArcs")}`,
+    "stage-openingHook": `${buildOpeningHookMarkdown(activeProject)}${noteMarkdown("stage-openingHook")}`,
     "stage-clues": `# 关键线索安排\n\n${activeProject.analysis.clues.map((clue) => `## ${clue.name}\n${clue.summary}\n\n- 来源：${clue.source}\n- 获取方式：${clue.acquisition || "待补充"}\n- 指向：${clue.targets.map((target) => target.label).join("、") || "待补充"}`).join("\n\n")}${noteMarkdown("stage-clues")}`,
-    ...Object.fromEntries(activeProject.analysis.acts.map((act) => [`acts:${act.id}`, `# 第 ${act.sequence} 幕 · ${act.title}\n\n${act.placeText || "地点未定"} · ${act.time || "时间未定"}\n\n## 人物\n${activeProject.analysis.people.filter((person) => act.personIds.includes(person.id)).map((person) => `- ${person.name}：${person.role}`).join("\n") || "暂无明确人物"}\n\n## 线索\n${activeProject.analysis.clues.filter((clue) => act.clueIds.includes(clue.id)).map((clue) => `- ${clue.name}：${clue.summary}`).join("\n") || "暂无明确线索"}\n\n## 关键事件\n${act.keyEvents.map((event) => `### ${event.title}\n${event.description}`).join("\n\n") || "暂无关键事件"}\n\n## 分支结构\n${act.branches.map((branch) => `- ${branch.condition}${branch.nextActId ? ` → ${activeProject.analysis.acts.find((candidate) => candidate.id === branch.nextActId)?.title ?? branch.nextActId}` : branch.isEnding ? " → 结局" : ""}`).join("\n") || "暂无分支"}\n\n## 幕描述\n${act.description}${noteMarkdown(`acts:${act.id}`)}`])),
+    ...Object.fromEntries(activeProject.analysis.acts.map((act) => [
+      `acts:${act.id}`,
+      `${buildActMarkdown(activeProject, act.id)}${noteMarkdown(`acts:${act.id}`)}`,
+    ])),
   } : {};
 
   const markdownSections = Object.keys(defaultMarkdown).map((key) => ({

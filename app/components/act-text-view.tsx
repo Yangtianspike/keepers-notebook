@@ -300,9 +300,9 @@ function ActTextViewContent({
               </div>
             </section>
             <section className="act-detail-section">
-              <h3>幕描述</h3>
+              <h3>本幕剧情</h3>
               <p className="act-description">
-                {act.description || "尚无幕描述。"}
+                {act.description || "尚无本幕剧情。"}
               </p>
             </section>
       </>
