@@ -589,20 +589,20 @@ function AnalysisView({
           {!configReady && <small className="analysis-config-hint">请先完成模型连接配置后开始分析。</small>}
           <div className="analysis-header-actions">
             <button
-              className="primary-button compact analysis-run-all"
+              className="cb-action-button analysis-run-all"
               disabled={!configReady || activeStage !== null}
               onClick={onRunAll}
             >
               {activeStage ? "分析进行中…" : "分析剧本"}
             </button>
             <button
-              className="ghost-button compact"
+              className="cb-action-button"
               disabled={!configReady || activeStage !== null}
               onClick={onRerunAll}
             >
               重新分析
             </button>
-            <button className="ghost-button compact" onClick={onShowLog}>
+            <button className="cb-action-button" onClick={onShowLog}>
               分析记录
             </button>
           </div>

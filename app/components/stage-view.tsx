@@ -687,7 +687,7 @@ export function StageView({
     <div className="book-reader">
       {!editing && (
         <nav className="book-reader-toolbar" aria-label="书页工具">
-          <button type="button" onClick={previousPage} disabled={isAnimating || (!hasPrevious && activeSectionIndex === 0)}>← 上一页</button>
+          <button className="cb-action-button" type="button" onClick={previousPage} disabled={isAnimating || (!hasPrevious && activeSectionIndex === 0)}>← 上一页</button>
           <span className="stage-page-number">{displayCurrentPage} / {displayTotalPages}</span>
           <form onSubmit={(event) => {
             event.preventDefault();
@@ -696,11 +696,11 @@ export function StageView({
             setJumpDraft("");
           }}>
             <label>跳至 <input inputMode="numeric" aria-label="跳转页码" value={jumpDraft} onChange={(event) => setJumpDraft(event.target.value.replace(/\D/g, ""))} /> 页</label>
-            <button type="submit" disabled={!jumpDraft}>跳页</button>
+            <button className="cb-action-button" type="submit" disabled={!jumpDraft}>跳页</button>
           </form>
-          {onEditingChange && <button className="book-editor-trigger" type="button" onClick={() => onEditingChange(true)}>编辑书页</button>}
-          {actPage && onOpenActTree && <button type="button" onClick={onOpenActTree}>幕树</button>}
-          <button type="button" onClick={nextPage} disabled={isAnimating || (!hasNext && activeSectionIndex === sections.length - 1)}>下一页 →</button>
+          {onEditingChange && <button className="cb-action-button book-editor-trigger" type="button" onClick={() => onEditingChange(true)}>编辑书页</button>}
+          {actPage && onOpenActTree && <button className="cb-action-button" type="button" onClick={onOpenActTree}>幕树</button>}
+          <button className="cb-action-button" type="button" onClick={nextPage} disabled={isAnimating || (!hasNext && activeSectionIndex === sections.length - 1)}>下一页 →</button>
         </nav>
       )}
       {editing && onEditingChange && (
