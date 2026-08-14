@@ -106,7 +106,12 @@ function card(
 }
 
 export function buildProjectEntities(project: Project): EntityCard[] {
-  const people = project.analysis.people.map((person) => card(
+  const actAppearances = (predicate: (act: Project["analysis"]["acts"][number]) => boolean) =>
+    project.analysis.acts.filter(predicate).map((act) => ({
+      sectionKey: `acts:${act.id}`,
+      label: `第 ${act.sequence} 幕 · ${act.title}`,
+    }));
+  const people = project.analysis.people.map((person) => ({ ...card(
     project, "person", person.id, person.name, person.aliases,
     {
       role: person.role, importance: person.importance, publicIdentity: person.publicIdentity,
@@ -116,8 +121,11 @@ export function buildProjectEntities(project: Project): EntityCard[] {
       state: person.state ?? "", performanceHints: person.performanceHints ?? "",
     },
     "stage-characters", person.provenance === "inference" ? "inference" : "source", person.cocStats,
-  ));
-  const clues = project.analysis.clues.map((clue) => card(
+  ), appearances: [
+    { sectionKey: "stage-characters", label: "核心人物" },
+    ...actAppearances((act) => act.personIds.includes(person.id)),
+  ] }));
+  const clues = project.analysis.clues.map((clue) => ({ ...card(
     project, "clue", clue.id, clue.name, [],
     {
       content: clue.summary, source: clue.source, acquisition: clue.acquisition ?? "",
@@ -125,15 +133,21 @@ export function buildProjectEntities(project: Project): EntityCard[] {
       fallback: clue.fallback ?? "", bottleneck: clue.keeperSuggestion ?? "",
     },
     "stage-clues", clue.provenance === "inference" ? "inference" : "source",
-  ));
+  ), appearances: [
+    { sectionKey: "stage-clues", label: "关键线索安排" },
+    ...actAppearances((act) => act.clueIds.includes(clue.id)),
+  ] }));
   const projectPlaces = project.analysis.places.length > 0
     ? project.analysis.places
     : project.analysis.timePlace?.places ?? [];
-  const places = projectPlaces.map((place) => card(
+  const places = projectPlaces.map((place) => ({ ...card(
     project, "place", place.id, place.name, place.aliases,
     { description: place.description || place.summary, region: place.regionHint ?? "" },
     "stage-timeplace", place.provenance === "inference" ? "inference" : "source",
-  ));
+  ), appearances: [
+    { sectionKey: "stage-timeplace", label: "时间地点" },
+    ...actAppearances((act) => act.placeId === place.id || (!act.placeId && act.placeText === place.name)),
+  ] }));
   const events = project.analysis.acts.flatMap((act) => act.keyEvents.map((event, index) => card(
     project, "event", `${act.id}-${index}`, event.title, [],
     { type: event.type, process: event.description, time: act.time, place: act.placeText ?? "" },
@@ -162,17 +176,22 @@ export function entityCoCStats(entity: EntityCard) {
 export function buildEntityRelations(project: Project, entities: EntityCard[]): EntityRelation[] {
   const refs = new Set(entities.map((entity) => entity.ref));
   const relations: EntityRelation[] = [...(project.kpNotes?.entityRelations ?? [])];
-  const push = (sourceRef: string, targetRef: string, label: string) => {
+  const push = (sourceRef: string, targetRef: string, label: string, level: EntityRelation["level"] = "direct") => {
     if (!refs.has(sourceRef) || !refs.has(targetRef)) return;
     const id = `${sourceRef}>${targetRef}>${label}`;
     if (!relations.some((relation) => relation.id === id)) {
-      relations.push({ id, sourceRef, targetRef, label, level: "direct" });
+      relations.push({ id, sourceRef, targetRef, label, level });
     }
   };
   project.analysis.acts.forEach((act) => {
-    act.personIds.forEach((personId) => act.clueIds.forEach((clueId) => {
-      push(entityRef("person", personId), entityRef("clue", clueId), `同见于第 ${act.sequence} 幕`);
-      push(entityRef("clue", clueId), entityRef("person", personId), `同见于第 ${act.sequence} 幕`);
+    const actRefs = [
+      ...act.personIds.map((id) => entityRef("person", id)),
+      ...act.clueIds.map((id) => entityRef("clue", id)),
+      ...(act.placeId ? [entityRef("place", act.placeId)] : []),
+      ...act.keyEvents.map((_, index) => entityRef("event", `${act.id}-${index}`)),
+    ].filter((ref, index, all) => refs.has(ref) && all.indexOf(ref) === index);
+    actRefs.forEach((sourceRef, sourceIndex) => actRefs.slice(sourceIndex + 1).forEach((targetRef) => {
+      push(sourceRef, targetRef, `同见于第 ${act.sequence} 幕`, "indirect");
     }));
   });
   project.analysis.clues.forEach((clue) => clue.targets.forEach((target) => {
@@ -181,6 +200,17 @@ export function buildEntityRelations(project: Project, entities: EntityCard[]): 
     }
   }));
   return relations;
+}
+
+export function getRelatedEntities(entityReference: string, project: Project) {
+  const entities = buildProjectEntities(project);
+  const relatedByRef = new Map(entities.map((entity) => [entity.ref, entity]));
+  return buildEntityRelations(project, entities).flatMap((relation) => {
+    if (relation.sourceRef !== entityReference && relation.targetRef !== entityReference) return [];
+    const relatedRef = relation.sourceRef === entityReference ? relation.targetRef : relation.sourceRef;
+    const entity = relatedByRef.get(relatedRef);
+    return entity ? [{ relation, entity }] : [];
+  });
 }
 
 export function createKeeperEntity(kind: EntityKind, name: string, sectionKey: string): EntityCard {

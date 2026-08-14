@@ -4080,6 +4080,10 @@ button:disabled {
 .entity-coc-edit-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 7px; }
 .entity-coc-edit-grid label { display: grid; gap: 3px; font-size: 11px; }
 .entity-coc-edit-grid input { min-width: 0; width: 100%; }
+.entity-appearances { border-top: 1px solid rgba(123,33,30,.2); margin-top: 10px; padding-top: 12px; }
+.entity-appearances h3 { margin: 0 0 8px; }
+.entity-appearances > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.entity-empty-related { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .entity-edit-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; padding: 16px 0; }
 .entity-edit-form > label { display: grid; gap: 5px; font-weight: 700; }
 .entity-edit-form textarea { min-height: 62px; resize: vertical; }

@@ -6,15 +6,21 @@ import {
   buildActTitle,
   buildCharacterMarkdown,
   buildOpeningHookMarkdown,
+  buildProjectEntities,
+  getRelatedEntities,
 } from "../lib/entities.ts";
 
 const project = {
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
   analysis: {
     people: [
       { id: "core", name: "林墨", aliases: [], importance: "core", motivation: "追查真相" },
       { id: "minor", name: "老张", aliases: [], importance: "minor", motivation: "自保" },
     ],
     openingHook: "旧版开场摘要",
+    clues: [{ id: "ledger", name: "账本", summary: "被涂改的账本", source: "咖啡馆", importance: "key", targets: [], provenance: "source" }],
+    places: [],
     openingHookDetails: { readAloud: "雨落在窗沿。", initialSituation: "调查员同处咖啡馆。" },
     acts: [{
       id: "act-1",
@@ -23,7 +29,7 @@ const project = {
       placeText: "罗马式咖啡馆",
       time: "深夜",
       personIds: ["core", "minor"],
-      clueIds: [],
+      clueIds: ["ledger"],
       branches: [],
       keyEvents: [],
       description: "林墨翻看账本。老张没有采取行动。",
@@ -62,4 +68,13 @@ test("opening and act templates use structured analysis with legacy fallbacks", 
   assert.match(act, /林墨.*翻看账本并发现涂改.*剧本资料，第 12 页/);
   assert.match(act, /老张.*没有采取行动.*模型归纳/);
   assert.match(act, /## 本幕剧情/);
+});
+
+test("entity appearances and inferred same-act relations cover the whole act graph", () => {
+  const entities = buildProjectEntities(project);
+  const core = entities.find((entity) => entity.ref === "person:core");
+  assert.deepEqual(core?.appearances.map((appearance) => appearance.sectionKey), ["stage-characters", "acts:act-1"]);
+  const relatedRefs = getRelatedEntities("person:core", project).map((item) => item.entity.ref);
+  assert.ok(relatedRefs.includes("person:minor"));
+  assert.ok(relatedRefs.includes("clue:ledger"));
 });

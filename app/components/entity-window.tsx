@@ -8,14 +8,15 @@ import {
   entityCoCStats,
   entityFields,
   entityName,
+  getRelatedEntities,
 } from "@/lib/entities";
 import type {
   EntityCard,
   EntityKind,
   EntityOverrides,
-  EntityRelation,
   PersonCoCStatKey,
   PersonCoCStats,
+  Project,
 } from "@/lib/types";
 
 const COC_FIELDS: Array<[PersonCoCStatKey, string]> = [
@@ -27,7 +28,7 @@ const COC_FIELDS: Array<[PersonCoCStatKey, string]> = [
 
 type EntityWindowProps = {
   entities: EntityCard[];
-  relations: EntityRelation[];
+  project: Project;
   initialRef: string;
   x: number;
   y: number;
@@ -38,6 +39,7 @@ type EntityWindowProps = {
   onMove: (x: number, y: number) => void;
   onEntityRefChange: (ref: string) => void;
   onJump: (entity: EntityCard) => void;
+  onJumpToAppearance: (entity: EntityCard, sectionKey: string) => void;
   onSave: (entity: EntityCard, override: EntityOverrides) => void;
   onCreate: (kind: EntityKind, name: string, relatedTo?: EntityCard) => EntityCard;
   onDelete: (entity: EntityCard) => void;
@@ -45,7 +47,7 @@ type EntityWindowProps = {
 
 export function EntityWindow({
   entities,
-  relations,
+  project,
   initialRef,
   x,
   y,
@@ -56,6 +58,7 @@ export function EntityWindow({
   onMove,
   onEntityRefChange,
   onJump,
+  onJumpToAppearance,
   onSave,
   onCreate,
   onDelete,
@@ -92,16 +95,8 @@ export function EntityWindow({
 
   const related = useMemo(() => {
     if (!entity) return [];
-    return relations
-      .filter((relation) => relation.sourceRef === entity.ref || relation.targetRef === entity.ref)
-      .map((relation) => ({
-        relation,
-        entity: entities.find((candidate) => candidate.ref === (
-          relation.sourceRef === entity.ref ? relation.targetRef : relation.sourceRef
-        )),
-      }))
-      .filter((item): item is { relation: EntityRelation; entity: EntityCard } => Boolean(item.entity));
-  }, [entities, entity, relations]);
+    return getRelatedEntities(entity.ref, project);
+  }, [entity, project]);
 
   if (!entity) return null;
 
@@ -181,6 +176,16 @@ export function EntityWindow({
               </div>
             )}
             <EntityReadView entity={entity} />
+            <section className="entity-appearances">
+              <h3>出现位置</h3>
+              <div>
+                {entity.appearances.map((appearance) => (
+                  <button type="button" key={appearance.sectionKey} onClick={() => onJumpToAppearance(entity, appearance.sectionKey)}>
+                    {appearance.label || appearance.sectionKey}
+                  </button>
+                ))}
+              </div>
+            </section>
           </>
         )}
 
@@ -207,7 +212,7 @@ export function EntityWindow({
               </div>
             );
           })}
-          {related.length === 0 && <p>尚无关联资料。</p>}
+          {related.length === 0 && <div className="entity-empty-related"><p>暂无相关实体。</p><button type="button" onClick={() => setCreating(true)}>新建关联实体</button></div>}
         </section>
     </article>
   );

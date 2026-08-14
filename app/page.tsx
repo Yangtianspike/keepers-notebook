@@ -24,7 +24,6 @@ import { markdownToReactBlocks } from "@/app/components/markdown-document";
 import { EntityWindow } from "@/app/components/entity-window";
 import { SourceDocumentView } from "@/app/components/source-document-view";
 import {
-  buildEntityRelations,
   buildProjectEntities,
   buildActMarkdown,
   buildCharacterArcsMarkdown,
@@ -2431,7 +2430,6 @@ export default function Home() {
     (person) => person.id === selectedActPersonId,
   );
   const entities = activeProject ? buildProjectEntities(activeProject) : [];
-  const entityRelations = activeProject ? buildEntityRelations(activeProject, entities) : [];
 
   const focusEntityWindow = (windowId: string) => {
     setEntityWindows((current) => {
@@ -2506,8 +2504,8 @@ export default function Home() {
     return entity;
   };
 
-  const jumpToEntity = (entity: EntityCard) => {
-    const sectionKey = entity.appearances[0]?.sectionKey;
+  const jumpToEntity = (entity: EntityCard, targetSectionKey?: string) => {
+    const sectionKey = targetSectionKey ?? entity.appearances[0]?.sectionKey;
     if (!sectionKey) return;
     if (sectionKey.startsWith("acts:")) {
       setSelectedActId(sectionKey.slice("acts:".length));
@@ -2930,7 +2928,7 @@ export default function Home() {
         <EntityWindow
           key={floatingWindow.id}
           entities={entities}
-          relations={entityRelations}
+          project={activeProject}
           initialRef={floatingWindow.entityRef}
           x={floatingWindow.x}
           y={floatingWindow.y}
@@ -2952,6 +2950,7 @@ export default function Home() {
             });
           }}
           onJump={jumpToEntity}
+          onJumpToAppearance={jumpToEntity}
           onSave={saveEntityOverride}
           onCreate={(kind, name, relatedTo) => addKeeperEntity(kind, name, relatedTo?.appearances[0]?.sectionKey ?? "stage-background", relatedTo)}
           onDelete={(entity) => {
