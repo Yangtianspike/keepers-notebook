@@ -4025,6 +4025,8 @@ button:disabled {
 .visual-editor-tabs button.active { border-color: var(--teal); color: var(--teal); }
 .visual-format-toolbar { position: sticky; top: 0; z-index: 5; border: 1px solid var(--line); background: #20282a; padding: 9px; }
 .visual-format-toolbar .entity-link-tool { border-color: var(--teal); color: var(--teal); }
+.visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; white-space: nowrap !important; clip-path: inset(50%) !important; }
+.editor-tool-error { margin: 8px 0 0; border-left: 3px solid var(--red); background: rgba(170,62,55,.12); color: #ffd8d3; padding: 8px 12px; }
 .visual-document-editor,
 .visual-editor-source { width: 100%; height: calc(100vh - 285px); min-height: 620px; box-sizing: border-box; overflow: auto; margin-top: 10px; border: 1px solid #9a7b58; border-radius: 7px; background: #f5f0e1 url("/book-page-bg.png") center / cover; color: #2c1810; padding: 55px 90px; outline: none; box-shadow: 0 18px 48px rgba(0,0,0,.3); }
 .visual-editor-source { resize: none; background: #171c1e; color: #d8e2df; font: 14px/1.8 var(--mono); }
