@@ -9,6 +9,13 @@ import {
   parseKeeperEntityUri,
 } from "@/lib/entities";
 import type { EntityCard, EntityLinkBehavior } from "@/lib/types";
+import {
+  isSafeLinkUrl,
+  parseMarkdown,
+  type MarkdownBlock,
+} from "@/lib/markdown";
+
+export { editableHtmlToMarkdown, markdownToEditableHtml } from "@/lib/markdown";
 
 export type MarkdownEntityAction = {
   entity: EntityCard;
@@ -22,68 +29,8 @@ type MarkdownDocumentProps = {
   onEntityAction?: (action: MarkdownEntityAction) => void;
 };
 
-type Block = {
-  kind: "heading" | "paragraph" | "unordered-list" | "ordered-list" | "quote" | "divider";
-  level?: number;
-  text?: string;
-  items?: string[];
-};
-
-function splitLongText(text: string, limit = 520) {
-  if (text.length <= limit) return [text];
-  const chunks: string[] = [];
-  let rest = text;
-  while (rest.length > limit) {
-    let boundary = Math.max(
-      rest.lastIndexOf("。", limit), rest.lastIndexOf("；", limit),
-      rest.lastIndexOf("！", limit), rest.lastIndexOf("？", limit), rest.lastIndexOf(" ", limit),
-    );
-    if (boundary < Math.floor(limit * 0.55)) boundary = limit;
-    chunks.push(rest.slice(0, boundary + 1).trim());
-    rest = rest.slice(boundary + 1).trim();
-  }
-  if (rest) chunks.push(rest);
-  return chunks;
-}
-
-export function parseMarkdownBlocks(markdown: string): Block[] {
-  const blocks: Block[] = [];
-  let list: string[] = [];
-  let listKind: Block["kind"] = "unordered-list";
-  const flushList = () => {
-    if (list.length > 0) blocks.push({ kind: listKind, items: list });
-    list = [];
-  };
-  markdown.split(/\r?\n/).forEach((rawLine) => {
-    const line = rawLine.trimEnd();
-    const unordered = line.match(/^[-*]\s+(.+)$/);
-    const ordered = line.match(/^\d+[.)]\s+(.+)$/);
-    if (unordered || ordered) {
-      const nextKind = unordered ? "unordered-list" : "ordered-list";
-      if (list.length > 0 && nextKind !== listKind) flushList();
-      listKind = nextKind;
-      list.push((unordered ?? ordered)![1]);
-      return;
-    }
-    flushList();
-    if (!line.trim()) return;
-    if (/^(-{3,}|\*{3,})$/.test(line.trim())) {
-      blocks.push({ kind: "divider" });
-      return;
-    }
-    const heading = line.match(/^(#{1,4})\s+(.+)$/);
-    if (heading) {
-      blocks.push({ kind: "heading", level: heading[1].length, text: heading[2] });
-      return;
-    }
-    if (line.startsWith("> ")) {
-      blocks.push({ kind: "quote", text: line.slice(2) });
-      return;
-    }
-    splitLongText(line).forEach((text) => blocks.push({ kind: "paragraph", text }));
-  });
-  flushList();
-  return blocks;
+export function parseMarkdownBlocks(markdown: string): MarkdownBlock[] {
+  return parseMarkdown(markdown);
 }
 
 function uniqueEntityTerms(entities: EntityCard[]) {
@@ -161,11 +108,11 @@ function inlineMarkdown(
         }
       });
       if (!best) {
-        nodes.push(...renderBold(remaining, `${baseKey}-${key}`));
+        nodes.push(...renderInlineFormatting(remaining, `${baseKey}-${key}`));
         break;
       }
       const found = best as { index: number; term: string; entity: EntityCard };
-      if (found.index > 0) nodes.push(...renderBold(remaining.slice(0, found.index), `${baseKey}-${key}`));
+      if (found.index > 0) nodes.push(...renderInlineFormatting(remaining.slice(0, found.index), `${baseKey}-${key}`));
       used.add(found.entity.ref);
       nodes.push(
         <InlineEntityLink entity={found.entity} behavior={found.entity.linkBehavior} onEntityAction={onEntityAction} key={`${baseKey}-entity-${key}`}>
@@ -193,12 +140,21 @@ function inlineMarkdown(
   return nodes;
 }
 
-function renderBold(text: string, key: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) =>
-    part.startsWith("**") && part.endsWith("**")
-      ? <strong key={`${key}-${index}`}>{part.slice(2, -2)}</strong>
-      : <Fragment key={`${key}-${index}`}>{part}</Fragment>,
-  );
+function renderInlineFormatting(text: string, key: string): ReactNode[] {
+  const pattern = /(\*\*[^*]+\*\*|~~[^~]+~~|(?<!\*)\*[^*]+\*(?!\*)|<u>[^<]*<\/u>|<span data-font="(?:serif|sans|kai)">[^<]*<\/span>|\[[^\]]+]\(https?:\/\/[^)]+\))/gi;
+  return text.split(pattern).filter(Boolean).map((part, index) => {
+    const childKey = `${key}-${index}`;
+    if (part.startsWith("**") && part.endsWith("**")) return <strong key={childKey}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith("~~") && part.endsWith("~~")) return <del key={childKey}>{part.slice(2, -2)}</del>;
+    if (part.startsWith("*") && part.endsWith("*")) return <em key={childKey}>{part.slice(1, -1)}</em>;
+    const underline = part.match(/^<u>([^<]*)<\/u>$/i);
+    if (underline) return <u key={childKey}>{underline[1]}</u>;
+    const font = part.match(/^<span data-font="(serif|sans|kai)">([^<]*)<\/span>$/i);
+    if (font) return <span data-font={font[1]} key={childKey}>{font[2]}</span>;
+    const link = part.match(/^\[([^\]]+)]\((https?:\/\/[^)]+)\)$/i);
+    if (link && isSafeLinkUrl(link[2])) return <a href={link[2]} rel="noreferrer" target="_blank" key={childKey}>{link[1]}</a>;
+    return <Fragment key={childKey}>{part}</Fragment>;
+  });
 }
 
 export function markdownToReactBlocks({ markdown, entities = [], onEntityAction }: MarkdownDocumentProps) {
@@ -213,6 +169,25 @@ export function markdownToReactBlocks({ markdown, entities = [], onEntityAction 
     }
     if (block.kind === "quote") return <blockquote {...common} key={index}>{content}</blockquote>;
     if (block.kind === "divider") return <hr {...common} key={index} />;
+    if (block.kind === "image" && block.image) {
+      return <figure {...common} className="markdown-block markdown-image" key={index}>
+        {/* User-selected URLs are constrained by the shared Markdown allowlist. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={block.image.src} alt={block.image.alt} />
+        {block.image.alt && <figcaption>{block.image.alt}</figcaption>}
+      </figure>;
+    }
+    if (block.kind === "table" && block.table) {
+      return <div {...common} className="markdown-block markdown-table-wrap" key={index}>
+        <table>
+          <thead><tr>{block.table.headers.map((cell, cellIndex) => <th key={cellIndex}>{inlineMarkdown(cell, entities, onEntityAction)}</th>)}</tr></thead>
+          <tbody>{block.table.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{inlineMarkdown(cell, entities, onEntityAction)}</td>)}</tr>)}</tbody>
+        </table>
+      </div>;
+    }
+    if (block.kind === "character-card" && block.character) {
+      return <div {...common} className="markdown-block character-card-placeholder" data-entity-ref={block.character.ref} key={index}>人物卡 · {block.character.ref}</div>;
+    }
     if (block.kind === "unordered-list" || block.kind === "ordered-list") {
       const Tag = block.kind === "ordered-list" ? "ol" : "ul";
       return (block.items ?? []).map((item, itemIndex) => (
@@ -232,55 +207,6 @@ export function MarkdownDocument(props: MarkdownDocumentProps) {
     [markdown, entities, onEntityAction],
   );
   return <div className="markdown-document">{blocks}</div>;
-}
-
-function escapeHtml(text: string) {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function inlineToHtml(text: string) {
-  return escapeHtml(text)
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/\[([^\]]+)]\((keeper:\/\/[^)]+)\)/g, '<a href="$2">$1</a>');
-}
-
-export function markdownToEditableHtml(markdown: string) {
-  return parseMarkdownBlocks(markdown).map((block) => {
-    if (block.kind === "heading") return `<h${block.level}>${inlineToHtml(block.text ?? "")}</h${block.level}>`;
-    if (block.kind === "quote") return `<blockquote>${inlineToHtml(block.text ?? "")}</blockquote>`;
-    if (block.kind === "divider") return "<hr>";
-    if (block.kind === "unordered-list" || block.kind === "ordered-list") {
-      const tag = block.kind === "ordered-list" ? "ol" : "ul";
-      return `<${tag}>${block.items?.map((item) => `<li>${inlineToHtml(item)}</li>`).join("")}</${tag}>`;
-    }
-    return `<p>${inlineToHtml(block.text ?? "")}</p>`;
-  }).join("");
-}
-
-function inlineHtmlToMarkdown(element: Element) {
-  return Array.from(element.childNodes).map((node) => {
-    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
-    if (!(node instanceof HTMLElement)) return "";
-    const content = inlineHtmlToMarkdown(node);
-    if (node.tagName === "STRONG" || node.tagName === "B") return `**${content}**`;
-    if (node.tagName === "A") return `[${content}](${node.getAttribute("href") ?? ""})`;
-    if (node.tagName === "BR") return "\n";
-    return content;
-  }).join("");
-}
-
-export function editableHtmlToMarkdown(root: HTMLElement) {
-  return Array.from(root.children).map((element) => {
-    const content = inlineHtmlToMarkdown(element).trim();
-    const heading = element.tagName.match(/^H([1-4])$/);
-    if (heading) return `${"#".repeat(Number(heading[1]))} ${content}`;
-    if (element.tagName === "BLOCKQUOTE") return `> ${content}`;
-    if (element.tagName === "HR") return "---";
-    if (element.tagName === "UL" || element.tagName === "OL") {
-      return Array.from(element.children).map((item, index) => `${element.tagName === "OL" ? `${index + 1}.` : "-"} ${inlineHtmlToMarkdown(item)}`).join("\n");
-    }
-    return content;
-  }).filter(Boolean).join("\n\n");
 }
 
 export function addEntityLink(markdown: string, label: string, entity: EntityCard, behavior: EntityLinkBehavior) {
