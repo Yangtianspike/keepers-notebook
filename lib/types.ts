@@ -101,7 +101,7 @@ export type PersonCoCStats = {
   skills?: Array<{
     name: string;
     value: number;
-    provenance: "source" | "inference";
+    provenance: "source" | "inference" | "keeper";
     sources?: SourceRef[];
   }>;
   attacks?: Array<{
@@ -110,7 +110,7 @@ export type PersonCoCStats = {
     damage: string;
     range?: string;
     attacksPerRound?: string;
-    provenance: "source" | "inference";
+    provenance: "source" | "inference" | "keeper";
     sources?: SourceRef[];
   }>;
   fieldProvenance?: Partial<Record<PersonCoCStatKey, CoCValueProvenance>>;
@@ -401,6 +401,7 @@ export type EntityOverrides = {
   playerVisible?: string;
   keeperPrivate?: string;
   fields?: EntityFields;
+  cocStats?: Partial<PersonCoCStats>;
   linkBehavior?: EntityLinkBehavior;
   updatedAt: string;
 };
@@ -418,6 +419,7 @@ export type EntityCard = {
     playerVisible: string;
     keeperPrivate: string;
     fields: EntityFields;
+    cocStats?: PersonCoCStats;
   };
   overrides?: EntityOverrides;
   appearances: EntityAppearance[];

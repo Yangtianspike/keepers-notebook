@@ -90,12 +90,13 @@ function card(
   fields: EntityFields,
   sectionKey: string,
   source: EntityCard["source"] = "source",
+  cocStats?: EntityCard["original"]["cocStats"],
 ): EntityCard {
   const ref = entityRef(kind, id);
   const overrides = project.kpNotes?.entityOverrides?.[ref];
   return {
     ref, id, kind, source, confirmed: source !== "inference",
-    original: { name, aliases, tags: [], playerVisible: "", keeperPrivate: "", fields },
+    original: { name, aliases, tags: [], playerVisible: "", keeperPrivate: "", fields, cocStats },
     overrides,
     appearances: [{ sectionKey }],
     linkBehavior: overrides?.linkBehavior ?? { jump: true, preview: true },
@@ -110,8 +111,11 @@ export function buildProjectEntities(project: Project): EntityCard[] {
     {
       role: person.role, importance: person.importance, publicIdentity: person.publicIdentity,
       trueIdentity: person.trueIdentity, motivation: person.motivation, secrets: person.secrets,
+      organization: person.organization ?? "", summary: person.summary ?? "",
+      appearance: person.appearance ?? "", personality: person.personality ?? "",
+      state: person.state ?? "", performanceHints: person.performanceHints ?? "",
     },
-    "stage-characters", person.provenance === "inference" ? "inference" : "source",
+    "stage-characters", person.provenance === "inference" ? "inference" : "source", person.cocStats,
   ));
   const clues = project.analysis.clues.map((clue) => card(
     project, "clue", clue.id, clue.name, [],
@@ -136,6 +140,23 @@ export function buildProjectEntities(project: Project): EntityCard[] {
     `acts:${act.id}`,
   )));
   return [...people, ...clues, ...places, ...events, ...(project.kpNotes?.keeperEntities ?? [])];
+}
+
+export function entityCoCStats(entity: EntityCard) {
+  if (entity.kind !== "person") return undefined;
+  const original = entity.original.cocStats;
+  const override = entity.overrides?.cocStats;
+  if (!original && !override) return undefined;
+  return {
+    ...original,
+    ...override,
+    skills: override?.skills ?? original?.skills,
+    attacks: override?.attacks ?? original?.attacks,
+    fieldProvenance: {
+      ...(original?.fieldProvenance ?? {}),
+      ...(override?.fieldProvenance ?? {}),
+    },
+  };
 }
 
 export function buildEntityRelations(project: Project, entities: EntityCard[]): EntityRelation[] {

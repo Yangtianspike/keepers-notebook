@@ -360,9 +360,9 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
         Number.parseFloat(styles.marginBottom || "0");
       const rootRect = element.getBoundingClientRect();
       const protectedElements = Array.from(element.querySelectorAll<HTMLElement>(
-        ".stage-inset-card, .act-person-card, .act-clue-card, .act-event-list article, .act-branch-list button",
+        ".stage-inset-card, .act-person-card, .act-clue-card, .act-event-list article, .act-branch-list button, .character-card, .markdown-table-wrap, .markdown-image",
       ));
-      const headings = Array.from(element.querySelectorAll<HTMLElement>("h1, h2, h3, h4"));
+      const headings = Array.from(element.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"));
       const protectedRanges = protectedElements.map((protectedElement) => {
         const rect = protectedElement.getBoundingClientRect();
         let top = rect.top - rootRect.top;

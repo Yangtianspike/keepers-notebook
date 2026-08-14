@@ -3954,6 +3954,8 @@ button:disabled {
 .markdown-document h2,
 .markdown-document h3,
 .markdown-document h4,
+.markdown-document h5,
+.markdown-document h6,
 .markdown-document p,
 .markdown-document ul { margin: 0; color: #2c1810; }
 .markdown-document p,
@@ -3961,11 +3963,52 @@ button:disabled {
 .markdown-document h1 { font-size: 28px; text-align: center; }
 .markdown-document h2 { border-bottom: 1px solid rgba(123, 33, 30, 0.28); padding-bottom: 7px; font-size: 20px; }
 .markdown-document h3 { font-size: 17px; }
+.markdown-document h4 { font-size: 15px; }
+.markdown-document h5 { font-size: 14px; letter-spacing: .04em; }
+.markdown-document h6 { color: #604b36; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+.markdown-document [data-font="serif"] { font-family: Georgia, "Times New Roman", "Songti SC", serif; }
+.markdown-document [data-font="sans"] { font-family: Inter, "Microsoft YaHei", sans-serif; }
+.markdown-document [data-font="kai"] { font-family: KaiTi, STKaiti, "楷体", serif; }
 .markdown-list-continuation { margin-top: -8px !important; margin-bottom: 0 !important; }
 .markdown-document ol,
 .markdown-document blockquote,
 .markdown-document hr { margin: 0; color: #2c1810; }
 .markdown-document blockquote { border-left: 3px solid #8b3a32; padding: 8px 16px; background: rgba(255,255,255,.32); }
+.markdown-table-wrap { max-width: 100%; overflow-x: auto; }
+.markdown-table-wrap table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.markdown-table-wrap th,
+.markdown-table-wrap td { border: 1px solid rgba(123,33,30,.25); padding: 7px 9px; overflow-wrap: anywhere; text-align: left; }
+.markdown-table-wrap th { background: rgba(123,33,30,.08); }
+.markdown-image { display: grid; justify-items: center; gap: 6px; }
+.markdown-image img { display: block; max-width: 100%; max-height: 920px; object-fit: contain; }
+.markdown-image figcaption { color: #705a42; font-size: 12px; }
+.character-card { display: grid; gap: 12px; border: 1px solid rgba(123,33,30,.28); border-radius: 7px; background: rgba(255,250,238,.58); padding: 15px 17px; box-shadow: inset 0 0 18px rgba(123,33,30,.04); break-inside: avoid; }
+.character-card > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; border-bottom: 1px solid rgba(123,33,30,.18); padding-bottom: 9px; }
+.character-card > header > div { display: grid; gap: 3px; }
+.character-card > header button { width: fit-content; border: 0; border-bottom: 1px dotted #7b211e; background: transparent; color: #4a2018; padding: 0; font: 700 19px/1.35 Georgia, "Songti SC", serif; cursor: pointer; }
+.character-card > header span,
+.character-card > header small { color: #715c45; font-size: 12px; }
+.entity-source-badge { flex: 0 0 auto; border: 1px solid rgba(123,33,30,.25); border-radius: 999px; padding: 3px 7px; }
+.entity-source-badge.source-inference { border-color: rgba(143,92,15,.4); color: #80540e; }
+.character-profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; margin: 0; }
+.character-profile-grid > div { display: grid; grid-template-columns: 72px 1fr; gap: 8px; border-bottom: 1px solid rgba(123,33,30,.1); padding-bottom: 5px; }
+.character-profile-grid dt { color: #7b211e; font-weight: 700; }
+.character-profile-grid dd { margin: 0; overflow-wrap: anywhere; }
+.character-coc-section { display: grid; gap: 8px; }
+.character-coc-section h4 { margin: 0; }
+.character-stat-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
+.character-stat-grid > div { position: relative; display: grid; justify-items: center; border: 1px solid rgba(123,33,30,.2); background: rgba(255,255,255,.35); padding: 5px 2px; }
+.character-stat-grid small { font-size: 10px; }
+.character-stat-grid strong { font-size: 15px; }
+.character-stat-grid i,
+.character-skill-list i { color: #8b7355; font-size: 9px; font-style: normal; }
+.character-stat-grid i { position: absolute; top: 2px; right: 3px; }
+.character-skill-list { display: flex; flex-wrap: wrap; gap: 5px 10px; font-size: 12px; }
+.character-card-important .character-profile-grid > div:nth-child(n+5) { display: none; }
+.character-card-minor { gap: 6px; padding: 10px 14px; }
+.character-card-minor > header { border: 0; padding: 0; }
+.character-card-minor > p { color: #604b36; font-size: 13px; }
+.visual-document-editor [data-keeper-block="character-card"] { border: 1px dashed #8b3a32; border-radius: 6px; background: rgba(255,255,255,.4); color: #7b211e; padding: 16px; font-weight: 700; user-select: none; }
 
 .visual-editor-shell { position: relative; width: min(1460px, 100%); margin: 0 auto; }
 .visual-editor-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--line); background: var(--panel); padding: 14px 18px; }
@@ -4018,6 +4061,18 @@ button:disabled {
 .entity-read-view { display: grid; gap: 8px; padding: 12px 0; }
 .entity-read-view p { display: grid; grid-template-columns: 110px 1fr; gap: 16px; margin: 0; border-bottom: 1px solid rgba(123,33,30,.13); padding: 9px 0; }
 .entity-read-view .keeper-private { border-left: 3px solid #7b211e; background: rgba(123,33,30,.06); padding-left: 10px; }
+.entity-coc-stats { grid-column: 1 / -1; display: grid; gap: 10px; margin-top: 8px; border-top: 1px solid rgba(123,33,30,.22); padding-top: 12px; }
+.entity-coc-stats h3 { margin: 0; }
+.entity-coc-stats > p { display: block; }
+.entity-coc-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+.entity-coc-grid > div { display: grid; justify-items: center; border: 1px solid rgba(123,33,30,.2); background: rgba(255,255,255,.35); padding: 6px 3px; }
+.entity-coc-grid i,
+.entity-coc-list i { color: #806b50; font-size: 10px; font-style: normal; }
+.entity-coc-list { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.entity-coc-edit { display: grid !important; gap: 10px !important; }
+.entity-coc-edit-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 7px; }
+.entity-coc-edit-grid label { display: grid; gap: 3px; font-size: 11px; }
+.entity-coc-edit-grid input { min-width: 0; width: 100%; }
 .entity-edit-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; padding: 16px 0; }
 .entity-edit-form > label { display: grid; gap: 5px; font-weight: 700; }
 .entity-edit-form textarea { min-height: 62px; resize: vertical; }

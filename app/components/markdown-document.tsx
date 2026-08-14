@@ -4,11 +4,13 @@ import { Fragment, type ReactNode, useMemo, useState } from "react";
 import {
   ENTITY_KIND_LABELS,
   entityAliases,
+  entityCoCStats,
+  entityFields,
   entityName,
   keeperEntityUri,
   parseKeeperEntityUri,
 } from "@/lib/entities";
-import type { EntityCard, EntityLinkBehavior } from "@/lib/types";
+import type { EntityCard, EntityLinkBehavior, PersonCoCStatKey } from "@/lib/types";
 import {
   isSafeLinkUrl,
   parseMarkdown,
@@ -157,6 +159,80 @@ function renderInlineFormatting(text: string, key: string): ReactNode[] {
   });
 }
 
+const COC_STAT_LABELS: Array<[PersonCoCStatKey, string]> = [
+  ["str", "STR"], ["con", "CON"], ["siz", "SIZ"], ["dex", "DEX"],
+  ["app", "APP"], ["int", "INT"], ["pow", "POW"], ["edu", "EDU"],
+  ["hp", "HP"], ["mp", "MP"], ["san", "SAN"], ["luck", "幸运"],
+  ["mov", "MOV"], ["build", "体格"], ["damageBonus", "伤害加值"], ["armor", "护甲"],
+];
+
+function CharacterCardRenderer({
+  entity,
+  importance,
+  onEntityAction,
+}: {
+  entity: EntityCard;
+  importance: "core" | "important" | "minor";
+  onEntityAction?: MarkdownDocumentProps["onEntityAction"];
+}) {
+  const fields = entityFields(entity);
+  const stats = entityCoCStats(entity);
+  const fieldRows = [
+    ["summary", "摘要"], ["publicIdentity", "公开身份"], ["trueIdentity", "真实身份"],
+    ["appearance", "外貌"], ["personality", "性格"], ["motivation", "动机"],
+    ["secrets", "秘密"], ["state", "状态"], ["performanceHints", "扮演提示"],
+  ].flatMap(([key, label]) => {
+    const value = fields[key];
+    if (value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) return [];
+    return [{ label, value: Array.isArray(value) ? value.join("、") : String(value) }];
+  });
+  const visibleStats = COC_STAT_LABELS.flatMap(([key, label]) => {
+    const value = stats?.[key];
+    if (value === undefined || typeof value === "object") return [];
+    const overridden = Boolean(entity.overrides?.cocStats && key in entity.overrides.cocStats);
+    const provenance = overridden ? "keeper" : stats?.fieldProvenance?.[key]?.provenance;
+    return [{ key, label, value: String(value), provenance }];
+  });
+  return (
+    <article className={`character-card character-card-${importance}`} data-page-atomic="true">
+      <header>
+        <div>
+          <small>{importance === "core" ? "核心人物" : importance === "important" ? "重要人物" : "次要人物"}</small>
+          <button type="button" onClick={() => onEntityAction?.({ entity, behavior: entity.linkBehavior, action: "preview" })}>
+            <em>{entityName(entity)}</em>
+          </button>
+          {fields.role && <span>{String(fields.role)}</span>}
+        </div>
+        <span className={`entity-source-badge source-${entity.source}`}>
+          {entity.source === "source" ? "剧本资料" : entity.source === "inference" ? "模型推断" : "KP 创建"}
+        </span>
+      </header>
+      {importance !== "minor" && fieldRows.length > 0 && (
+        <dl className="character-profile-grid">
+          {fieldRows.map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}
+        </dl>
+      )}
+      {importance !== "minor" && visibleStats.length > 0 && (
+        <section className="character-coc-section">
+          <h4>CoC 7版属性</h4>
+          <div className="character-stat-grid">
+            {visibleStats.map((stat) => <div key={stat.key} title={stat.provenance === "source" ? "剧本原文" : stat.provenance === "keeper" ? "KP 修改" : "模型推断"}>
+              <small>{stat.label}</small><strong>{stat.value}</strong><i>{stat.provenance === "source" ? "原" : stat.provenance === "keeper" ? "KP" : "推"}</i>
+            </div>)}
+          </div>
+          {importance === "core" && stats?.skills && stats.skills.length > 0 && (
+            <div className="character-skill-list"><strong>技能</strong>{stats.skills.map((skill) => <span key={skill.name}>{skill.name} {skill.value}% <i>{skill.provenance === "source" ? "原" : skill.provenance === "keeper" ? "KP" : "推"}</i></span>)}</div>
+          )}
+          {importance === "core" && stats?.attacks && stats.attacks.length > 0 && (
+            <div className="character-skill-list"><strong>攻击</strong>{stats.attacks.map((attack) => <span key={attack.name}>{attack.name} {attack.value !== undefined ? `${attack.value}%` : ""} · {attack.damage} <i>{attack.provenance === "source" ? "原" : attack.provenance === "keeper" ? "KP" : "推"}</i></span>)}</div>
+          )}
+        </section>
+      )}
+      {importance === "minor" && <p>{String(fields.summary || fields.publicIdentity || fields.role || "点击查看完整资料与 CoC 属性")}</p>}
+    </article>
+  );
+}
+
 export function markdownToReactBlocks({ markdown, entities = [], onEntityAction }: MarkdownDocumentProps) {
   return parseMarkdownBlocks(markdown).flatMap((block, index) => {
     const content = block.text ? inlineMarkdown(block.text, entities, onEntityAction) : null;
@@ -186,7 +262,14 @@ export function markdownToReactBlocks({ markdown, entities = [], onEntityAction 
       </div>;
     }
     if (block.kind === "character-card" && block.character) {
-      return <div {...common} className="markdown-block character-card-placeholder" data-entity-ref={block.character.ref} key={index}>人物卡 · {block.character.ref}</div>;
+      const entity = entities.find((candidate) => candidate.ref === block.character?.ref);
+      if (!entity || entity.kind !== "person") return <div {...common} className="markdown-block character-card-placeholder" key={index}>人物资料不可用 · {block.character.ref}</div>;
+      return <CharacterCardRenderer
+        entity={entity}
+        importance={block.character.importance ?? "minor"}
+        onEntityAction={onEntityAction}
+        key={index}
+      />;
     }
     if (block.kind === "unordered-list" || block.kind === "ordered-list") {
       const Tag = block.kind === "ordered-list" ? "ol" : "ul";
