@@ -246,11 +246,13 @@ function resizeCharacterImage(file: File) {
 function CharacterCardRenderer({
   entity,
   importance,
+  segment = "full",
   onEntityAction,
   onEntityImageChange,
 }: {
   entity: EntityCard;
   importance: "core" | "important" | "minor";
+  segment?: "full" | "overview" | "details" | "stats";
   onEntityAction?: MarkdownDocumentProps["onEntityAction"];
   onEntityImageChange?: MarkdownDocumentProps["onEntityImageChange"];
 }) {
@@ -272,6 +274,9 @@ function CharacterCardRenderer({
   const profileRows = leadRow
     ? fieldRows.filter((row) => row !== leadRow)
     : fieldRows;
+  const overviewLabels = new Set(["公开身份", "真实身份"]);
+  const overviewRows = profileRows.filter((row) => overviewLabels.has(row.label));
+  const detailRows = profileRows.filter((row) => !overviewLabels.has(row.label));
   const visibleStats = COC_STAT_LABELS.flatMap(([key, label]) => {
     const value = stats?.[key];
     if (value === undefined || typeof value === "object") return [];
@@ -279,8 +284,43 @@ function CharacterCardRenderer({
     const provenance = overridden ? "keeper" : stats?.fieldProvenance?.[key]?.provenance;
     return [{ key, label, value: String(value), provenance }];
   });
+  if (segment === "details") {
+    return (
+      <article className="character-card character-card-core character-card-segment character-card-segment-details">
+        <header className="character-card-continuation-header">
+          <div><small>核心人物 · 资料续页</small><strong>{entityName(entity)}</strong></div>
+        </header>
+        <dl className="character-profile-grid">
+          {detailRows.map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}
+        </dl>
+      </article>
+    );
+  }
+  if (segment === "stats") {
+    return (
+      <article className="character-card character-card-core character-card-segment character-card-segment-stats">
+        <header className="character-card-continuation-header">
+          <div><small>核心人物 · 数据续页</small><strong>{entityName(entity)}</strong></div>
+        </header>
+        <section className="character-coc-section">
+          <h4>CoC 7版属性</h4>
+          <div className="character-stat-grid">
+            {visibleStats.map((stat) => <div key={stat.key} title={stat.provenance === "source" ? "剧本原文" : stat.provenance === "keeper" ? "KP 修改" : "模型推断"}>
+              <small>{stat.label}</small><strong>{stat.value}</strong><i>{stat.provenance === "source" ? "原" : stat.provenance === "keeper" ? "KP" : "推"}</i>
+            </div>)}
+          </div>
+          {stats?.skills && stats.skills.length > 0 && (
+            <div className="character-skill-list"><strong>技能</strong>{stats.skills.map((skill) => <span key={skill.name}>{skill.name} {skill.value}% <i>{skill.provenance === "source" ? "原" : skill.provenance === "keeper" ? "KP" : "推"}</i></span>)}</div>
+          )}
+          {stats?.attacks && stats.attacks.length > 0 && (
+            <div className="character-skill-list"><strong>攻击</strong>{stats.attacks.map((attack) => <span key={attack.name}>{attack.name} {attack.value !== undefined ? `${attack.value}%` : ""} · {attack.damage} <i>{attack.provenance === "source" ? "原" : attack.provenance === "keeper" ? "KP" : "推"}</i></span>)}</div>
+          )}
+        </section>
+      </article>
+    );
+  }
   return (
-    <article className={`character-card character-card-${importance}`}>
+    <article className={`character-card character-card-${importance}${segment === "overview" ? " character-card-segment character-card-segment-overview" : ""}`}>
       {importance === "core" && (
         <div className="character-card-portrait">
           {image ? (
@@ -314,14 +354,14 @@ function CharacterCardRenderer({
         </span>
       </header>
       {leadRow && (
-        <p className="character-card-lead"><strong>{leadRow.label}</strong><span>{leadRow.value}</span></p>
+        <dl className="character-card-lead"><dt>{leadRow.label}</dt><dd>{leadRow.value}</dd></dl>
       )}
-      {importance !== "minor" && profileRows.length > 0 && (
+      {importance !== "minor" && (segment === "overview" ? overviewRows : profileRows).length > 0 && (
         <dl className="character-profile-grid">
-          {profileRows.map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}
+          {(segment === "overview" ? overviewRows : profileRows).map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}
         </dl>
       )}
-      {importance !== "minor" && visibleStats.length > 0 && (
+      {segment === "full" && importance !== "minor" && visibleStats.length > 0 && (
         <section className="character-coc-section">
           <h4>CoC 7版属性</h4>
           <div className="character-stat-grid">
@@ -385,9 +425,29 @@ export function markdownToReactBlocks({ markdown, entities = [], onEntityAction,
     if (block.kind === "character-card" && block.character) {
       const entity = entities.find((candidate) => candidate.ref === block.character?.ref);
       if (!entity || entity.kind !== "person") return <div {...common} className="markdown-block character-card-placeholder" key={index}>人物资料不可用 · {block.character.ref}</div>;
+      const importance = block.character.importance ?? "minor";
+      if (importance === "core") {
+        const fields = entityFields(entity);
+        const stats = entityCoCStats(entity);
+        const hasDetails = ["appearance", "personality", "motivation", "secrets", "state", "performanceHints"]
+          .some((key) => {
+            const value = fields[key];
+            return value !== undefined && value !== "" && (!Array.isArray(value) || value.length > 0);
+          });
+        const hasStats = Boolean(stats && (
+          COC_STAT_LABELS.some(([key]) => stats[key] !== undefined) ||
+          stats.skills?.length ||
+          stats.attacks?.length
+        ));
+        return [
+          <CharacterCardRenderer entity={entity} importance="core" segment="overview" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} key={`${index}-overview`} />,
+          ...(hasDetails ? [<CharacterCardRenderer entity={entity} importance="core" segment="details" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} key={`${index}-details`} />] : []),
+          ...(hasStats ? [<CharacterCardRenderer entity={entity} importance="core" segment="stats" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} key={`${index}-stats`} />] : []),
+        ];
+      }
       return <CharacterCardRenderer
         entity={entity}
-        importance={block.character.importance ?? "minor"}
+        importance={importance}
         onEntityAction={onEntityAction}
         onEntityImageChange={onEntityImageChange}
         key={index}

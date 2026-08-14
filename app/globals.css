@@ -3994,8 +3994,14 @@ button:disabled {
 .character-card-portrait > span { font: 700 18px/1 Georgia, "Songti SC", serif; letter-spacing: .2em; opacity: .55; }
 .character-card-portrait label { position: absolute; right: 7px; bottom: 7px; left: 7px; border: 1px solid rgba(123,33,30,.4); border-radius: 4px; background: rgba(245,240,225,.92); color: #5b241c; padding: 6px 8px; text-align: center; cursor: pointer; }
 .character-card-portrait input { display: none; }
-.character-card-lead { display: grid; grid-template-columns: 58px 1fr; gap: 10px; margin: 0; color: #4f3b2d; line-height: 1.85; }
-.character-card-lead strong { color: #7b211e; }
+.character-card-lead { display: grid; grid-template-columns: 58px 1fr; gap: 10px; margin: 0; color: #4f3b2d; line-height: 1.85; text-indent: 0; }
+.character-card-lead dt { color: #7b211e; font-weight: 700; white-space: nowrap; }
+.character-card-lead dd { margin: 0; overflow-wrap: anywhere; }
+.character-card-segment { break-inside: avoid; }
+.character-card-segment > .character-card-continuation-header { grid-column: 1 / -1; }
+.character-card-continuation-header strong { color: #4a2018; font: 700 18px/1.35 Georgia, "Songti SC", serif; }
+.character-card-segment-details > .character-profile-grid,
+.character-card-segment-stats > .character-coc-section { grid-column: 1 / -1; }
 .character-card > header > div { display: grid; gap: 3px; }
 .character-card > header button { width: fit-content; border: 0; border-bottom: 1px dotted #7b211e; background: transparent; color: #4a2018; padding: 0; font: 700 19px/1.35 Georgia, "Songti SC", serif; cursor: pointer; }
 .character-card > header span,
