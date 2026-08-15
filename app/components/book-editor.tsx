@@ -41,6 +41,15 @@ function loadImage(src: string) {
   });
 }
 
+function markdownOutline(markdown: string) {
+  return Array.from(markdown.matchAll(/^(#{1,6})\s+(.+)$/gm)).map((match, index) => ({
+    id: `heading-${index}`,
+    level: match[1].length,
+    title: match[2].replace(/[*_`~\[\]]/g, "").trim(),
+    index,
+  }));
+}
+
 async function compressImage(file: File) {
   if (!file.type.startsWith("image/")) throw new Error("请选择图片文件。");
   const original = await readFileAsDataUrl(file);
@@ -109,6 +118,24 @@ export function BookEditor({
     if (!active || !editorRef.current) return;
     const markdown = editableHtmlToMarkdown(editorRef.current);
     draftsRef.current = { ...draftsRef.current, [active.key]: markdown };
+    setDrafts(draftsRef.current);
+  };
+
+  const openHeading = (index: number) => {
+    if (sourceMode) setSourceMode(false);
+    window.setTimeout(() => {
+      const heading = editorRef.current?.querySelectorAll("h1,h2,h3,h4,h5,h6")[index];
+      heading?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (heading instanceof HTMLElement) {
+        heading.focus();
+        const range = document.createRange();
+        range.selectNodeContents(heading);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+    }, 0);
   };
 
   const rememberSelection = () => {
@@ -213,16 +240,31 @@ export function BookEditor({
           }}>保存并返回书页</button>
         </div>
       </header>
-      <nav className="visual-editor-tabs">
-        {sections.map((section) => (
-          <button className={section.key === activeKey ? "active" : ""} type="button" key={section.key} onClick={() => {
-            if (!sourceMode) syncFromVisual();
-            setActiveKey(section.key);
-          }}>{section.name}</button>
-        ))}
-      </nav>
-      {!sourceMode && (
-        <div className="visual-format-toolbar" aria-label="文档格式工具">
+      <div className="visual-editor-workspace">
+        <nav className="visual-editor-outline" aria-label="文档目录">
+          <strong>文档目录</strong>
+          {sections.map((section) => (
+            <div className="visual-editor-outline-section" key={section.key}>
+              <button className={section.key === activeKey ? "active" : ""} type="button" onClick={() => {
+                if (!sourceMode) syncFromVisual();
+                setActiveKey(section.key);
+              }}>{section.name}</button>
+              {section.key === activeKey && markdownOutline(drafts[section.key] ?? "").map((heading) => (
+                <button
+                  className="visual-editor-outline-heading"
+                  style={{ paddingLeft: `${12 + (heading.level - 1) * 12}px` }}
+                  type="button"
+                  key={heading.id}
+                  title={`H${heading.level} · ${heading.title}`}
+                  onClick={() => openHeading(heading.index)}
+                >{heading.title || "未命名标题"}</button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="visual-editor-main">
+        {!sourceMode && (
+          <div className="visual-format-toolbar" aria-label="文档格式工具">
           <select aria-label="段落样式" defaultValue="p" onChange={(event) => command("formatBlock", event.target.value)}>
             <option value="p">正文</option><option value="h1">H1</option><option value="h2">H2</option><option value="h3">H3</option><option value="h4">H4</option><option value="h5">H5</option><option value="h6">H6</option>
           </select>
@@ -257,10 +299,10 @@ export function BookEditor({
               insertHtml(`<figure><img src="${dataUrl}" alt="${file.name.replace(/["<>]/g, "")}"><figcaption>${file.name.replace(/[<>]/g, "")}</figcaption></figure><p><br></p>`);
             }).catch((error: unknown) => setToolError(error instanceof Error ? error.message : "图片处理失败。"));
           }} />
-        </div>
-      )}
-      {toolError && <p className="editor-tool-error" role="alert">{toolError}</p>}
-      {active && (sourceMode ? (
+          </div>
+        )}
+        {toolError && <p className="editor-tool-error" role="alert">{toolError}</p>}
+        {active && (sourceMode ? (
         <textarea
           className="visual-editor-source"
           aria-label={`${active.name} Markdown`}
@@ -283,7 +325,9 @@ export function BookEditor({
           onKeyUp={rememberSelection}
           onMouseUp={rememberSelection}
         />
-      ))}
+        ))}
+        </div>
+      </div>
       {entityPicker && (
         <div className="editor-entity-picker">
           <header><strong>关联“{selectedText}”</strong><button type="button" onClick={() => setEntityPicker(false)}>×</button></header>

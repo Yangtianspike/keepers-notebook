@@ -4063,13 +4063,19 @@ button:disabled {
 .visual-editor-header span { display: block; }
 .visual-editor-header span { margin-top: 4px; color: var(--muted); font-size: 12px; }
 .visual-editor-header > div:last-child,
-.visual-editor-tabs,
 .visual-format-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
-.visual-editor-tabs { margin: 10px 0; }
-.visual-editor-tabs button,
 .visual-format-toolbar button,
 .visual-format-toolbar select { border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text); padding: 8px 11px; }
-.visual-editor-tabs button.active { border-color: var(--teal); color: var(--teal); }
+.visual-editor-workspace { display: grid; min-height: 0; grid-template-columns: 250px minmax(0, 1fr); gap: 12px; margin-top: 10px; }
+.visual-editor-outline { height: calc(100vh - 205px); min-height: 620px; overflow-y: auto; border: 1px solid var(--line); background: var(--panel); padding: 12px 8px; }
+.visual-editor-outline > strong { display: block; padding: 3px 10px 12px; color: var(--muted); font-size: 12px; letter-spacing: .13em; }
+.visual-editor-outline-section { display: grid; }
+.visual-editor-outline button { overflow: hidden; border: 0; border-left: 2px solid transparent; background: transparent; color: var(--muted); padding: 9px 10px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.visual-editor-outline-section > button:first-child { color: var(--text); font-weight: 700; }
+.visual-editor-outline button:hover,
+.visual-editor-outline button.active { border-left-color: var(--teal); background: rgba(20,145,132,.1); color: var(--teal-bright); }
+.visual-editor-outline-heading { font-size: 12px; }
+.visual-editor-main { min-width: 0; }
 .visual-format-toolbar { position: sticky; top: 0; z-index: 5; border: 1px solid var(--line); background: #20282a; padding: 9px; }
 .visual-format-toolbar .entity-link-tool { border-color: var(--teal); color: var(--teal); }
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; white-space: nowrap !important; clip-path: inset(50%) !important; }
@@ -4083,6 +4089,10 @@ button:disabled {
 .editor-entity-picker button { border: 1px solid #8b7355; background: rgba(255,255,255,.45); color: #2c1810; padding: 9px; }
 .entity-picker-behavior,
 .entity-picker-create { display: flex; align-items: center; gap: 12px; }
+@media (max-width: 920px) {
+  .visual-editor-workspace { grid-template-columns: 190px minmax(0, 1fr); }
+  .visual-document-editor, .visual-editor-source { padding: 36px 42px; }
+}
 
 .entity-inline { position: relative; display: inline; }
 .entity-inline > button { border: 0; border-bottom: 1px dotted #7b211e; background: transparent; color: #7b211e; padding: 0 1px; font: inherit; cursor: pointer; }
