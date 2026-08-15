@@ -630,8 +630,6 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
     headingPages,
     viewportTooSmall,
     displayMode: bookSize.display,
-    viewportTooSmall,
-    displayMode,
   };
 }
 
@@ -725,6 +723,8 @@ export function StageView({
     displayTotalPages,
     isAnimating,
     headingPages,
+    viewportTooSmall,
+    displayMode,
   } = useTurnBook(content, {
     contentKey,
     enabled: !editing,
