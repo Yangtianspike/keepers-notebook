@@ -471,7 +471,6 @@ function StructureView({
   onChange: (project: Project) => void;
   onConfirm: () => void;
 }) {
-  const imagePages = project.pages.filter((page) => page.imageHeavy);
   const updateChapter = (
     id: string,
     patch: Partial<Project["chapters"][number]>,
@@ -497,16 +496,6 @@ function StructureView({
           <span>PDF / 文档页</span>
         </div>
       </header>
-
-      {imagePages.length > 0 && (
-        <div className="notice warning">
-          <strong>检测到 {imagePages.length} 个图片为主的页面</strong>
-          <p>
-            第 {imagePages.map((page) => page.pageNumber).join("、")}{" "}
-            页文字很少，首版不会理解地图或图片内容，分析结果会保留这项限制。
-          </p>
-        </div>
-      )}
 
       <div className="chapter-list">
         {project.chapters.map((chapter, index) => (

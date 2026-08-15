@@ -427,9 +427,9 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
           <label>从第 <input min={1} max={project.pages.length} type="number" value={startPage} onChange={(event) => setStartPage(Number(event.target.value))} /> 页</label>
           <label>到第 <input min={1} max={project.pages.length} type="number" value={endPage} onChange={(event) => setEndPage(Number(event.target.value))} /> 页</label>
           {scanning ? (
-            <button className="ghost-button" onClick={() => { cancelledRef.current = true; setStatus("正在停止扫描…"); }}>停止</button>
+            <button className="image-resource-action" onClick={() => { cancelledRef.current = true; setStatus("正在停止扫描…"); }}>停止</button>
           ) : (
-            <button className="primary-button" disabled={!sourceUrl || project.fileType !== "pdf"} onClick={() => void scan()}>扫描所选页</button>
+            <button className="image-resource-action" disabled={!sourceUrl || project.fileType !== "pdf"} onClick={() => void scan()}>扫描所选页</button>
           )}
         </div>
       </header>
@@ -443,8 +443,8 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
               if (event.target.files) void addUploadedFiles(event.target.files);
               event.target.value = "";
             }} />
-            <button className="ghost-button compact" onClick={() => uploadRef.current?.click()}>添加本地图片</button>
-            <button className="primary-button compact" disabled={!assets.some((asset) => asset.inPack)} onClick={() => void downloadPack(assets.filter((asset) => asset.inPack).sort((left, right) => (left.packOrder ?? 0) - (right.packOrder ?? 0)), project.name)}>下载资料包 ZIP</button>
+            <button className="image-resource-action" onClick={() => uploadRef.current?.click()}>添加本地图片</button>
+            <button className="image-resource-action" disabled={!assets.some((asset) => asset.inPack)} onClick={() => void downloadPack(assets.filter((asset) => asset.inPack).sort((left, right) => (left.packOrder ?? 0) - (right.packOrder ?? 0)), project.name)}>下载资料包 ZIP</button>
           </div>
         </header>
         <div className="image-pack-workspace" onDragOver={(event) => event.preventDefault()} onDrop={handleWorkspaceDrop}>
@@ -480,7 +480,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
             <img src={asset.url} alt={`第 ${asset.page} 页提取图片`} />
             <footer>
               <span>第 {asset.page} 页 · {asset.width} × {asset.height}</span>
-              <div><button className="ghost-button compact" disabled={asset.inPack} onClick={() => addToPack(asset.id)}>{asset.inPack ? "已加入" : "加入资料包"}</button><button className="ghost-button compact" onClick={() => downloadAsset(asset, project.name)}>保存 PNG</button></div>
+              <div><button className="image-resource-action" disabled={asset.inPack} onClick={() => addToPack(asset.id)}>{asset.inPack ? "已加入" : "加入资料包"}</button><button className="image-resource-action" onClick={() => downloadAsset(asset, project.name)}>保存 PNG</button></div>
             </footer>
           </article>
         ))}

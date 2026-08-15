@@ -4161,6 +4161,26 @@ button:disabled {
 .source-image-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
 .source-image-actions label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
 .source-image-actions input { width: 72px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--text); padding: 8px; }
+.image-resource-action {
+  display: inline-flex;
+  width: 112px;
+  height: 42px;
+  flex: 0 0 112px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--teal);
+  border-radius: 5px;
+  background: #0d1416;
+  color: #fff;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+.image-resource-action:hover:not(:disabled) { border-color: var(--teal-bright); background: #142224; }
+.image-resource-action:disabled { border-color: rgba(77,198,181,.55); background: #0d1416; color: #fff; opacity: .48; }
 .source-image-status { border: 1px solid var(--line); background: var(--panel); padding: 14px 16px; color: var(--muted); }
 .image-pack-section,
 .source-image-library { display: grid; gap: 12px; }
@@ -4197,9 +4217,9 @@ button:disabled {
 .source-image-grid article[draggable="true"] { cursor: grab; }
 .source-image-grid article[draggable="true"]:active { cursor: grabbing; }
 .source-image-grid img { width: 100%; height: 100%; max-height: 360px; object-fit: contain; background: #111719; }
-.source-image-grid footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.source-image-grid footer { display: grid; grid-template-columns: 1fr; gap: 10px; padding: 10px 12px 12px; border-top: 1px solid var(--line); }
 .source-image-grid footer span { color: var(--muted); font-size: 12px; }
-.source-image-grid footer > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.source-image-grid footer > div { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; }
 .settings-checkbox { display: flex; align-items: flex-start; gap: 9px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .settings-checkbox input { margin-top: 3px; }
 
