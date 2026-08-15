@@ -9,11 +9,23 @@ import type {
 } from "./types";
 
 const DB_NAME = "keeper-atlas";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const PROJECTS = "projects";
 const FILES = "files";
 const CHUNKS = "chunks";
 const VECTORS = "vectors";
+const EXTRACTED_IMAGES = "extractedImages";
+
+export type ExtractedImageRecord = {
+  id: string;
+  projectId: string;
+  page: number;
+  sourceObjectName: string;
+  width: number;
+  height: number;
+  blob: Blob;
+  createdAt: string;
+};
 
 type LegacyAnalysis = Record<string, unknown> & {
   relations?: Array<Record<string, unknown>>;
@@ -132,6 +144,10 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(VECTORS)) {
         db.createObjectStore(VECTORS);
+      }
+      if (!db.objectStoreNames.contains(EXTRACTED_IMAGES)) {
+        const images = db.createObjectStore(EXTRACTED_IMAGES, { keyPath: "id" });
+        images.createIndex("projectId", "projectId", { unique: false });
       }
 
       if (event.oldVersion < 4 && request.transaction) {
@@ -298,9 +314,46 @@ export async function deleteVectorSpace(key: string): Promise<void> {
   db.close();
 }
 
+export async function loadExtractedImages(projectId: string): Promise<ExtractedImageRecord[]> {
+  const db = await openDatabase();
+  const transaction = db.transaction(EXTRACTED_IMAGES, "readonly");
+  const records = await requestToPromise(
+    transaction.objectStore(EXTRACTED_IMAGES).index("projectId").getAll(projectId) as IDBRequest<ExtractedImageRecord[]>,
+  );
+  db.close();
+  return records.sort((left, right) => left.page - right.page || left.id.localeCompare(right.id));
+}
+
+export async function saveExtractedImages(records: ExtractedImageRecord[]): Promise<void> {
+  if (records.length === 0) return;
+  const db = await openDatabase();
+  const transaction = db.transaction(EXTRACTED_IMAGES, "readwrite");
+  const store = transaction.objectStore(EXTRACTED_IMAGES);
+  records.forEach((record) => store.put(record));
+  await transactionDone(transaction);
+  db.close();
+}
+
+export async function deleteExtractedImages(
+  projectId: string,
+  pageRange?: { start: number; end: number },
+): Promise<void> {
+  const db = await openDatabase();
+  const transaction = db.transaction(EXTRACTED_IMAGES, "readwrite");
+  const store = transaction.objectStore(EXTRACTED_IMAGES);
+  const records = await requestToPromise(
+    store.index("projectId").getAll(projectId) as IDBRequest<ExtractedImageRecord[]>,
+  );
+  records
+    .filter((record) => !pageRange || (record.page >= pageRange.start && record.page <= pageRange.end))
+    .forEach((record) => store.delete(record.id));
+  await transactionDone(transaction);
+  db.close();
+}
+
 export async function deleteProject(projectId: string): Promise<void> {
   const db = await openDatabase();
-  const transaction = db.transaction([PROJECTS, FILES, CHUNKS, VECTORS], "readwrite");
+  const transaction = db.transaction([PROJECTS, FILES, CHUNKS, VECTORS, EXTRACTED_IMAGES], "readwrite");
   transaction.objectStore(PROJECTS).delete(projectId);
   const fileStore = transaction.objectStore(FILES);
   fileStore.delete(projectId);
@@ -317,6 +370,11 @@ export async function deleteProject(projectId: string): Promise<void> {
   const vectorStore = transaction.objectStore(VECTORS);
   const vectorKeys = await requestToPromise(vectorStore.getAllKeys());
   vectorKeys.filter((key) => typeof key === "string" && key.startsWith(`${projectId}:`)).forEach((key) => vectorStore.delete(key));
+  const imageStore = transaction.objectStore(EXTRACTED_IMAGES);
+  const imageRecords = await requestToPromise(
+    imageStore.index("projectId").getAll(projectId) as IDBRequest<ExtractedImageRecord[]>,
+  );
+  imageRecords.forEach((record) => imageStore.delete(record.id));
   await transactionDone(transaction);
   db.close();
 }

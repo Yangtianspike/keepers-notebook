@@ -3288,7 +3288,7 @@ export default function Home() {
 
         <main
           className={`workspace-main${
-            STAGE_VIEWS.includes(view) && actView === "detail"
+            STAGE_VIEWS.includes(view) && (view !== "acts" || actView === "detail" || actView === "tree")
               ? " book-workspace-main"
               : ""
           }`}

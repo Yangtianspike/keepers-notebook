@@ -1,9 +1,29 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  deleteExtractedImages,
+  loadExtractedImages,
+  saveExtractedImages,
+  type ExtractedImageRecord,
+} from "@/lib/storage";
 import type { Project } from "@/lib/types";
 
-type ExtractedAsset = { id: string; page: number; width: number; height: number; url: string };
+type ExtractedAsset = ExtractedImageRecord & { url: string };
+type ConvertedImage = { blob: Blob; width: number; height: number };
+
+function toRecord(asset: ExtractedAsset): ExtractedImageRecord {
+  return {
+    id: asset.id,
+    projectId: asset.projectId,
+    page: asset.page,
+    sourceObjectName: asset.sourceObjectName,
+    width: asset.width,
+    height: asset.height,
+    blob: asset.blob,
+    createdAt: asset.createdAt,
+  };
+}
 
 function downloadAsset(asset: ExtractedAsset, projectName: string) {
   const anchor = document.createElement("a");
@@ -12,21 +32,80 @@ function downloadAsset(asset: ExtractedAsset, projectName: string) {
   anchor.click();
 }
 
-async function imageToBlob(image: unknown): Promise<{ blob: Blob; width: number; height: number } | null> {
+function isBlankOrBlackLayer(canvas: HTMLCanvasElement) {
+  const sample = document.createElement("canvas");
+  sample.width = 32;
+  sample.height = 32;
+  const context = sample.getContext("2d", { willReadFrequently: true });
+  if (!context) return false;
+  context.drawImage(canvas, 0, 0, sample.width, sample.height);
+  const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+  let visible = 0;
+  let sum = 0;
+  let sumSquares = 0;
+  for (let index = 0; index < pixels.length; index += 4) {
+    if (pixels[index + 3] < 16) continue;
+    const luminance = pixels[index] * 0.2126 + pixels[index + 1] * 0.7152 + pixels[index + 2] * 0.0722;
+    visible += 1;
+    sum += luminance;
+    sumSquares += luminance * luminance;
+  }
+  if (visible < sample.width * sample.height * 0.05) return true;
+  const mean = sum / visible;
+  const deviation = Math.sqrt(Math.max(0, sumSquares / visible - mean * mean));
+  return mean < 5 && deviation < 4;
+}
+
+async function imageToBlob(image: unknown): Promise<ConvertedImage | "ignored" | null> {
   if (!image || typeof image !== "object") return null;
-  const candidate = image as { width?: number; height?: number; data?: Uint8ClampedArray; bitmap?: CanvasImageSource };
+  const candidate = image as {
+    width?: number;
+    height?: number;
+    kind?: number;
+    data?: Uint8Array | Uint8ClampedArray;
+    bitmap?: CanvasImageSource;
+  };
   const width = Number(candidate.width ?? 0);
   const height = Number(candidate.height ?? 0);
   if (width < 120 || height < 120 || width * height < 40_000) return null;
+  if (candidate.kind === 1) return "ignored";
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) return null;
   if (candidate.bitmap) context.drawImage(candidate.bitmap, 0, 0, width, height);
-  else if (candidate.data) context.putImageData(new ImageData(new Uint8ClampedArray(candidate.data), width, height), 0, 0);
+  else if (candidate.data) {
+    const source = new Uint8ClampedArray(candidate.data);
+    let rgba: Uint8ClampedArray;
+    if (source.length === width * height * 4) {
+      rgba = source;
+    } else if (source.length === width * height * 3) {
+      rgba = new Uint8ClampedArray(width * height * 4);
+      for (let sourceIndex = 0, targetIndex = 0; sourceIndex < source.length; sourceIndex += 3, targetIndex += 4) {
+        rgba[targetIndex] = source[sourceIndex];
+        rgba[targetIndex + 1] = source[sourceIndex + 1];
+        rgba[targetIndex + 2] = source[sourceIndex + 2];
+        rgba[targetIndex + 3] = 255;
+      }
+    } else if (source.length === width * height) {
+      rgba = new Uint8ClampedArray(width * height * 4);
+      for (let sourceIndex = 0, targetIndex = 0; sourceIndex < source.length; sourceIndex += 1, targetIndex += 4) {
+        rgba[targetIndex] = source[sourceIndex];
+        rgba[targetIndex + 1] = source[sourceIndex];
+        rgba[targetIndex + 2] = source[sourceIndex];
+        rgba[targetIndex + 3] = 255;
+      }
+    } else {
+      return null;
+    }
+    const imageData = context.createImageData(width, height);
+    imageData.data.set(rgba);
+    context.putImageData(imageData, 0, 0);
+  }
   else if (image instanceof ImageBitmap || image instanceof HTMLImageElement || image instanceof HTMLCanvasElement) context.drawImage(image, 0, 0, width, height);
   else return null;
+  if (isBlankOrBlackLayer(canvas)) return "ignored";
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
   return blob ? { blob, width, height } : null;
 }
@@ -61,21 +140,32 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
   const cancelledRef = useRef(false);
   const objectUrlsRef = useRef<string[]>([]);
 
-  useEffect(() => () => {
-    objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-  }, []);
-
-  const clearAssets = () => {
-    objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    objectUrlsRef.current = [];
-    setAssets([]);
-  };
+  useEffect(() => {
+    let disposed = false;
+    void loadExtractedImages(project.id).then((records) => {
+      if (disposed) return;
+      const restored = records.map((record) => {
+        const url = URL.createObjectURL(record.blob);
+        objectUrlsRef.current.push(url);
+        return { ...record, url };
+      });
+      setAssets(restored);
+      setStatus(restored.length > 0 ? `已恢复 ${restored.length} 张历史提取图片。` : "尚未扫描原始 PDF。");
+    }).catch((error) => {
+      if (!disposed) setStatus(error instanceof Error ? `读取提取记录失败：${error.message}` : "读取提取记录失败。");
+    });
+    return () => {
+      disposed = true;
+      cancelledRef.current = true;
+      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      objectUrlsRef.current = [];
+    };
+  }, [project.id]);
 
   const scan = async () => {
     if (!sourceUrl || project.fileType !== "pdf") return;
     setScanning(true);
     cancelledRef.current = false;
-    clearAssets();
     try {
       const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
       pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -83,8 +173,15 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
       const pdf = await loadingTask.promise;
       const first = Math.max(1, Math.min(Math.floor(startPage), pdf.numPages));
       const last = Math.max(first, Math.min(Math.floor(endPage), pdf.numPages));
+      await deleteExtractedImages(project.id, { start: first, end: last });
+      const retained = assets.filter((asset) => asset.page < first || asset.page > last);
+      const removedUrls = new Set(assets.filter((asset) => asset.page >= first && asset.page <= last).map((asset) => asset.url));
+      removedUrls.forEach((url) => URL.revokeObjectURL(url));
+      objectUrlsRef.current = objectUrlsRef.current.filter((url) => !removedUrls.has(url));
+      setAssets(retained);
       const found: ExtractedAsset[] = [];
       const seen = new Set<string>();
+      let ignoredLayers = 0;
 
       for (let pageNumber = first; pageNumber <= last; pageNumber += 1) {
         if (cancelledRef.current) break;
@@ -101,26 +198,41 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
           if (cancelledRef.current) break;
           const image = await readPdfObject(page, name);
           const converted = await imageToBlob(image);
+          if (converted === "ignored") {
+            ignoredLayers += 1;
+            continue;
+          }
           if (!converted) continue;
           const signature = `${name}:${converted.width}x${converted.height}:${converted.blob.size}`;
           if (seen.has(signature)) continue;
           seen.add(signature);
           const url = URL.createObjectURL(converted.blob);
           objectUrlsRef.current.push(url);
-          found.push({ id: String(found.length + 1).padStart(3, "0"), page: pageNumber, width: converted.width, height: converted.height, url });
-          setAssets([...found]);
+          found.push({
+            id: `${project.id}:${pageNumber}:${name}`,
+            projectId: project.id,
+            page: pageNumber,
+            sourceObjectName: name,
+            width: converted.width,
+            height: converted.height,
+            blob: converted.blob,
+            createdAt: new Date().toISOString(),
+            url,
+          });
+          setAssets([...retained, ...found]);
           if (found.length >= 100) break;
         }
+        await saveExtractedImages(found.filter((asset) => asset.page === pageNumber).map(toRecord));
         page.cleanup();
         if (found.length >= 100) break;
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
 
       setStatus(cancelledRef.current
-        ? `扫描已停止，保留已找到的 ${found.length} 张图片。`
-        : found.length
-          ? `扫描完成，找到 ${found.length} 张可独立提取的图片。`
-          : "扫描完成，但所选页面没有可独立提取的大图；图片可能已经合并进整页背景。",
+          ? `扫描已停止，保留已找到的 ${found.length} 张图片。`
+          : found.length
+          ? `扫描完成，新提取 ${found.length} 张图片${ignoredLayers > 0 ? `，已过滤 ${ignoredLayers} 张黑色蒙版或空白层` : ""}。结果已保存在当前项目。`
+          : `扫描完成，但所选页面没有可独立提取的大图${ignoredLayers > 0 ? `；已过滤 ${ignoredLayers} 张黑色蒙版或空白层` : ""}。`,
       );
       await loadingTask.destroy();
     } catch (error) {
@@ -136,7 +248,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
         <div>
           <p className="eyebrow">SOURCE ASSETS</p>
           <h2>图片提取</h2>
-          <p>按页直接读取 PDF 内嵌图片，结果边扫描边显示；不会上传剧本。</p>
+          <p>按页直接读取 PDF 内嵌图片，结果边扫描边保存到当前项目；不会上传剧本。</p>
         </div>
         <div className="source-image-actions">
           <label>从第 <input min={1} max={project.pages.length} type="number" value={startPage} onChange={(event) => setStartPage(Number(event.target.value))} /> 页</label>
