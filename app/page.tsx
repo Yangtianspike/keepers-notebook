@@ -1001,7 +1001,7 @@ function DashboardView({
           <div className="case-progress">
             <i style={{ width: `${(completed / STAGE_ORDER.length) * 100}%` }} />
           </div>
-          <small>{completed} / 7 个分析阶段</small>
+          <small>{completed} / {STAGE_ORDER.length} 个分析阶段</small>
         </div>
       </header>
       <div className="dashboard-stats">
@@ -1049,7 +1049,7 @@ function DashboardView({
               <h3>{pending > 0
                 ? `处理 ${pending} 项待确认`
                 : completed < STAGE_ORDER.length
-                  ? `继续分析（${completed} / 7）`
+                  ? `继续分析（${completed} / ${STAGE_ORDER.length}）`
                   : "继续阅读"}</h3>
               <p>{project.lastReadingPosition
                 ? `上次阅读：${project.lastReadingPosition.sectionKey} · 第 ${project.lastReadingPosition.page} 页`
@@ -1059,7 +1059,7 @@ function DashboardView({
           </button>
         </div>
         <div className="dashboard-health">
-          <button onClick={() => onNavigate("analysis")}><span>分析进度</span><strong>{completed} / 7</strong></button>
+          <button onClick={() => onNavigate("analysis")}><span>分析进度</span><strong>{completed} / {STAGE_ORDER.length}</strong></button>
           <button onClick={() => onNavigate("analysis")}><span>待确认</span><strong>{pending}</strong></button>
           <button onClick={() => onNavigate("analysis")}><span>分析错误</span><strong>{Object.values(project.analysis.stages).filter((stage) => stage.status === "error").length}</strong></button>
           <div><span>最后更新</span><strong>{new Date(project.updatedAt).toLocaleString("zh-CN")}</strong></div>
@@ -3232,13 +3232,13 @@ export default function Home() {
                   (stage) => activeProject.analysis.stages[stage].status !== "complete",
                 );
                 if (!firstIncomplete) {
-                  setToast("七个阶段均已完成；如需覆盖结果，请使用“重新分析”。");
+                  setToast("全部分析阶段均已完成；如需覆盖结果，请使用“重新分析”。");
                   return;
                 }
                 void runStage(firstIncomplete);
               }}
               onRerunAll={() => {
-                if (!window.confirm("重新分析会从故事背景开始覆盖七个阶段的 AI 结果。KP 笔记会保留，是否继续？")) return;
+                if (!window.confirm("重新分析会从故事背景开始覆盖全部阶段的 AI 结果。KP 笔记会保留，是否继续？")) return;
                 const resetProject: Project = {
                   ...activeProject,
                   status: "structured",
