@@ -5,7 +5,9 @@ import {
   buildActMarkdown,
   buildActTitle,
   buildCharacterMarkdown,
+  buildMonsterMarkdown,
   buildOpeningHookMarkdown,
+  buildPrologueMarkdown,
   buildProjectEntities,
   getRelatedEntities,
   normalizeActMarkdownHierarchy,
@@ -75,12 +77,44 @@ test("opening and act templates use structured analysis with legacy fallbacks", 
   const opening = buildOpeningHookMarkdown(project);
   assert.match(opening, /## GM 开场朗读文本\n雨落在窗沿。/);
   assert.match(opening, /## 导入技巧\n待补充/);
+  const prologue = buildPrologueMarkdown(project);
+  assert.match(prologue, /^# 幕\n\n## 序幕/m);
+  assert.match(prologue, /### GM 开场朗读文本\n雨落在窗沿。/);
+  assert.doesNotMatch(prologue, /^# 开篇钩子/m);
 
   const act = buildActMarkdown(project, "act-1", true);
   assert.match(act, /^# 幕\n\n## 第 1 幕 · 咖啡馆/m);
   assert.match(act, /林墨.*翻看账本并发现涂改.*剧本资料，第 12 页/);
   assert.match(act, /老张.*没有采取行动.*模型归纳/);
   assert.match(act, /### 本幕剧情/);
+});
+
+test("human bosses are referenced while monsters use the same core-card directive", () => {
+  const monsterProject = structuredClone(project);
+  monsterProject.analysis.people[0].isBoss = true;
+  monsterProject.analysis.monsters = [{
+    id: "hound",
+    name: "无名猎兽",
+    aliases: [],
+    monsterType: "神话生物",
+    threatLevel: "极高",
+    summary: "从裂隙中现身。",
+    confidence: 1,
+    provenance: "source",
+    sources: [],
+    cocStats: { str: 90, attacks: [{ name: "撕咬", value: 70, damage: "1D8", provenance: "source" }] },
+  }];
+  monsterProject.analysis.acts[0].monsterIds = ["hound"];
+  const markdown = buildMonsterMarkdown(monsterProject);
+  assert.match(markdown, /person:core/);
+  assert.match(markdown, /monster:hound/);
+  assert.equal(markdown.match(/:::character-card/g)?.length, 2);
+  const entities = buildProjectEntities(monsterProject);
+  assert.equal(entities.filter((entity) => entity.ref === "person:core").length, 1);
+  assert.deepEqual(
+    entities.find((entity) => entity.ref === "monster:hound")?.appearances.map((item) => item.sectionKey),
+    ["stage-monsters", "acts:act-1"],
+  );
 });
 
 test("legacy saved act markdown is grouped below one acts heading", () => {

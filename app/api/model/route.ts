@@ -29,10 +29,12 @@ type RequestBody = {
   };
   context?: {
     people?: Array<{ id: string; name: string; aliases: string[]; role: string }>;
+    monsters?: Array<{ id: string; name: string; aliases: string[]; role: string }>;
     keeperDecisions?: Array<{ title: string; description: string; note?: string }>;
     priorAnalysis?: unknown;
     actSkeleton?: unknown;
     characterSkeleton?: unknown;
+    monsterSkeleton?: unknown;
   };
 };
 
@@ -112,23 +114,25 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
     characters: `${common}
 ${
   phase === "skeleton"
-    ? `识别所有有名人物、无姓名 NPC 群体、敌人模板与超自然存在。守秘人笔记中的“建议数据”“战斗”“技能”人物模板也必须纳入。疑似同一人的不同称呼不得自动合并。
+    ? `识别所有有名人物、无姓名 NPC 群体、敌人模板与超自然存在。守秘人笔记中的“建议数据”“战斗”“技能”模板也必须纳入。疑似同一对象的不同称呼不得自动合并。
+有姓名的人类或类人 Boss 必须放入 people 并标记 isBoss:true；非人怪物、神话生物、野兽和无名敌人模板必须放入 monsters。同一对象不得同时出现在两个集合。
 只有原文明确说明的别名才可直接放入 aliases；其余写入 mergeCandidates。
-本次只生成人物索引，不生成 cocStats。务必覆盖核心、重要和次要人物，并保持内容简洁。
+本次只生成索引，不生成 cocStats。务必覆盖核心、重要和次要人物及所有怪物，并保持内容简洁。
 返回：
 {
   "people": [{
     "id":"稳定的英文或拼音短标识","name":"名称","aliases":[],
     "role":"剧情作用","importance":"core|important|minor",
-    "publicIdentity":"公开身份","trueIdentity":"真实身份",
+    "publicIdentity":"公开身份","trueIdentity":"真实身份","isBoss":false,
     "confidence":0.9,"provenance":"source|inference|conflict","sources":[]
   }],
+  "monsters":[{"id":"稳定标识","name":"名称","aliases":[],"monsterType":"类型","threatLevel":"威胁等级","summary":"摘要","confidence":0.9,"provenance":"source|inference|conflict","sources":[]}],
   "mergeCandidates":[{"names":["称呼A","称呼B"],"reason":"为什么可能是同一人","sources":[]}],
   "reviewItems":[]
 }`
-    : `只补全“待补全的人物索引”中列出的人物，不得增加或遗漏人物，并保留其 id、name、aliases、role、importance、publicIdentity、trueIdentity 和来源。
-为每个人物补全可直接供 KP 使用的摘要、外貌、性格、当前状态和扮演提示。
-所有人物（包括 important 和 minor）都要给出 CoC 7版人物属性。原文明示的每个数值逐项标记 source 并附来源；缺失值允许依据年龄、身份和剧情作用合理推断，但必须逐项标记 inference，不能把推断伪装成原文数据。
+    : `只补全 context.characterSkeleton 或 context.monsterSkeleton 中列出的对象，不得增加或遗漏，并保留索引 id、name、aliases 和来源。人物返回 people，怪物返回 monsters。
+人物补全摘要、外貌、性格、当前状态和扮演提示；怪物补全 monsterType、threatLevel、summary、appearance、abilities、weaknesses、tactics、rewards 和 keeperPrivate。
+所有人物与怪物都要给出 CoC 7版属性。原文明示的每个数值逐项标记 source 并附来源；缺失值允许合理推断，但必须逐项标记 inference，不能把推断伪装成原文数据。
 中文属性名必须按 CoC 7版字段直接读取：力量=str、体质=con、体型=siz、敏捷=dex、外貌=app、灵感/智力=int、意志=pow、教育=edu、理智=san、移动=mov、体格=build、DB=damageBonus。若人物附近存在“建议数据”“战斗”“技能”等明确数据块，必须逐项抄录原值，不得以合理化数值替换；只有该字段在原文数据块中确实缺失时才能推断。
 属性通常为 1-100，MOV 通常为 0-20，Build 通常为 -2 到 5；技能和攻击也必须分别标记 provenance。技能最多保留 8 项，攻击最多保留 4 项。`
 }
@@ -163,6 +167,11 @@ ${phase === "skeleton" ? "" : `
     "provenance":"source|inference|conflict",
     "sources":[]
   }],
+  "monsters":[{
+    "id":"稳定标识","name":"名称","aliases":[],"monsterType":"类型","threatLevel":"威胁等级","summary":"摘要","appearance":"外貌","abilities":"能力","weaknesses":"弱点","tactics":"战术","rewards":"奖励","keeperPrivate":"KP信息",
+    "cocStats":{"str":50,"con":50,"siz":50,"dex":50,"int":50,"pow":50,"hp":10,"mp":10,"mov":8,"build":0,"damageBonus":"0","armor":"0","skills":[],"attacks":[],"fieldProvenance":{}},
+    "confidence":0.9,"provenance":"source|inference|conflict","sources":[]
+  }],
   "mergeCandidates":[{"names":["称呼A","称呼B"],"reason":"为什么可能是同一人","sources":[]}],
   "reviewItems":[]
 }`}`,
@@ -181,20 +190,6 @@ ${phase === "skeleton" ? "" : `
     "label":"有方向的关系标签","summary":"关系依据与剧情意义",
     "importance":"primary|secondary","provenance":"source|inference","sources":[]
   }],
-  "reviewItems":[]
-}`,
-    openingHook: `${common}
-分析剧本开篇，提取促使调查员介入、制造紧迫感并吸引玩家继续调查的钩子。openingHook 保留一段兼容摘要；openingHookDetails 必须直接生成五部分可用内容。这里写的是 KP 的导入方式，不要复述玩家在序幕中实际经历的完整剧情。
-返回：
-{
-  "openingHook":"可直接供 KP 使用的开篇钩子描述",
-  "openingHookDetails":{
-    "readAloud":"可直接朗读给玩家的开场文字",
-    "initialSituation":"调查员开始时的位置、状态和共同处境",
-    "firstConflict":"把调查员拉进主线的第一个冲突",
-    "atmosphere":"光线、声音、气味等感官建议",
-    "introductionTips":"把调查员目标与事件自然挂钩的主持技巧"
-  },
   "reviewItems":[]
 }`,
     clues: `${common}
@@ -226,14 +221,15 @@ importance 为 key、secondary、other。对没有替代入口或依赖特定技
 ${
   phase === "detail"
     ? `基于已生成的幕骨架，为每一幕补全详细描述、人物行动和阶段性重要事件点。保留骨架中的 id、sequence、人物、线索和分支。关键事件类型只能是 boss、death、revelation、checkpoint；Boss 事件尽量给出 STR/CON/DEX/INT/POW/HP/MP 和 SAN 损失。personActions 必须覆盖该幕全部 personIds：依据明确原文总结时标记 source 并附 sources；只能由上下文可靠推断时标记 inference；没有发现明确行动时 summary 写“本幕无明确行动”、provenance 写 none、sources 为空，不得编造。`
-    : `基于前六阶段的全局分析把剧本划分为多个幕。每幕给出稳定 id、标题、序号、地点、时间、涉及人物 id、涉及线索 id和幕末分支。分支必须有稳定 id、条件和下一幕 id；结局分支标记 isEnding。${phase === "skeleton" ? "本次只生成幕骨架，description 可简短且 keyEvents 为空数组。" : "能力足够时同时补全 description 和 keyEvents。"}`
+    : `基于前五阶段的全局分析生成序幕并把剧本划分为多个幕。prologue 必须包含可朗读开场、玩家初始处境、第一个冲突、氛围感官建议和导入技巧；它是幕章节的一部分，不是独立分析阶段。每幕给出稳定 id、标题、序号、地点、时间、涉及人物 id、涉及怪物 id、涉及线索 id和幕末分支。分支必须有稳定 id、条件和下一幕 id；结局分支标记 isEnding。${phase === "skeleton" ? "本次只生成幕骨架，description 可简短且 keyEvents 为空数组。" : "能力足够时同时补全 description 和 keyEvents。"}`
 }
 返回：
 {
+  "prologue":{"readAloud":"开场朗读","initialSituation":"玩家处境","firstConflict":"首个冲突","atmosphere":"氛围建议","introductionTips":"导入技巧"},
   "acts":[{
     "id":"act-short-id","title":"幕标题","sequence":1,
     "placeId":"可选地点id","placeText":"地点自由文本","time":"相对或绝对时间",
-    "personIds":[],"clueIds":[],
+    "personIds":[],"monsterIds":[],"clueIds":[],
     "branches":[{"id":"branch-short-id","condition":"分支条件","nextActId":"下一幕id","isEnding":false,"endingType":"good|bad|neutral"}],
     "keyEvents":[{"title":"事件","type":"boss|death|revelation|checkpoint","description":"说明","stats":{"str":0,"con":0,"dex":0,"int":0,"pow":0,"hp":0,"mp":0,"sanLoss":"0/1D6"}}],
     "personActions":[{"personId":"人物id","summary":"本幕行动摘要或本幕无明确行动","provenance":"source|inference|none","sources":[]}],

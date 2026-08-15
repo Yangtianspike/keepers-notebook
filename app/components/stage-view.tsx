@@ -16,7 +16,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-const MOBILE_BREAKPOINT = 760;
 const TURN_DURATION = 800;
 const BOOK_WIDTH = 1750;
 const BOOK_HEIGHT = 1200;
@@ -351,11 +350,14 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
   const generationRef = useRef(0);
   const pendingPageRef = useRef<number | null>(null);
   const pageChangeRef = useRef(options.onPageChange);
+  const currentPageRef = useRef(1);
   const [pages, setPages] = useState<ReactNode[]>([]);
   const [headingPages, setHeadingPages] = useState<Array<BookHeading & { page: number }>>([]);
   const [bookRevision, setBookRevision] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [resizeVersion, setResizeVersion] = useState(0);
+  const [bookSize, setBookSize] = useState({ width: BOOK_WIDTH, height: BOOK_HEIGHT, display: "double" as "single" | "double" });
+  const bookSizeRef = useRef(bookSize);
+  const [viewportTooSmall, setViewportTooSmall] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const totalPages = pages.length;
   const enabled = options.enabled ?? true;
@@ -363,6 +365,14 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
   useEffect(() => {
     pageChangeRef.current = options.onPageChange;
   }, [options.onPageChange]);
+
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  useEffect(() => {
+    bookSizeRef.current = bookSize;
+  }, [bookSize]);
 
   const destroyTurnBook = useCallback(() => {
     generationRef.current += 1;
@@ -399,11 +409,37 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
   }, [destroyTurnBook, enabled]);
 
   useEffect(() => {
-    if (!enabled) return;
-    const resize = () => setResizeVersion((version) => version + 1);
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, [enabled]);
+    if (!enabled || !flipbookRef.current?.parentElement) return;
+    const container = flipbookRef.current.parentElement;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const rect = container.getBoundingClientRect();
+        const display = rect.width < 980 ? "single" as const : "double" as const;
+        const logicalWidth = display === "double" ? BOOK_WIDTH : PAGE_WIDTH;
+        const scale = Math.min(1, rect.width / logicalWidth, rect.height / BOOK_HEIGHT);
+        setViewportTooSmall(rect.width < 360 || rect.height < 480);
+        setBookSize((current) => {
+          const next = {
+            width: Math.max(1, Math.round(logicalWidth * Math.max(0.1, scale))),
+            height: Math.max(1, Math.round(BOOK_HEIGHT * Math.max(0.1, scale))),
+            display,
+          };
+          return current.width === next.width && current.height === next.height && current.display === next.display
+            ? current
+            : next;
+        });
+      });
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(container);
+    update();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [enabled, pages.length]);
 
   useLayoutEffect(() => {
     if (!enabled) return;
@@ -455,17 +491,18 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
       ),
     );
     setBookRevision((revision) => revision + 1);
+    currentPageRef.current = 1;
     setCurrentPage(1);
     // contentKey is the explicit invalidation signal. Depending on `content`
     // itself would loop because callers construct a fresh ReactNode per render,
     // while this effect updates pagination state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destroyTurnBook, enabled, options.contentKey, resizeVersion]);
+  }, [destroyTurnBook, enabled, options.contentKey]);
 
   useEffect(() => {
     if (!enabled) return;
     const element = flipbookRef.current;
-    if (!element || pages.length === 0) return;
+    if (!element || pages.length === 0 || bookSizeRef.current.width < 1 || bookSizeRef.current.height < 1) return;
     let disposed = false;
     const generation = generationRef.current + 1;
     generationRef.current = generation;
@@ -479,26 +516,22 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
       ) {
         return;
       }
-      const containerWidth = element.parentElement?.clientWidth ?? BOOK_WIDTH;
-      const scale = Math.min(1, containerWidth / BOOK_WIDTH);
-      const width = BOOK_WIDTH * scale;
-      const height = BOOK_HEIGHT * scale;
-      const display = window.innerWidth <= MOBILE_BREAKPOINT ? "single" : "double";
+      const initialPage = Math.max(1, Math.min(currentPageRef.current, pages.length));
       const book = window.jQuery(element);
       book.turn({
-        width,
-        height,
+        width: bookSizeRef.current.width,
+        height: bookSizeRef.current.height,
         autoCenter: false,
         gradients: true,
         elevation: 50,
         acceleration: true,
         duration: TURN_DURATION,
-        display,
-        page: 1,
+        display: bookSizeRef.current.display,
+        page: initialPage,
       });
       turnRef.current = book;
       lifecycleRef.current = "ready";
-      setCurrentPage(1);
+      setCurrentPage(initialPage);
       setIsAnimating(false);
       book.on("turning.keeperAtlas", () => {
         if (generation !== generationRef.current) return;
@@ -527,7 +560,7 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
       });
       const pendingPage = pendingPageRef.current;
       pendingPageRef.current = null;
-      if (pendingPage && pendingPage !== 1) {
+      if (pendingPage && pendingPage !== initialPage) {
         window.requestAnimationFrame(() => {
           if (
             generation === generationRef.current &&
@@ -544,7 +577,13 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
       disposed = true;
       destroyTurnBook();
     };
-  }, [destroyTurnBook, enabled, pages]);
+  }, [bookSize.display, destroyTurnBook, enabled, pages]);
+
+  useEffect(() => {
+    const book = turnRef.current;
+    if (!enabled || !book || lifecycleRef.current !== "ready") return;
+    book.turn("size", bookSize.width, bookSize.height);
+  }, [bookSize.height, bookSize.width, enabled]);
 
   const requestPage = useCallback((page: number) => {
     const book = turnRef.current;
@@ -589,6 +628,10 @@ export function useTurnBook(content: ReactNode, options: TurnBookOptions = {}) {
     displayCurrentPage: currentPage,
     displayTotalPages: totalPages,
     headingPages,
+    viewportTooSmall,
+    displayMode: bookSize.display,
+    viewportTooSmall,
+    displayMode,
   };
 }
 
@@ -823,12 +866,15 @@ export function StageView({
       )}
       {!editing && <div className="book-measure" ref={measureRef}>{content}</div>}
       {!editing && (
-        <TurnBookPages
-          key={bookRevision}
-          className="stage-view flipbook"
-          flipbookRef={flipbookRef}
-          pages={pages}
-        />
+        <>
+          {viewportTooSmall && <p className="book-size-warning" role="status">窗口尺寸过小，请放大窗口或收起侧栏。</p>}
+          <TurnBookPages
+            key={`${bookRevision}:${displayMode}`}
+            className="stage-view flipbook"
+            flipbookRef={flipbookRef}
+            pages={pages}
+          />
+        </>
       )}
     </div>
   );

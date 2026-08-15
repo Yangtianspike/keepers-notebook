@@ -66,15 +66,44 @@ export function EntityWindow({
   const [creating, setCreating] = useState(false);
   const [createKind, setCreateKind] = useState<EntityKind>("person");
   const [createName, setCreateName] = useState("");
+  const [windowScale, setWindowScale] = useState(1);
   const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
   const entity = entities.find((candidate) => candidate.ref === initialRef);
+
+  useLayoutEffect(() => {
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const workspace = document.querySelector<HTMLElement>(".workspace");
+        const rect = workspace?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+        const nextScale = Math.max(0.3, Math.min(1, (rect.width - 16) / width, (rect.height - 16) / 820));
+        setWindowScale((current) => Math.abs(current - nextScale) < 0.001 ? current : nextScale);
+        const visualWidth = width * nextScale;
+        const visualHeight = 820 * nextScale;
+        const nextX = Math.max(rect.left + 8, Math.min(rect.right - visualWidth - 8, x));
+        const nextY = Math.max(rect.top + 8, Math.min(rect.bottom - visualHeight - 8, y));
+        if (Math.abs(nextX - x) > 0.5 || Math.abs(nextY - y) > 0.5) onMove(nextX, nextY);
+      });
+    };
+    const observer = new ResizeObserver(update);
+    const workspace = document.querySelector<HTMLElement>(".workspace");
+    if (workspace) observer.observe(workspace);
+    window.addEventListener("resize", update);
+    update();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [onMove, width, x, y]);
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
-      const nextX = Math.max(8, Math.min(window.innerWidth - width - 8, event.clientX - drag.offsetX));
-      const nextY = Math.max(8, Math.min(window.innerHeight - 96, event.clientY - drag.offsetY));
+      const nextX = Math.max(8, Math.min(window.innerWidth - width * windowScale - 8, event.clientX - drag.offsetX));
+      const nextY = Math.max(8, Math.min(window.innerHeight - 820 * windowScale - 8, event.clientY - drag.offsetY));
       onMove(nextX, nextY);
     };
     const handleUp = (event: PointerEvent) => {
@@ -88,7 +117,7 @@ export function EntityWindow({
       window.removeEventListener("pointerup", handleUp, true);
       window.removeEventListener("pointercancel", handleUp, true);
     };
-  }, [onMove, width]);
+  }, [onMove, width, windowScale]);
 
   const related = useMemo(() => {
     if (!entity) return [];
@@ -104,7 +133,7 @@ export function EntityWindow({
       aria-modal="false"
       aria-label={`${entityName(entity)}实体卡`}
       onPointerDown={onFocus}
-      style={{ left: x, top: y, width, zIndex }}
+      style={{ left: x, top: y, width, zIndex, transform: `scale(${windowScale})`, transformOrigin: "top left" }}
     >
         <header onPointerDown={(event) => {
           if ((event.target as HTMLElement).closest("button, input, select, textarea")) return;
@@ -309,7 +338,7 @@ function EntityReadView({ entity }: { entity: EntityCard }) {
       })}
       {playerVisible && <p><strong>玩家可见</strong><span>{playerVisible}</span></p>}
       {keeperPrivate && <p className="keeper-private"><strong>KP 私密</strong><span>{keeperPrivate}</span></p>}
-      {entity.kind === "person" && <CoCStatsReadView entity={entity} />}
+      {(entity.kind === "person" || entity.kind === "monster") && <CoCStatsReadView entity={entity} />}
     </div>
   );
 }
@@ -358,7 +387,7 @@ function resizeEntityImage(file: File) {
   });
 }
 
-function EntityEditForm({ entity, onCancel, onSave }: {
+export function EntityEditForm({ entity, onCancel, onSave }: {
   entity: EntityCard;
   onCancel: () => void;
   onSave: (override: EntityOverrides) => void;
@@ -451,7 +480,7 @@ function EntityEditForm({ entity, onCancel, onSave }: {
       {ENTITY_FIELD_LABELS[entity.kind].map(([key, label]) => (
         <label key={key}>{label}<textarea value={fields[key] ?? ""} onChange={(event) => setFields((current) => ({ ...current, [key]: event.target.value }))} /></label>
       ))}
-      {entity.kind === "person" && <fieldset className="entity-coc-edit">
+      {(entity.kind === "person" || entity.kind === "monster") && <fieldset className="entity-coc-edit">
         <legend>CoC 7版属性（修改后作为 KP 覆盖值保存）</legend>
         <div className="entity-coc-edit-grid">
           {COC_FIELDS.map(([key, label]) => <label key={key}>{label}<input value={cocValues[key] ?? ""} onChange={(event) => { setCocTouchedKeys((current) => current.includes(key) ? current : [...current, key]); setCocValues((current) => ({ ...current, [key]: event.target.value })); }} /></label>)}

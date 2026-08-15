@@ -69,6 +69,7 @@ export type Person = {
   state?: string;
   performanceHints?: string;
   cocStats?: PersonCoCStats;
+  isBoss?: boolean;
 };
 
 export type PersonCoCStatKey =
@@ -114,6 +115,27 @@ export type PersonCoCStats = {
     sources?: SourceRef[];
   }>;
   fieldProvenance?: Partial<Record<PersonCoCStatKey, CoCValueProvenance>>;
+};
+
+export type Monster = {
+  id: string;
+  name: string;
+  aliases: string[];
+  monsterType: string;
+  threatLevel: string;
+  summary: string;
+  appearance?: string;
+  abilities?: string;
+  weaknesses?: string;
+  tactics?: string;
+  rewards?: string;
+  keeperPrivate?: string;
+  confidence: number;
+  provenance: Provenance;
+  sources: SourceRef[];
+  portrait?: string;
+  portraitSource?: "manual" | "extracted" | "generated";
+  cocStats?: PersonCoCStats;
 };
 
 export type Place = {
@@ -253,6 +275,7 @@ export type Act = {
   placeText?: string;
   time: string;
   personIds: string[];
+  monsterIds?: string[];
   clueIds: string[];
   branches: ActBranch[];
   keyEvents: KeyEvent[];
@@ -317,7 +340,6 @@ export type AnalysisStage =
   | "timeplace"
   | "characters"
   | "characterArcs"
-  | "openingHook"
   | "clues"
   | "acts";
 
@@ -339,6 +361,7 @@ export type ProjectAnalysis = {
   overview?: StoryOverview;
   timePlace?: TimePlace;
   people: Person[];
+  monsters?: Monster[];
   unresolvedRelationCount: number;
   characterArcs?: CharacterArc[];
   personRelations?: PersonRelation[];
@@ -383,7 +406,7 @@ export type KPNotes = {
   sectionTemplateVersion?: number;
 };
 
-export type EntityKind = "person" | "clue" | "place" | "event" | "custom";
+export type EntityKind = "person" | "monster" | "clue" | "place" | "event" | "custom";
 export type EntitySource = "source" | "inference" | "keeper";
 export type EntityRelationLevel = "direct" | "indirect" | "inference" | "keeper";
 
@@ -499,6 +522,7 @@ export type ModelCapabilities = {
 
 export const emptyAnalysis = (): ProjectAnalysis => ({
   people: [],
+  monsters: [],
   unresolvedRelationCount: 0,
   characterArcs: [],
   personRelations: [],
@@ -517,7 +541,6 @@ export const emptyAnalysis = (): ProjectAnalysis => ({
     timeplace: { status: "idle" },
     characters: { status: "idle" },
     characterArcs: { status: "idle" },
-    openingHook: { status: "idle" },
     clues: { status: "idle" },
     acts: { status: "idle" },
   },

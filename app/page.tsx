@@ -30,14 +30,15 @@ import {
   markdownToReactBlocks,
   parseMarkdownBlocks,
 } from "@/app/components/markdown-document";
-import { EntityWindow } from "@/app/components/entity-window";
+import { EntityEditForm, EntityWindow } from "@/app/components/entity-window";
 import { SourceDocumentView } from "@/app/components/source-document-view";
 import {
   buildProjectEntities,
   buildActMarkdown,
   buildCharacterArcsMarkdown,
   buildCharacterMarkdown,
-  buildOpeningHookMarkdown,
+  buildMonsterMarkdown,
+  buildPrologueMarkdown,
   createKeeperEntity,
   normalizeActMarkdownHierarchy,
 } from "@/lib/entities";
@@ -58,6 +59,7 @@ import {
   type EntityKind,
   type EntityOverrides,
   type ModelConfig,
+  type Monster,
   type OpeningHookDetails,
   type Person,
   type PersonRelation,
@@ -76,8 +78,8 @@ type View =
   | "stage-background"
   | "stage-timeplace"
   | "stage-characters"
+  | "stage-monsters"
   | "stage-characterArcs"
-  | "stage-openingHook"
   | "stage-clues"
   | "acts"
   | "source-document"
@@ -92,12 +94,44 @@ type FloatingEntityWindow = {
   zIndex: number;
 };
 
+function EntityEditOverlay({
+  entity,
+  onClose,
+  onSave,
+}: {
+  entity: EntityCard;
+  onClose: () => void;
+  onSave: (entity: EntityCard, override: EntityOverrides) => void;
+}) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+  return (
+    <div className="entity-edit-overlay" role="dialog" aria-modal="true" aria-label={`编辑${entity.original.name}`}>
+      <article className="entity-edit-overlay-card parchment-window">
+        <header><div><small>编辑资料</small><h2>{entity.original.name}</h2></div><button type="button" aria-label="关闭编辑" onClick={onClose}>×</button></header>
+        <EntityEditForm
+          entity={entity}
+          onCancel={onClose}
+          onSave={(override) => {
+            onSave(entity, override);
+            onClose();
+          }}
+        />
+      </article>
+    </div>
+  );
+}
+
 const stageLabels: Record<AnalysisStage, string> = {
   background: "故事背景",
   timeplace: "时间地点",
   characters: "人物",
   characterArcs: "人物经历与动机",
-  openingHook: "开篇钩子",
   clues: "关键线索安排",
   acts: "幕",
 };
@@ -107,7 +141,6 @@ const STAGE_ORDER: AnalysisStage[] = [
   "timeplace",
   "characters",
   "characterArcs",
-  "openingHook",
   "clues",
   "acts",
 ];
@@ -117,8 +150,8 @@ const STAGE_VIEWS: View[] = [
   "stage-background",
   "stage-timeplace",
   "stage-characters",
+  "stage-monsters",
   "stage-characterArcs",
-  "stage-openingHook",
   "stage-clues",
   "acts",
 ];
@@ -148,8 +181,8 @@ function analysisStageForSectionKey(sectionKey: string): AnalysisStage | undefin
     "stage-background": "background",
     "stage-timeplace": "timeplace",
     "stage-characters": "characters",
+    "stage-monsters": "characters",
     "stage-characterArcs": "characterArcs",
-    "stage-openingHook": "openingHook",
     "stage-clues": "clues",
   } as Record<string, AnalysisStage>)[sectionKey];
 }
@@ -164,8 +197,6 @@ function stageHasReadableAnalysis(project: Project, stage: AnalysisStage) {
       return project.analysis.people.length > 0;
     case "characterArcs":
       return Boolean(project.analysis.characterArcs?.length);
-    case "openingHook":
-      return Boolean(project.analysis.openingHook || project.analysis.openingHookDetails);
     case "clues":
       return project.analysis.clues.length > 0;
     case "acts":
@@ -600,24 +631,17 @@ function AnalysisView({
       requires: "characters",
       target: "stage-characterArcs",
     },
-    openingHook: {
-      id: "openingHook",
-      number: "05",
-      description: "提取促使调查员入局并制造紧迫感的开篇钩子。",
-      requires: "characterArcs",
-      target: "stage-openingHook",
-    },
     clues: {
       id: "clues",
-      number: "06",
+      number: "05",
       description: "梳理调查线索、关键真相、替代入口与卡关风险。",
-      requires: "openingHook",
+      requires: "characterArcs",
       target: "stage-clues",
     },
     acts: {
       id: "acts",
-      number: "07",
-      description: "基于前六阶段划分幕，并生成分支和关键事件。",
+      number: "06",
+      description: "生成序幕及后续各幕，并补全分支和关键事件。",
       requires: "clues",
       target: "acts",
     },
@@ -1215,6 +1239,8 @@ function hydrateProject(project: Project): Project {
     analysis: {
       ...defaults,
       ...project.analysis,
+      people: project.analysis.people ?? [],
+      monsters: project.analysis.monsters ?? [],
       clues: project.analysis.clues ?? [],
       acts: project.analysis.acts ?? [],
       chapterSummaries: project.analysis.chapterSummaries ?? [],
@@ -1254,6 +1280,7 @@ export default function Home() {
   const [bookEditing, setBookEditing] = useState(false);
   const [showAnalysisLog, setShowAnalysisLog] = useState(false);
   const [entityWindows, setEntityWindows] = useState<FloatingEntityWindow[]>([]);
+  const [editingEntityRef, setEditingEntityRef] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window === "undefined"
       ? true
@@ -1591,6 +1618,7 @@ export default function Home() {
                     overview: runningAnalysis.overview,
                     timePlace: runningAnalysis.timePlace,
                     people: runningAnalysis.people,
+                    monsters: runningAnalysis.monsters,
                     characterArcs: runningAnalysis.characterArcs,
                     openingHook: runningAnalysis.openingHook,
                     openingHookDetails: runningAnalysis.openingHookDetails,
@@ -1688,12 +1716,16 @@ export default function Home() {
         stage === "characters" &&
         responseOk &&
         payload.data &&
-        Array.isArray(payload.data.people)
+        (Array.isArray(payload.data.people) || Array.isArray(payload.data.monsters))
       ) {
-        const characterSkeleton = payload.data.people as Array<
-          Record<string, unknown>
-        >;
+        const characterSkeleton = Array.isArray(payload.data.people)
+          ? payload.data.people as Array<Record<string, unknown>>
+          : [];
         const detailedPeople: Array<Record<string, unknown>> = [];
+        const monsterSkeleton = Array.isArray(payload.data.monsters)
+          ? payload.data.monsters as Array<Record<string, unknown>>
+          : [];
+        const detailedMonsters: Array<Record<string, unknown>> = [];
         const detailReviews: unknown[] = [];
         const detailMergeCandidates: unknown[] = [];
         const batchSize = 6;
@@ -1827,11 +1859,88 @@ export default function Home() {
           }
         }
 
+        for (let index = 0; index < monsterSkeleton.length; index += batchSize) {
+          const batch = monsterSkeleton.slice(index, index + batchSize);
+          const batchNames = batch.flatMap((monster) => [
+            String(monster.name ?? ""),
+            ...(Array.isArray(monster.aliases) ? monster.aliases.map(String) : []),
+          ]).filter(Boolean);
+          let batchScenarioText = scenarioText;
+          try {
+            const detailChunks = await hybridSearch(
+              runningProject,
+              `${batchNames.join(" ")} 怪物 Boss 守秘人笔记 建议数据 力量 体质 体型 敏捷 意志 HP MP DB 体格 移动 护甲 战斗 技能 伤害`,
+              18,
+              modelConfig,
+              apiKey,
+            );
+            if (detailChunks.length > 0) {
+              batchScenarioText = detailChunks
+                .sort((left, right) => left.chunk.startPage - right.chunk.startPage)
+                .map(({ chunk }) => `[[PDF_PAGE:${chunk.startPage}]]\n${chunk.text}`)
+                .join("\n\n");
+            }
+          } catch {
+            // The skeleton-stage retrieval remains a valid fallback.
+          }
+          setStreamPreview(`正在补全怪物与 Boss（${Math.min(index + batch.length, monsterSkeleton.length)} / ${monsterSkeleton.length}）…`);
+          const detailResponse = await fetch("/api/model", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: analysisAbortRef.current.signal,
+            body: JSON.stringify({
+              action: "analyze",
+              apiKey,
+              config: modelConfig,
+              stage,
+              phase: "detail",
+              confirmMode: modelConfig.confirmMode ?? "tier1",
+              document: { name: runningProject.name, text: batchScenarioText, chapters: [] },
+              context: { monsterSkeleton: batch },
+            }),
+          });
+          const detailPayload = (await detailResponse.json()) as {
+            data?: Record<string, unknown>;
+            error?: string;
+          };
+          const returned = Array.isArray(detailPayload.data?.monsters)
+            ? detailPayload.data.monsters as Array<Record<string, unknown>>
+            : [];
+          if (!detailResponse.ok || returned.length === 0) {
+            throw new Error(detailPayload.error || `怪物资料第 ${Math.floor(index / batchSize) + 1} 批生成失败。`);
+          }
+          for (const skeletonMonster of batch) {
+            const detailMonster = returned.find((candidate) =>
+              String(candidate.id ?? "") === String(skeletonMonster.id ?? "") ||
+              String(candidate.name ?? "") === String(skeletonMonster.name ?? ""),
+            );
+            if (!detailMonster) {
+              throw new Error(`模型遗漏了怪物“${String(skeletonMonster.name ?? "未知怪物")}”。`);
+            }
+            detailedMonsters.push({
+              ...skeletonMonster,
+              ...detailMonster,
+              id: skeletonMonster.id,
+              name: skeletonMonster.name,
+              cocStats: mergeExplicitCoCStats(
+                normalizePersonCoCStats(detailMonster.cocStats),
+                extractExplicitCoCStats(includedSourcePages, [
+                  String(skeletonMonster.name ?? ""),
+                  ...(Array.isArray(skeletonMonster.aliases)
+                    ? skeletonMonster.aliases.map(String)
+                    : []),
+                ]),
+              ),
+            });
+          }
+        }
+
         payload = {
           type: "complete",
           data: {
             ...payload.data,
             people: detailedPeople,
+            monsters: detailedMonsters,
             reviewItems: [
               ...(Array.isArray(payload.data.reviewItems)
                 ? payload.data.reviewItems
@@ -1879,6 +1988,9 @@ export default function Home() {
               people: runningAnalysis.people.map(
                 ({ id, name, aliases, role }) => ({ id, name, aliases, role }),
               ),
+              monsters: (runningAnalysis.monsters ?? []).map(
+                ({ id, name, aliases, monsterType }) => ({ id, name, aliases, role: monsterType }),
+              ),
               priorAnalysis: {
                 overview: runningAnalysis.overview,
                 timePlace: runningAnalysis.timePlace,
@@ -1899,7 +2011,13 @@ export default function Home() {
         if (!detailResponse.ok || !detailPayload.data) {
           throw new Error(detailPayload.error || "幕详情生成失败。");
         }
-        payload = detailPayload;
+        payload = {
+          ...detailPayload,
+          data: {
+            ...detailPayload.data,
+            prologue: detailPayload.data.prologue ?? payload.data.prologue,
+          },
+        };
       }
       if (!responseOk || !payload.data) {
         throw new Error(payload.error || "分析失败。");
@@ -1995,12 +2113,44 @@ export default function Home() {
           personality: person.personality ? String(person.personality) : undefined,
           state: person.state ? String(person.state) : undefined,
           performanceHints: person.performanceHints ? String(person.performanceHints) : undefined,
+          isBoss: person.isBoss === true,
           cocStats: normalizePersonCoCStats(person.cocStats),
           sources: Array.isArray(person.sources) ? person.sources : [],
           provenance: person.provenance || "source",
           confidence: Number(person.confidence ?? 0.5),
         }));
-        nextAnalysis = { ...nextAnalysis, people };
+        const personNames = new Set(people.flatMap((person) =>
+          [person.name, ...person.aliases].map((name) => name.trim().toLocaleLowerCase()).filter(Boolean),
+        ));
+        const seenMonsterNames = new Set<string>();
+        const monsters = (Array.isArray(data.monsters) ? data.monsters as Monster[] : [])
+          .flatMap((monster) => {
+            const names = [monster.name, ...(Array.isArray(monster.aliases) ? monster.aliases : [])]
+              .map((name) => String(name ?? "").trim().toLocaleLowerCase())
+              .filter(Boolean);
+            if (names.some((name) => personNames.has(name) || seenMonsterNames.has(name))) return [];
+            names.forEach((name) => seenMonsterNames.add(name));
+            return [{
+              ...monster,
+              id: String(monster.id || crypto.randomUUID()),
+              name: String(monster.name ?? "未命名怪物"),
+              aliases: Array.isArray(monster.aliases) ? monster.aliases.map(String) : [],
+              monsterType: String(monster.monsterType ?? "怪物"),
+              threatLevel: String(monster.threatLevel ?? "待评估"),
+              summary: String(monster.summary ?? ""),
+              appearance: monster.appearance ? String(monster.appearance) : undefined,
+              abilities: monster.abilities ? String(monster.abilities) : undefined,
+              weaknesses: monster.weaknesses ? String(monster.weaknesses) : undefined,
+              tactics: monster.tactics ? String(monster.tactics) : undefined,
+              rewards: monster.rewards ? String(monster.rewards) : undefined,
+              keeperPrivate: monster.keeperPrivate ? String(monster.keeperPrivate) : undefined,
+              cocStats: normalizePersonCoCStats(monster.cocStats),
+              sources: Array.isArray(monster.sources) ? monster.sources : [],
+              provenance: monster.provenance || "source",
+              confidence: Number(monster.confidence ?? 0.5),
+            }];
+          });
+        nextAnalysis = { ...nextAnalysis, people, monsters };
         if (Array.isArray(data.mergeCandidates)) {
           (
             data.mergeCandidates as Array<{
@@ -2078,17 +2228,6 @@ export default function Home() {
             })
           : nextAnalysis.personRelations ?? [];
         nextAnalysis = { ...nextAnalysis, characterArcs, personRelations };
-      }
-      if (stage === "openingHook" && (data.openingHook !== undefined || data.openingHookDetails !== undefined)) {
-        nextAnalysis = {
-          ...nextAnalysis,
-          openingHook: data.openingHook !== undefined
-            ? String(data.openingHook ?? "")
-            : nextAnalysis.openingHook,
-          openingHookDetails: data.openingHookDetails !== undefined
-            ? normalizeOpeningHookDetails(data.openingHookDetails)
-            : nextAnalysis.openingHookDetails,
-        };
       }
       if (stage === "clues" && Array.isArray(data.clues)) {
         const clues = (data.clues as Clue[]).map((clue) => ({
@@ -2184,6 +2323,7 @@ export default function Home() {
         });
       }
       if (stage === "acts" && Array.isArray(data.acts)) {
+        const prologue = normalizeOpeningHookDetails(data.prologue);
         const acts = (data.acts as Act[])
           .map((act, index) => ({
             ...act,
@@ -2196,6 +2336,7 @@ export default function Home() {
             personIds: Array.isArray(act.personIds)
               ? act.personIds.map(String)
               : [],
+            monsterIds: Array.isArray(act.monsterIds) ? act.monsterIds.map(String) : [],
             clueIds: Array.isArray(act.clueIds) ? act.clueIds.map(String) : [],
             branches: Array.isArray(act.branches)
               ? act.branches.map((branch) => ({
@@ -2224,7 +2365,11 @@ export default function Home() {
             description: String(act.description || ""),
           }))
           .sort((left, right) => left.sequence - right.sequence);
-        nextAnalysis = { ...nextAnalysis, acts };
+        nextAnalysis = {
+          ...nextAnalysis,
+          acts,
+          openingHookDetails: prologue ?? nextAnalysis.openingHookDetails,
+        };
       }
 
       const stageReviews = [...returnedReviews, ...generatedReviews].map(
@@ -2813,32 +2958,38 @@ export default function Home() {
     "stage-background": `# 故事背景\n\n## 起因\n${activeProject.analysis.overview?.cause ?? ""}\n\n## 开团前的历史\n${activeProject.analysis.overview?.history ?? ""}\n\n## 当前状态\n${activeProject.analysis.overview?.currentState ?? ""}${noteMarkdown("stage-background")}`,
     "stage-timeplace": `# 时间地点\n\n${activeProject.analysis.timePlace?.places.map((place) => `## ${place.name}\n${place.description || place.summary}`).join("\n\n") ?? ""}${noteMarkdown("stage-timeplace")}`,
     "stage-characters": `${buildCharacterMarkdown(activeProject)}${noteMarkdown("stage-characters")}`,
+    "stage-monsters": `${buildMonsterMarkdown(activeProject)}${noteMarkdown("stage-monsters")}`,
     "stage-characterArcs": `${buildCharacterArcsMarkdown(activeProject)}${noteMarkdown("stage-characterArcs")}`,
-    "stage-openingHook": `${buildOpeningHookMarkdown(activeProject)}${noteMarkdown("stage-openingHook")}`,
     "stage-clues": `# 关键线索安排\n\n${activeProject.analysis.clues.map((clue) => `## ${clue.name}\n${clue.summary}\n\n- 来源：${clue.source}\n- 获取方式：${clue.acquisition || "待补充"}\n- 指向：${clue.targets.map((target) => target.label).join("、") || "待补充"}`).join("\n\n")}${noteMarkdown("stage-clues")}`,
-    ...Object.fromEntries(activeProject.analysis.acts.map((act, index) => [
+    "acts:prologue": `${buildPrologueMarkdown(activeProject)}${noteMarkdown("acts:prologue")}`,
+    ...Object.fromEntries(activeProject.analysis.acts.map((act) => [
       `acts:${act.id}`,
-      `${buildActMarkdown(activeProject, act.id, index === 0)}${noteMarkdown(`acts:${act.id}`)}`,
+      `${buildActMarkdown(activeProject, act.id, false)}${noteMarkdown(`acts:${act.id}`)}`,
     ])),
   } : {};
 
   const markdownSections = Object.keys(defaultMarkdown).map((key) => {
-    const actIndex = activeProject?.analysis.acts.findIndex((act) => `acts:${act.id}` === key) ?? -1;
     const savedMarkdown = sectionMarkdown[key] ?? defaultMarkdown[key];
     return {
       key,
       name: key.startsWith("acts:")
-        ? activeProject?.analysis.acts.find((act) => `acts:${act.id}` === key)?.title ?? "幕"
+        ? key === "acts:prologue"
+          ? "序幕"
+          : activeProject?.analysis.acts.find((act) => `acts:${act.id}` === key)?.title ?? "幕"
+        : key === "stage-monsters"
+          ? "怪物与 Boss"
         : stageLabels[({
             "stage-background": "background",
             "stage-timeplace": "timeplace",
             "stage-characters": "characters",
+            "stage-monsters": "characters",
             "stage-characterArcs": "characterArcs",
-            "stage-openingHook": "openingHook",
             "stage-clues": "clues",
           } as Record<string, AnalysisStage>)[key]],
       markdown: key.startsWith("acts:")
-        ? normalizeActMarkdownHierarchy(savedMarkdown, actIndex === 0)
+        ? key === "acts:prologue"
+          ? savedMarkdown
+          : normalizeActMarkdownHierarchy(savedMarkdown, false)
         : savedMarkdown,
       templateMarkdown: defaultMarkdown[key],
       customized: sectionMarkdown[key] !== undefined,
@@ -2884,6 +3035,7 @@ export default function Home() {
           updatedAt: new Date().toISOString(),
         });
       },
+      onEntityEdit: (entity) => setEditingEntityRef(entity.ref),
     }),
   }));
 
@@ -3130,8 +3282,8 @@ export default function Home() {
             <StageView
               sections={renderedBookSections}
               activeSectionKey={
-                view === "acts" && selectedActId
-                  ? `acts:${selectedActId}`
+                view === "acts"
+                  ? `acts:${selectedActId ?? "prologue"}`
                   : view
               }
               contentKey={`${activeProject.id}:${activeProject.updatedAt}`}
@@ -3146,7 +3298,7 @@ export default function Home() {
               onEditingChange={setBookEditing}
               onOpenActTree={() => setActView("tree")}
               initialPage={pendingReadingPosition?.sectionKey === (
-                view === "acts" && selectedActId ? `acts:${selectedActId}` : view
+                view === "acts" ? `acts:${selectedActId ?? "prologue"}` : view
               ) ? pendingReadingPosition.page : undefined}
               onPageChange={(sectionKey, page) => {
                 setPendingReadingPosition(undefined);
@@ -3289,6 +3441,13 @@ export default function Home() {
               },
             })
           }
+        />
+      )}
+      {editingEntityRef && entities.find((entity) => entity.ref === editingEntityRef) && (
+        <EntityEditOverlay
+          entity={entities.find((entity) => entity.ref === editingEntityRef)!}
+          onClose={() => setEditingEntityRef(null)}
+          onSave={saveEntityOverride}
         />
       )}
       {entityWindows.map((floatingWindow) => (

@@ -23,7 +23,6 @@ const stageNames: Record<AnalysisStage, string> = {
   timeplace: "时间地点",
   characters: "人物",
   characterArcs: "人物经历与动机",
-  openingHook: "开篇钩子",
   clues: "关键线索安排",
   acts: "幕",
 };

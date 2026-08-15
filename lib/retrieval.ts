@@ -165,8 +165,6 @@ export function stageQuery(
       return "人物 角色 姓名 身份 动机 组织 NPC 守秘人笔记 建议数据 属性 力量 体质 体型 敏捷 灵感 外貌 意志 教育 理智 HP MP 移动 体格 DB 战斗 斗殴 闪避 技能 攻击 伤害";
     case "characterArcs":
       return `人物 经历 动机 目标 行动 变化 秘密 关系 领导 雇佣 威胁 保护 合作 背叛 同盟 敌对 ${analysis.people.map((person) => person.name).join(" ")}`;
-    case "openingHook":
-      return "开篇 开场 委托 邀请 失踪 事件 调查员 钩子";
     case "clues":
       return "线索 物品 发现 指向 地点 场景";
     case "acts":

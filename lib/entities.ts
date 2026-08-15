@@ -9,6 +9,7 @@ import type {
 
 export const ENTITY_KIND_LABELS: Record<EntityKind, string> = {
   person: "人物",
+  monster: "怪物 / Boss",
   clue: "线索",
   place: "地点",
   event: "事件",
@@ -23,6 +24,11 @@ export const ENTITY_FIELD_LABELS: Record<EntityKind, Array<[string, string]>> = 
     ["motivation", "动机"], ["secrets", "秘密"], ["state", "当前状态"],
     ["firstAppearance", "初次登场"], ["performanceHints", "扮演提示"], ["voice", "声音"],
     ["contact", "联系方式"], ["nextAction", "下一步行动"],
+  ],
+  monster: [
+    ["summary", "摘要"], ["monsterType", "类型"], ["threatLevel", "威胁等级"],
+    ["appearance", "外貌"], ["abilities", "特殊能力"], ["weaknesses", "弱点"],
+    ["tactics", "战术"], ["rewards", "奖励"],
   ],
   clue: [
     ["type", "线索类型"], ["content", "内容"], ["source", "来源"], ["location", "位置"],
@@ -143,6 +149,34 @@ export function buildProjectEntities(project: Project): EntityCard[] {
     { sectionKey: "stage-characters", label: "人物" },
     ...actAppearances((act) => act.personIds.includes(person.id)),
   ] }));
+  const monsters = (project.analysis.monsters ?? []).map((monster) => {
+    const fields = {
+      summary: monster.summary, monsterType: monster.monsterType,
+      threatLevel: monster.threatLevel, appearance: monster.appearance ?? "",
+      abilities: monster.abilities ?? "", weaknesses: monster.weaknesses ?? "",
+      tactics: monster.tactics ?? "", rewards: monster.rewards ?? "",
+    };
+    const imageSource = monster.portraitSource === "manual" || monster.portraitSource === "extracted"
+      ? monster.portraitSource
+      : undefined;
+    const monsterCard = card(
+      project, "monster", monster.id, monster.name, monster.aliases, fields,
+      "stage-monsters", monster.provenance === "inference" ? "inference" : "source",
+      monster.cocStats, monster.portrait, imageSource,
+    );
+    return {
+      ...monsterCard,
+      original: {
+        ...monsterCard.original,
+        playerVisible: monster.summary,
+        keeperPrivate: monster.keeperPrivate ?? "",
+      },
+      appearances: [
+        { sectionKey: "stage-monsters", label: "怪物与 Boss" },
+        ...actAppearances((act) => (act.monsterIds ?? []).includes(monster.id)),
+      ],
+    };
+  });
   const clues = project.analysis.clues.map((clue) => ({ ...card(
     project, "clue", clue.id, clue.name, [],
     {
@@ -171,11 +205,11 @@ export function buildProjectEntities(project: Project): EntityCard[] {
     { type: event.type, process: event.description, time: act.time, place: act.placeText ?? "" },
     `acts:${act.id}`,
   ), appearances: [{ sectionKey: `acts:${act.id}`, label: `第 ${act.sequence} 幕 · ${act.title}` }] })));
-  return [...people, ...clues, ...places, ...events, ...(project.kpNotes?.keeperEntities ?? [])];
+  return [...people, ...monsters, ...clues, ...places, ...events, ...(project.kpNotes?.keeperEntities ?? [])];
 }
 
 export function entityCoCStats(entity: EntityCard) {
-  if (entity.kind !== "person") return undefined;
+  if (entity.kind !== "person" && entity.kind !== "monster") return undefined;
   const original = entity.original.cocStats;
   const override = entity.overrides?.cocStats;
   if (!original && !override) return undefined;
@@ -320,6 +354,20 @@ export function buildCharacterMarkdown(project: Project) {
   ].join("\n\n");
 }
 
+export function buildMonsterMarkdown(project: Project) {
+  const bossPeople = project.analysis.people.filter((person) => person.isBoss);
+  const refs = [
+    ...bossPeople.map((person) => entityRef("person", person.id)),
+    ...(project.analysis.monsters ?? []).map((monster) => entityRef("monster", monster.id)),
+  ];
+  return [
+    "# 怪物与 Boss",
+    ...(refs.length > 0
+      ? refs.map((ref) => `:::character-card${JSON.stringify({ ref, importance: "core" })}`)
+      : ["本模组暂无怪物或 Boss。"]),
+  ].join("\n\n");
+}
+
 export function buildCharacterArcsMarkdown(project: Project) {
   const people = project.analysis.people.filter((person) => person.importance === "core");
   const sections = people.map((person) => {
@@ -363,6 +411,18 @@ ${details?.atmosphere || "待补充"}
 
 ## 导入技巧
 ${details?.introductionTips || "待补充"}`;
+}
+
+export function buildPrologueMarkdown(project: Project) {
+  const savedLegacy = project.kpNotes?.sectionMarkdown?.["stage-openingHook"]?.trim();
+  const legacy = savedLegacy || buildOpeningHookMarkdown(project);
+  const body = legacy
+    .replace(/^\s*#\s+开篇钩子\s*/m, "")
+    .replace(/^(#{2,6})(\s+)/gm, (_match, marks: string, whitespace: string) =>
+      `${"#".repeat(Math.min(6, marks.length + 1))}${whitespace}`,
+    )
+    .trim();
+  return `# 幕\n\n## 序幕\n\n${body || "待补充"}`;
 }
 
 export function buildActTitle(originalTitle: string, sequence: number) {

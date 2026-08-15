@@ -100,7 +100,6 @@ export function BookEditor({
   const templateEligible = Boolean(active && (
     active.key === "stage-characters" ||
     active.key === "stage-characterArcs" ||
-    active.key === "stage-openingHook" ||
     active.key.startsWith("acts:")
   ));
 

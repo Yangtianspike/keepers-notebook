@@ -33,6 +33,7 @@ type MarkdownDocumentProps = {
   entities?: EntityCard[];
   onEntityAction?: (action: MarkdownEntityAction) => void;
   onEntityImageChange?: (entity: EntityCard, image: string) => void;
+  onEntityEdit?: (entity: EntityCard) => void;
   sectionKey?: string;
 };
 
@@ -249,21 +250,26 @@ function CharacterCardRenderer({
   segment = "full",
   onEntityAction,
   onEntityImageChange,
+  onEntityEdit,
 }: {
   entity: EntityCard;
   importance: "core" | "important" | "minor";
   segment?: "full" | "overview" | "details" | "stats";
   onEntityAction?: MarkdownDocumentProps["onEntityAction"];
   onEntityImageChange?: MarkdownDocumentProps["onEntityImageChange"];
+  onEntityEdit?: MarkdownDocumentProps["onEntityEdit"];
 }) {
   const fields = entityFields(entity);
   const image = entityImage(entity);
   const stats = entityCoCStats(entity);
-  const fieldRows = [
-    ["summary", "摘要"], ["publicIdentity", "公开身份"], ["trueIdentity", "真实身份"],
-    ["appearance", "外貌"], ["personality", "性格"], ["motivation", "动机"],
-    ["secrets", "秘密"], ["state", "状态"], ["performanceHints", "扮演提示"],
-  ].flatMap(([key, label]) => {
+  const fieldDefinition = entity.kind === "monster"
+    ? [["summary", "摘要"], ["monsterType", "类型"], ["threatLevel", "威胁等级"],
+      ["appearance", "外貌"], ["abilities", "特殊能力"], ["weaknesses", "弱点"],
+      ["tactics", "战术"], ["rewards", "奖励"]]
+    : [["summary", "摘要"], ["publicIdentity", "公开身份"], ["trueIdentity", "真实身份"],
+      ["appearance", "外貌"], ["personality", "性格"], ["motivation", "动机"],
+      ["secrets", "秘密"], ["state", "状态"], ["performanceHints", "扮演提示"]];
+  const fieldRows = fieldDefinition.flatMap(([key, label]) => {
     const value = fields[key];
     if (value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) return [];
     return [{ label, value: Array.isArray(value) ? value.join("、") : String(value) }];
@@ -274,7 +280,9 @@ function CharacterCardRenderer({
   const profileRows = leadRow
     ? fieldRows.filter((row) => row !== leadRow)
     : fieldRows;
-  const overviewLabels = new Set(["公开身份", "真实身份"]);
+  const overviewLabels = new Set(entity.kind === "monster"
+    ? ["类型", "威胁等级"]
+    : ["公开身份", "真实身份"]);
   const overviewRows = profileRows.filter((row) => overviewLabels.has(row.label));
   const detailRows = profileRows.filter((row) => !overviewLabels.has(row.label));
   const visibleStats = COC_STAT_LABELS.flatMap(([key, label]) => {
@@ -288,7 +296,7 @@ function CharacterCardRenderer({
     return (
       <article className="character-card character-card-core character-card-segment character-card-segment-details">
         <header className="character-card-continuation-header">
-          <div><small>核心人物 · 资料续页</small><strong>{entityName(entity)}</strong></div>
+          <div><small>{entity.kind === "monster" ? "怪物 / Boss" : "核心人物"} · 资料续页</small><strong>{entityName(entity)}</strong></div>
         </header>
         <dl className="character-profile-grid">
           {detailRows.map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}
@@ -300,7 +308,7 @@ function CharacterCardRenderer({
     return (
       <article className="character-card character-card-core character-card-segment character-card-segment-stats">
         <header className="character-card-continuation-header">
-          <div><small>核心人物 · 数据续页</small><strong>{entityName(entity)}</strong></div>
+          <div><small>{entity.kind === "monster" ? "怪物 / Boss" : "核心人物"} · 数据续页</small><strong>{entityName(entity)}</strong></div>
         </header>
         <section className="character-coc-section">
           <h4>CoC 7版属性</h4>
@@ -343,7 +351,7 @@ function CharacterCardRenderer({
       )}
       <header>
         <div>
-          <small>{importance === "core" ? "核心人物" : importance === "important" ? "重要人物" : "次要人物"}</small>
+          <small>{entity.kind === "monster" ? "怪物 / Boss" : importance === "core" ? "核心人物" : importance === "important" ? "重要人物" : "次要人物"}</small>
           <button type="button" onClick={(event) => onEntityAction?.({ entity, behavior: entity.linkBehavior, action: "preview", anchorRect: event.currentTarget.getBoundingClientRect() })}>
             <em>{entityName(entity)}</em>
           </button>
@@ -352,6 +360,7 @@ function CharacterCardRenderer({
         <span className={`entity-source-badge source-${entity.source}`}>
           {entity.source === "source" ? "剧本资料" : entity.source === "inference" ? "模型推断" : "KP 创建"}
         </span>
+        {importance === "core" && <button className="character-card-edit" type="button" onClick={() => onEntityEdit?.(entity)}>编辑</button>}
       </header>
       {leadRow && (
         <dl className="character-card-lead"><dt>{leadRow.label}</dt><dd>{leadRow.value}</dd></dl>
@@ -386,7 +395,7 @@ export function markdownHeadingId(sectionKey: string, blockIndex: number) {
   return `${sectionKey}:heading:${blockIndex}`;
 }
 
-export function markdownToReactBlocks({ markdown, entities = [], onEntityAction, onEntityImageChange, sectionKey = "document" }: MarkdownDocumentProps) {
+export function markdownToReactBlocks({ markdown, entities = [], onEntityAction, onEntityImageChange, onEntityEdit, sectionKey = "document" }: MarkdownDocumentProps) {
   return parseMarkdownBlocks(markdown).flatMap((block, index) => {
     const content = block.text ? inlineMarkdown(block.text, entities, onEntityAction) : null;
     const common = { className: "markdown-block", "data-keep-with-next": block.kind === "heading" ? "true" : undefined };
@@ -424,12 +433,14 @@ export function markdownToReactBlocks({ markdown, entities = [], onEntityAction,
     }
     if (block.kind === "character-card" && block.character) {
       const entity = entities.find((candidate) => candidate.ref === block.character?.ref);
-      if (!entity || entity.kind !== "person") return <div {...common} className="markdown-block character-card-placeholder" key={index}>人物资料不可用 · {block.character.ref}</div>;
+      if (!entity || (entity.kind !== "person" && entity.kind !== "monster")) return <div {...common} className="markdown-block character-card-placeholder" key={index}>实体资料不可用 · {block.character.ref}</div>;
       const importance = block.character.importance ?? "minor";
       if (importance === "core") {
         const fields = entityFields(entity);
         const stats = entityCoCStats(entity);
-        const hasDetails = ["appearance", "personality", "motivation", "secrets", "state", "performanceHints"]
+        const hasDetails = (entity.kind === "monster"
+          ? ["appearance", "abilities", "weaknesses", "tactics", "rewards"]
+          : ["appearance", "personality", "motivation", "secrets", "state", "performanceHints"])
           .some((key) => {
             const value = fields[key];
             return value !== undefined && value !== "" && (!Array.isArray(value) || value.length > 0);
@@ -440,9 +451,9 @@ export function markdownToReactBlocks({ markdown, entities = [], onEntityAction,
           stats.attacks?.length
         ));
         return [
-          <CharacterCardRenderer entity={entity} importance="core" segment="overview" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} key={`${index}-overview`} />,
-          ...(hasDetails ? [<CharacterCardRenderer entity={entity} importance="core" segment="details" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} key={`${index}-details`} />] : []),
-          ...(hasStats ? [<CharacterCardRenderer entity={entity} importance="core" segment="stats" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} key={`${index}-stats`} />] : []),
+          <CharacterCardRenderer entity={entity} importance="core" segment="overview" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} onEntityEdit={onEntityEdit} key={`${index}-overview`} />,
+          ...(hasDetails ? [<CharacterCardRenderer entity={entity} importance="core" segment="details" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} onEntityEdit={onEntityEdit} key={`${index}-details`} />] : []),
+          ...(hasStats ? [<CharacterCardRenderer entity={entity} importance="core" segment="stats" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} onEntityEdit={onEntityEdit} key={`${index}-stats`} />] : []),
         ];
       }
       return <CharacterCardRenderer
@@ -450,6 +461,7 @@ export function markdownToReactBlocks({ markdown, entities = [], onEntityAction,
         importance={importance}
         onEntityAction={onEntityAction}
         onEntityImageChange={onEntityImageChange}
+        onEntityEdit={onEntityEdit}
         key={index}
       />;
     }
@@ -466,10 +478,10 @@ export function markdownToReactBlocks({ markdown, entities = [], onEntityAction,
 }
 
 export function MarkdownDocument(props: MarkdownDocumentProps) {
-  const { markdown, entities, onEntityAction, onEntityImageChange } = props;
+  const { markdown, entities, onEntityAction, onEntityImageChange, onEntityEdit } = props;
   const blocks = useMemo(
-    () => markdownToReactBlocks({ markdown, entities, onEntityAction, onEntityImageChange }),
-    [markdown, entities, onEntityAction, onEntityImageChange],
+    () => markdownToReactBlocks({ markdown, entities, onEntityAction, onEntityImageChange, onEntityEdit }),
+    [markdown, entities, onEntityAction, onEntityEdit, onEntityImageChange],
   );
   return <div className="markdown-document">{blocks}</div>;
 }

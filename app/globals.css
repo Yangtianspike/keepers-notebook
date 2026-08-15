@@ -634,7 +634,10 @@ button:disabled {
 .workspace {
   width: calc(100% - 218px);
   min-width: 0;
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   margin-left: 218px;
   padding: 0;
   overflow-x: auto;
@@ -710,6 +713,11 @@ button:disabled {
 }
 
 .workspace-main.book-workspace-main {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  padding-top: 0;
+  padding-bottom: 0;
   padding-right: 0;
   padding-left: 0;
 }
@@ -3848,10 +3856,16 @@ button:disabled {
   display: flex;
   width: 1750px;
   max-width: 100%;
+  height: 100%;
+  min-height: 0;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  overflow: hidden;
   margin: 0 auto;
 }
+
+.book-size-warning { position: absolute; z-index: 12; top: 8px; margin: 0; border-radius: 4px; background: rgba(23,29,30,.92); color: #f0c979; padding: 7px 11px; font-size: 12px; }
 
 .book-edit-toggle {
   display: flex;
@@ -4004,6 +4018,7 @@ button:disabled {
 .character-card-segment-stats > .character-coc-section { grid-column: 1 / -1; }
 .character-card > header > div { display: grid; gap: 3px; }
 .character-card > header button { width: fit-content; border: 0; border-bottom: 1px dotted #7b211e; background: transparent; color: #4a2018; padding: 0; font: 700 19px/1.35 Georgia, "Songti SC", serif; cursor: pointer; }
+.character-card > header .character-card-edit { align-self: start; border: 1px solid rgba(123,33,30,.35); border-radius: 4px; padding: 5px 10px; font: 600 12px/1.2 system-ui, sans-serif; }
 .character-card > header span,
 .character-card > header small { color: #715c45; font-size: 12px; }
 .entity-source-badge { flex: 0 0 auto; border: 1px solid rgba(123,33,30,.25); border-radius: 999px; padding: 3px 7px; }
@@ -4067,8 +4082,14 @@ button:disabled {
 .entity-inline-menu button { border: 1px solid rgba(123,33,30,.35); background: rgba(255,255,255,.4); color: #7b211e; padding: 7px 9px; text-align: left; }
 
 .entity-window-layer { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; background: rgba(6,12,13,.72); padding: 24px; }
-.entity-window { display: flex; width: min(760px, 100%); height: min(820px, calc(100vh - 16px)); overflow: hidden; flex-direction: column; border: 1px solid #9a7b58; border-radius: 8px; background: #f5f0e1 url("/book-page-bg.png") center / cover; color: #2c1810; padding: 24px 30px; box-shadow: 0 28px 90px rgba(0,0,0,.68); }
-.floating-entity-window { position: fixed; max-width: calc(100vw - 16px); box-sizing: border-box; }
+.entity-edit-overlay { position: fixed; z-index: 220; inset: 0; display: grid; place-items: center; overflow: hidden; background: rgba(6,12,13,.76); padding: 20px; }
+.entity-edit-overlay-card { display: flex; width: min(760px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); flex-direction: column; overflow: hidden; border: 1px solid #9a7b58; border-radius: 8px; background: #f5f0e1 url("/book-page-bg.png") center / cover; color: #2c1810; padding: 22px 28px; box-shadow: 0 28px 90px rgba(0,0,0,.7); }
+.entity-edit-overlay-card > header { display: flex; align-items: start; justify-content: space-between; border-bottom: 1px solid rgba(123,33,30,.28); padding-bottom: 12px; }
+.entity-edit-overlay-card > header h2 { margin: 2px 0; }
+.entity-edit-overlay-card > header button { border: 0; background: transparent; color: #4a2018; font-size: 28px; cursor: pointer; }
+.entity-edit-overlay-card .entity-edit-form { overflow: auto; padding-right: 6px; }
+.entity-window { display: flex; width: 760px; height: 820px; overflow: hidden; flex-direction: column; border: 1px solid #9a7b58; border-radius: 8px; background: #f5f0e1 url("/book-page-bg.png") center / cover; color: #2c1810; padding: 24px 30px; box-shadow: 0 28px 90px rgba(0,0,0,.68); }
+.floating-entity-window { position: fixed; box-sizing: border-box; }
 .floating-entity-window > header { cursor: move; touch-action: none; user-select: none; }
 .floating-entity-window > header button { cursor: pointer; }
 .entity-window > header { display: grid; grid-template-columns: 90px 1fr 42px; align-items: start; border-bottom: 1px solid rgba(123,33,30,.28); padding-bottom: 14px; text-align: center; }

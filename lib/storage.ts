@@ -28,7 +28,6 @@ function idleStages(): Record<AnalysisStage, StageState> {
     timeplace: { status: "idle" },
     characters: { status: "idle" },
     characterArcs: { status: "idle" },
-    openingHook: { status: "idle" },
     clues: { status: "idle" },
     acts: { status: "idle" },
   };
