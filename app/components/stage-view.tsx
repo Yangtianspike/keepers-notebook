@@ -746,6 +746,7 @@ export function StageView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageSectionsKey]);
   const lastRequestedSectionRef = useRef("");
+  const pendingSectionNavigationRef = useRef<string | null>(null);
   const restoredPageRef = useRef(false);
   const [jumpDraft, setJumpDraft] = useState("");
   const pageNavigationSections = pageSections.map(sectionNavigationKey);
@@ -777,6 +778,7 @@ export function StageView({
       return;
     }
     lastRequestedSectionRef.current = activeSectionKey;
+    pendingSectionNavigationRef.current = activeSectionKey;
     requestPage(targetPage);
   }, [activeSectionKey, requestPage, targetPage]);
 
@@ -799,13 +801,25 @@ export function StageView({
   useEffect(() => {
     const pageSection = pageNavigationSections[Math.max(0, currentPage - 1)];
     const exactPageSection = pageSections[Math.max(0, currentPage - 1)];
+    const facingPageSection = displayMode === "double" ? pageNavigationSections[currentPage] : undefined;
+    const facingExactPageSection = displayMode === "double" ? pageSections[currentPage] : undefined;
+    const pendingSection = pendingSectionNavigationRef.current;
+    if (pendingSection) {
+      const reachedTarget =
+        exactPageSection === pendingSection ||
+        pageSection === pendingSection ||
+        facingExactPageSection === pendingSection ||
+        facingPageSection === pendingSection;
+      if (reachedTarget) pendingSectionNavigationRef.current = null;
+      else return;
+    }
     if (pageSection && exactPageSection !== activeSectionKey) {
       lastRequestedSectionRef.current = exactPageSection;
       activeSectionChangeRef.current(exactPageSection);
     }
     // pageSectionsKey is the stable representation of the generated page map.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSectionKey, currentPage, pageSectionsKey]);
+  }, [activeSectionKey, currentPage, displayMode, pageSectionsKey]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
