@@ -34,6 +34,7 @@ type MarkdownDocumentProps = {
   onEntityAction?: (action: MarkdownEntityAction) => void;
   onEntityImageChange?: (entity: EntityCard, image: string) => void;
   onEntityEdit?: (entity: EntityCard) => void;
+  onOpenCoreRelations?: () => void;
   sectionKey?: string;
 };
 
@@ -251,6 +252,7 @@ function CharacterCardRenderer({
   onEntityAction,
   onEntityImageChange,
   onEntityEdit,
+  onOpenCoreRelations,
 }: {
   entity: EntityCard;
   importance: "core" | "important" | "minor";
@@ -258,6 +260,7 @@ function CharacterCardRenderer({
   onEntityAction?: MarkdownDocumentProps["onEntityAction"];
   onEntityImageChange?: MarkdownDocumentProps["onEntityImageChange"];
   onEntityEdit?: MarkdownDocumentProps["onEntityEdit"];
+  onOpenCoreRelations?: MarkdownDocumentProps["onOpenCoreRelations"];
 }) {
   const fields = entityFields(entity);
   const image = entityImage(entity);
@@ -357,10 +360,15 @@ function CharacterCardRenderer({
           </button>
           {fields.role && <span>{String(fields.role)}</span>}
         </div>
-        <span className={`entity-source-badge source-${entity.source}`}>
-          {entity.source === "source" ? "剧本资料" : entity.source === "inference" ? "模型推断" : "KP 创建"}
-        </span>
-        {importance === "core" && <button className="character-card-edit" type="button" onClick={() => onEntityEdit?.(entity)}>编辑</button>}
+        <div className="character-card-header-actions">
+          <span className={`entity-source-badge source-${entity.source}`}>
+            {entity.source === "source" ? "剧本资料" : entity.source === "inference" ? "模型推断" : "KP 创建"}
+          </span>
+          {importance === "core" && entity.kind === "person" && (
+            <button className="character-card-action" type="button" onClick={onOpenCoreRelations}>关系图</button>
+          )}
+          {importance === "core" && <button className="character-card-action" type="button" onClick={() => onEntityEdit?.(entity)}>编辑</button>}
+        </div>
       </header>
       {leadRow && (
         <dl className="character-card-lead"><dt>{leadRow.label}</dt><dd>{leadRow.value}</dd></dl>
@@ -395,7 +403,7 @@ export function markdownHeadingId(sectionKey: string, blockIndex: number) {
   return `${sectionKey}:heading:${blockIndex}`;
 }
 
-export function markdownToReactBlocks({ markdown, entities = [], onEntityAction, onEntityImageChange, onEntityEdit, sectionKey = "document" }: MarkdownDocumentProps) {
+export function markdownToReactBlocks({ markdown, entities = [], onEntityAction, onEntityImageChange, onEntityEdit, onOpenCoreRelations, sectionKey = "document" }: MarkdownDocumentProps) {
   return parseMarkdownBlocks(markdown).flatMap((block, index) => {
     const content = block.text ? inlineMarkdown(block.text, entities, onEntityAction) : null;
     const common = { className: "markdown-block", "data-keep-with-next": block.kind === "heading" ? "true" : undefined };
@@ -451,7 +459,7 @@ export function markdownToReactBlocks({ markdown, entities = [], onEntityAction,
           stats.attacks?.length
         ));
         return [
-          <CharacterCardRenderer entity={entity} importance="core" segment="overview" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} onEntityEdit={onEntityEdit} key={`${index}-overview`} />,
+          <CharacterCardRenderer entity={entity} importance="core" segment="overview" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} onEntityEdit={onEntityEdit} onOpenCoreRelations={onOpenCoreRelations} key={`${index}-overview`} />,
           ...(hasDetails ? [<CharacterCardRenderer entity={entity} importance="core" segment="details" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} onEntityEdit={onEntityEdit} key={`${index}-details`} />] : []),
           ...(hasStats ? [<CharacterCardRenderer entity={entity} importance="core" segment="stats" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} onEntityEdit={onEntityEdit} key={`${index}-stats`} />] : []),
         ];

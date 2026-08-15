@@ -39,6 +39,8 @@ type EntityWindowProps = {
   onFocus: () => void;
   onMove: (x: number, y: number) => void;
   onOpenRelated: (ref: string) => void;
+  onOpenRelations: (entityRef: string) => void;
+  onOpenCoreRelations: () => void;
   onJump: (entity: EntityCard) => void;
   onSave: (entity: EntityCard, override: EntityOverrides) => void;
   onCreate: (kind: EntityKind, name: string, relatedTo?: EntityCard) => EntityCard;
@@ -57,6 +59,8 @@ export function EntityWindow({
   onFocus,
   onMove,
   onOpenRelated,
+  onOpenRelations,
+  onOpenCoreRelations,
   onJump,
   onSave,
   onCreate,
@@ -123,6 +127,9 @@ export function EntityWindow({
     if (!entity) return [];
     return getRelatedEntities(entity.ref, project);
   }, [entity, project]);
+  const isCorePerson = entity?.kind === "person" && project.analysis.people.some(
+    (person) => person.id === entity.id && person.importance === "core",
+  );
 
   if (!entity) return null;
 
@@ -168,6 +175,12 @@ export function EntityWindow({
             <div className="entity-window-actions">
               <button type="button" onClick={() => onJump(entity)}>跳转到书页</button>
               <button type="button" onClick={() => setEditing(true)}>编辑资料</button>
+              {entity.kind === "person" && (
+                <button type="button" onClick={() => onOpenRelations(entity.ref)}>查看人物关系</button>
+              )}
+              {isCorePerson && (
+                <button type="button" onClick={onOpenCoreRelations}>完整关系图</button>
+              )}
               <button type="button" onClick={() => setCreating((value) => !value)}>新建关联实体</button>
               {entity.source === "keeper" && (
                 <button className="danger" type="button" onClick={() => onDelete(entity)}>删除</button>

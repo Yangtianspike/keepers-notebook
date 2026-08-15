@@ -34,6 +34,7 @@ import { EntityEditForm, EntityWindow } from "@/app/components/entity-window";
 import { SourceDocumentView } from "@/app/components/source-document-view";
 import { SourceImageExtractor } from "@/app/components/source-image-extractor";
 import { CoreCharacterRelations } from "@/app/components/core-character-relations";
+import { PersonRelationWindow } from "@/app/components/person-relation-window";
 import {
   buildProjectEntities,
   buildActMarkdown,
@@ -94,6 +95,14 @@ type FloatingEntityWindow = {
   x: number;
   y: number;
   width: number;
+  zIndex: number;
+};
+
+type FloatingPersonRelationWindow = {
+  id: string;
+  entityRef: string;
+  x: number;
+  y: number;
   zIndex: number;
 };
 
@@ -1314,6 +1323,8 @@ export default function Home() {
   const [bookEditing, setBookEditing] = useState(false);
   const [showAnalysisLog, setShowAnalysisLog] = useState(false);
   const [entityWindows, setEntityWindows] = useState<FloatingEntityWindow[]>([]);
+  const [personRelationWindows, setPersonRelationWindows] = useState<FloatingPersonRelationWindow[]>([]);
+  const floatingWindowZRef = useRef(110);
   const [editingEntityRef, setEditingEntityRef] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window === "undefined"
@@ -1417,7 +1428,10 @@ export default function Home() {
   }, [activeProjectId]);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => setEntityWindows([]), 0);
+    const timeout = window.setTimeout(() => {
+      setEntityWindows([]);
+      setPersonRelationWindows([]);
+    }, 0);
     return () => window.clearTimeout(timeout);
   }, [activeProjectId]);
 
@@ -2936,14 +2950,14 @@ export default function Home() {
 
   const focusEntityWindow = (windowId: string) => {
     setEntityWindows((current) => {
-      const zIndex = Math.max(110, ...current.map((item) => item.zIndex)) + 1;
+      const zIndex = ++floatingWindowZRef.current;
       return current.map((item) => item.id === windowId ? { ...item, zIndex } : item);
     });
   };
 
   const openEntityWindow = (entityRef: string, anchorRect?: DOMRect) => {
     setEntityWindows((current) => {
-      const zIndex = Math.max(110, ...current.map((item) => item.zIndex)) + 1;
+      const zIndex = ++floatingWindowZRef.current;
       const existing = current.find((item) => item.entityRef === entityRef);
       if (existing) return current.map((item) => item.id === existing.id ? { ...item, zIndex } : item);
       const width = Math.min(620, Math.max(360, window.innerWidth - 32));
@@ -2961,6 +2975,32 @@ export default function Home() {
         zIndex,
       }];
     });
+  };
+
+  const openPersonRelationWindow = (entityRef: string) => {
+    setPersonRelationWindows((current) => {
+      const zIndex = ++floatingWindowZRef.current;
+      const existing = current.find((item) => item.entityRef === entityRef);
+      if (existing) {
+        return current.map((item) => item.id === existing.id ? { ...item, zIndex } : item);
+      }
+      const offset = current.length * 26;
+      const width = Math.min(720, window.innerWidth - 16);
+      return [...current, {
+        id: crypto.randomUUID(),
+        entityRef,
+        x: Math.max(8, Math.min(window.innerWidth - width - 8, 110 + offset)),
+        y: Math.max(8, 90 + offset),
+        zIndex,
+      }];
+    });
+  };
+
+  const openCoreCharacterRelations = () => {
+    setBookEditing(false);
+    setActView("detail");
+    setView("stage-characters");
+    setCharacterView("relations");
   };
 
   const saveEntityOverride = (entity: EntityCard, override: EntityOverrides) => {
@@ -3123,6 +3163,7 @@ export default function Home() {
         });
       },
       onEntityEdit: (entity) => setEditingEntityRef(entity.ref),
+      onOpenCoreRelations: openCoreCharacterRelations,
     });
     return {
       key: section.key,
@@ -3261,14 +3302,17 @@ export default function Home() {
           </div>
           <div className="topbar-book-tools" id="book-toolbar-slot" />
           <div className="topbar-actions">
-            {entityWindows.length > 0 && (
+            {entityWindows.length + personRelationWindows.length > 0 && (
               <button
                 className="topbar-card-counter"
                 type="button"
-                onClick={() => setEntityWindows([])}
-                title="关闭全部资料卡"
+                onClick={() => {
+                  setEntityWindows([]);
+                  setPersonRelationWindows([]);
+                }}
+                title="关闭全部资料窗口"
               >
-                资料卡 {entityWindows.length} · 全部关闭
+                资料窗口 {entityWindows.length + personRelationWindows.length} · 全部关闭
               </button>
             )}
             <button
@@ -3414,7 +3458,6 @@ export default function Home() {
               editing={bookEditing}
               onEditingChange={setBookEditing}
               onOpenActTree={() => setActView("tree")}
-              onOpenCharacterRelations={() => setCharacterView("relations")}
               initialPage={pendingReadingPosition?.sectionKey === (
                 view === "acts" ? activeActSectionKey : view
               ) ? pendingReadingPosition.page : undefined}
@@ -3612,6 +3655,8 @@ export default function Home() {
           onFocus={() => focusEntityWindow(floatingWindow.id)}
           onMove={(x, y) => setEntityWindows((current) => current.map((item) => item.id === floatingWindow.id ? { ...item, x, y } : item))}
           onOpenRelated={(entityRef) => openEntityWindow(entityRef)}
+          onOpenRelations={openPersonRelationWindow}
+          onOpenCoreRelations={openCoreCharacterRelations}
           onJump={jumpToEntity}
           onSave={saveEntityOverride}
           onCreate={(kind, name, relatedTo) => addKeeperEntity(kind, name, relatedTo?.appearances[0]?.sectionKey ?? "stage-background", relatedTo)}
@@ -3627,6 +3672,20 @@ export default function Home() {
               },
             }).then(() => setEntityWindows((current) => current.filter((item) => item.id !== floatingWindow.id)));
           }}
+        />
+      ))}
+      {personRelationWindows.map((floatingWindow) => (
+        <PersonRelationWindow
+          key={floatingWindow.id}
+          project={activeProject}
+          entityRef={floatingWindow.entityRef}
+          x={floatingWindow.x}
+          y={floatingWindow.y}
+          zIndex={floatingWindow.zIndex}
+          onClose={() => setPersonRelationWindows((current) => current.filter((item) => item.id !== floatingWindow.id))}
+          onFocus={() => setPersonRelationWindows((current) => current.map((item) => item.id === floatingWindow.id ? { ...item, zIndex: ++floatingWindowZRef.current } : item))}
+          onMove={(x, y) => setPersonRelationWindows((current) => current.map((item) => item.id === floatingWindow.id ? { ...item, x, y } : item))}
+          onOpenPerson={openEntityWindow}
         />
       ))}
       {toast && <div className="toast">{toast}</div>}
