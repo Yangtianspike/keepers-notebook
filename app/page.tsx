@@ -3018,6 +3018,7 @@ export default function Home() {
   const prologueAct = activeProject?.analysis.acts.find((act) =>
     /序幕|楔子|开场/.test(act.title),
   ) ?? activeProject?.analysis.acts[0];
+  const firstActId = activeProject?.analysis.acts[0]?.id;
   const activeActSectionKey = `acts:${selectedActId ?? prologueAct?.id ?? ""}`;
   const legacyPrologue = activeProject
     ? (sectionMarkdown["acts:prologue"] ?? buildPrologueMarkdown(activeProject))
@@ -3038,7 +3039,7 @@ export default function Home() {
     "stage-clues": `# 关键线索安排\n\n${activeProject.analysis.clues.map((clue) => `## ${clue.name}\n${clue.summary}\n\n- 来源：${clue.source}\n- 获取方式：${clue.acquisition || "待补充"}\n- 指向：${clue.targets.map((target) => target.label).join("、") || "待补充"}`).join("\n\n")}${noteMarkdown("stage-clues")}`,
     ...Object.fromEntries(activeProject.analysis.acts.map((act) => [
       `acts:${act.id}`,
-      `${buildActMarkdown(activeProject, act.id, false)}${
+      `${buildActMarkdown(activeProject, act.id, act.id === firstActId)}${
         act.id === prologueAct?.id && openingSupplement
           ? `\n\n### 开场导入\n\n${openingSupplement}${noteMarkdown("acts:prologue")}`
           : ""
@@ -3069,7 +3070,7 @@ export default function Home() {
               !/^(?:###)\s+开场导入\s*$/m.test(savedMarkdown)
               ? `${savedMarkdown}\n\n### 开场导入\n\n${openingSupplement}`
               : savedMarkdown,
-            false,
+            key === `acts:${firstActId}`,
           )
         : savedMarkdown,
       templateMarkdown: defaultMarkdown[key],
