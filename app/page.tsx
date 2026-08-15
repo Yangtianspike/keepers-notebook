@@ -160,6 +160,18 @@ const STAGE_VIEWS: View[] = [
   "acts",
 ];
 
+// “人物”请求同时生成人物与怪物/Boss 两个独立备本板块。
+// API 编排仍是六次分析调用，但仪表盘按用户可见的七个流程计数。
+const DASHBOARD_FLOW_STAGES: AnalysisStage[] = [
+  "background",
+  "timeplace",
+  "characters",
+  "characters",
+  "characterArcs",
+  "clues",
+  "acts",
+];
+
 function pausedStageFor(project: Project): AnalysisStage | null {
   return (
     STAGE_ORDER.find(
@@ -1005,8 +1017,11 @@ function DashboardView({
   onNavigate: (view: View) => void;
   onContinueReading: (sectionKey?: string) => void;
 }) {
-  const completed = Object.values(project.analysis.stages).filter(
-    (stage) => stage.status === "complete",
+  const completed = DASHBOARD_FLOW_STAGES.filter(
+    (stage) => project.analysis.stages[stage].status === "complete",
+  ).length;
+  const completedAnalysisStages = STAGE_ORDER.filter(
+    (stage) => project.analysis.stages[stage].status === "complete",
   ).length;
   const pending = project.analysis.reviewItems.filter(isActionableReview).length;
   return (
@@ -1024,9 +1039,9 @@ function DashboardView({
           <span>项目状态</span>
           <strong>{statusLabel(project.status)}</strong>
           <div className="case-progress">
-            <i style={{ width: `${(completed / STAGE_ORDER.length) * 100}%` }} />
+            <i style={{ width: `${(completed / DASHBOARD_FLOW_STAGES.length) * 100}%` }} />
           </div>
-          <small>{completed} / {STAGE_ORDER.length} 个分析阶段</small>
+          <small>{completed} / {DASHBOARD_FLOW_STAGES.length} 个备本流程</small>
         </div>
       </header>
       <div className="dashboard-stats">
@@ -1073,8 +1088,8 @@ function DashboardView({
             <div>
               <h3>{pending > 0
                 ? `处理 ${pending} 项待确认`
-                : completed < STAGE_ORDER.length
-                  ? `继续分析（${completed} / ${STAGE_ORDER.length}）`
+                : completedAnalysisStages < STAGE_ORDER.length
+                  ? `继续分析（${completed} / ${DASHBOARD_FLOW_STAGES.length}）`
                   : "继续阅读"}</h3>
               <p>{project.lastReadingPosition
                 ? `上次阅读：${project.lastReadingPosition.sectionKey} · 第 ${project.lastReadingPosition.page} 页`
@@ -1084,7 +1099,7 @@ function DashboardView({
           </button>
         </div>
         <div className="dashboard-health">
-          <button onClick={() => onNavigate("analysis")}><span>分析进度</span><strong>{completed} / {STAGE_ORDER.length}</strong></button>
+          <button onClick={() => onNavigate("analysis")}><span>备本进度</span><strong>{completed} / {DASHBOARD_FLOW_STAGES.length}</strong></button>
           <button onClick={() => onNavigate("analysis")}><span>待确认</span><strong>{pending}</strong></button>
           <button onClick={() => onNavigate("analysis")}><span>分析错误</span><strong>{Object.values(project.analysis.stages).filter((stage) => stage.status === "error").length}</strong></button>
           <div><span>最后更新</span><strong>{new Date(project.updatedAt).toLocaleString("zh-CN")}</strong></div>
