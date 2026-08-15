@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import {
   deleteExtractedImages,
   loadExtractedImages,
@@ -287,12 +287,19 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
     ]);
   };
 
-  const addUploadedFiles = async (files: FileList | File[]) => {
+  const addUploadedFiles = useCallback(async (files: FileList | File[]) => {
     const additions: ExtractedAsset[] = [];
+    let unreadable = 0;
     let nextOrder = Math.max(0, ...assets.filter((asset) => asset.inPack).map((asset) => asset.packOrder ?? 0)) + 1;
     for (const file of Array.from(files)) {
       if (!file.type.startsWith("image/")) continue;
-      const bitmap = await createImageBitmap(file);
+      let bitmap: ImageBitmap;
+      try {
+        bitmap = await createImageBitmap(file);
+      } catch {
+        unreadable += 1;
+        continue;
+      }
       const url = URL.createObjectURL(file);
       objectUrlsRef.current.push(url);
       additions.push({
@@ -314,11 +321,31 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
       bitmap.close();
       nextOrder += 1;
     }
-    if (additions.length === 0) return;
+    if (additions.length === 0) {
+      if (unreadable > 0) setStatus("剪贴板中的图片无法读取，请重新截图后再按 Ctrl+V。");
+      return;
+    }
     setAssets((current) => [...current, ...additions]);
     await saveExtractedImages(additions.map(toRecord));
-    setStatus(`已把 ${additions.length} 张本地图片加入调查员资料包。`);
-  };
+    setStatus(`已把 ${additions.length} 张本地图片加入调查员资料包${unreadable > 0 ? `，另有 ${unreadable} 张无法读取` : ""}。`);
+  }, [assets, project.id]);
+
+  useEffect(() => {
+    const pasteImages = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, [contenteditable='true']")) return;
+      const files = Array.from(event.clipboardData?.items ?? []).flatMap((item) => {
+        if (!item.type.startsWith("image/")) return [];
+        const file = item.getAsFile();
+        return file ? [file] : [];
+      });
+      if (files.length === 0) return;
+      event.preventDefault();
+      void addUploadedFiles(files);
+    };
+    document.addEventListener("paste", pasteImages);
+    return () => document.removeEventListener("paste", pasteImages);
+  }, [addUploadedFiles]);
 
   const handleWorkspaceDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -437,7 +464,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
       {project.fileType !== "pdf" && <div className="notice">图片提取目前仅支持 PDF 原始资料。</div>}
       <section className="image-pack-section">
         <header>
-          <div><span className="eyebrow">INVESTIGATOR HANDOUTS</span><h3>调查员资料包</h3></div>
+          <div><span className="eyebrow">INVESTIGATOR HANDOUTS</span><h3>调查员资料包</h3><p className="image-pack-paste-hint">支持拖入图片；QQ 截图后直接按 Ctrl+V 粘贴。</p></div>
           <div className="image-pack-actions">
             <input ref={uploadRef} hidden multiple accept="image/*" type="file" onChange={(event: ChangeEvent<HTMLInputElement>) => {
               if (event.target.files) void addUploadedFiles(event.target.files);
@@ -453,10 +480,10 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={asset.url} alt={assetTitle(asset)} />
               <div>
-                <input aria-label="图片资料名称" value={asset.title ?? assetTitle(asset)} onChange={(event) => setAssets((current) => current.map((item) => item.id === asset.id ? { ...item, title: event.target.value } : item))} onBlur={() => {
+                <label className="image-pack-name"><span>资料名称（可编辑）</span><input aria-label="图片资料名称" value={asset.title ?? assetTitle(asset)} onChange={(event) => setAssets((current) => current.map((item) => item.id === asset.id ? { ...item, title: event.target.value } : item))} onBlur={() => {
                   const current = assets.find((item) => item.id === asset.id);
                   if (current) void saveExtractedImages([toRecord(current)]);
-                }} />
+                }} /></label>
                 <small>{asset.origin === "upload" ? "本地图片" : `PDF 第 ${asset.page} 页`}</small>
               </div>
               <div className="image-pack-order">
@@ -465,7 +492,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
                 <button title="移出资料包" onClick={() => updateAsset(asset.id, { inPack: false, packOrder: undefined })}>×</button>
               </div>
             </article>
-          )) : <div className="image-pack-empty"><strong>把图片拖到这里</strong><span>可从下方 PDF 图片库拖入，也可直接拖入本地截图。</span></div>}
+          )) : <div className="image-pack-empty"><strong>把图片拖到这里</strong><span>可从下方图片库拖入、拖入本地截图，或在 QQ 截图后按 Ctrl+V 粘贴。</span></div>}
         </div>
       </section>
       <section className="source-image-library">

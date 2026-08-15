@@ -33,6 +33,7 @@ import {
 import { EntityEditForm, EntityWindow } from "@/app/components/entity-window";
 import { SourceDocumentView } from "@/app/components/source-document-view";
 import { SourceImageExtractor } from "@/app/components/source-image-extractor";
+import { CoreCharacterRelations } from "@/app/components/core-character-relations";
 import {
   buildProjectEntities,
   buildActMarkdown,
@@ -3102,10 +3103,8 @@ export default function Home() {
     }),
   );
 
-  const renderedBookSections = markdownSections.map((section) => ({
-    key: section.key,
-    name: section.name,
-    content: markdownToReactBlocks({
+  const renderedBookSections = markdownSections.map((section) => {
+    const content = markdownToReactBlocks({
       markdown: section.markdown,
       sectionKey: section.key,
       entities,
@@ -3122,8 +3121,15 @@ export default function Home() {
         });
       },
       onEntityEdit: (entity) => setEditingEntityRef(entity.ref),
-    }),
-  }));
+    });
+    return {
+      key: section.key,
+      name: section.name,
+      content: section.key === "stage-characters" && activeProject
+        ? [...content, <CoreCharacterRelations key="core-character-relations" project={activeProject} onSelectPerson={(personId) => openEntityWindow(`person:${personId}`)} />]
+        : content,
+    };
+  });
 
   if (!activeProject) {
     if (view === "settings") {
