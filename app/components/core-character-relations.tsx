@@ -65,28 +65,25 @@ function layoutRelations(project: Project) {
 
 export function CoreCharacterRelations({ project, onSelectPerson }: { project: Project; onSelectPerson: (personId: string) => void }) {
   const graph = useMemo(() => layoutRelations(project), [project]);
+  if (graph.coreCount === 0) {
+    return <div className="core-relations-empty">暂无核心人物关系数据。</div>;
+  }
+
   return (
-    <section className="core-relations-book-page" data-keep-with-next="false">
-      <header><div><small>人物关系</small><h2>核心人物关系图</h2></div><p>滚轮缩放或使用右下角按钮；点击人物可打开资料卡。</p></header>
-      {graph.coreCount === 0 ? (
-        <div className="core-relations-empty">暂无核心人物关系数据。</div>
-      ) : (
-        <div className="core-relations-canvas" onPointerDown={(event) => event.stopPropagation()} onTouchStart={(event) => event.stopPropagation()}>
-          <ReactFlow
-            nodes={graph.nodes}
-            edges={graph.edges}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            fitView
-            fitViewOptions={{ padding: 0.2, maxZoom: 1.1 }}
-            minZoom={0.35}
-            maxZoom={1.8}
-            onNodeClick={(_, node) => onSelectPerson(node.id)}
-          >
-            <Controls showInteractive={false} position="bottom-right" />
-          </ReactFlow>
-        </div>
-      )}
-    </section>
+    <div className="core-relations-canvas">
+      <ReactFlow
+        nodes={graph.nodes}
+        edges={graph.edges}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        fitView
+        fitViewOptions={{ padding: 0.2, maxZoom: 1.1 }}
+        minZoom={0.35}
+        maxZoom={1.8}
+        onNodeClick={(_, node) => onSelectPerson(node.id)}
+      >
+        <Controls showInteractive={false} position="bottom-right" />
+      </ReactFlow>
+    </div>
   );
 }

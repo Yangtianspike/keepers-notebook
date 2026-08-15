@@ -1301,6 +1301,7 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [actView, setActView] = useState<"tree" | "detail">("detail");
+  const [characterView, setCharacterView] = useState<"relations" | "detail">("detail");
   const [selectedActId, setSelectedActId] = useState<string | null>(null);
   const [selectedActPersonId, setSelectedActPersonId] = useState<string | null>(
     null,
@@ -3014,6 +3015,7 @@ export default function Home() {
       setView("acts");
     } else setView(sectionKey as View);
     setActView("detail");
+    setCharacterView("detail");
   };
 
   const sectionMarkdown = activeProject?.kpNotes?.sectionMarkdown ?? {};
@@ -3125,9 +3127,7 @@ export default function Home() {
     return {
       key: section.key,
       name: section.name,
-      content: section.key === "stage-characters" && activeProject
-        ? [...content, <CoreCharacterRelations key="core-character-relations" project={activeProject} onSelectPerson={(personId) => openEntityWindow(`person:${personId}`)} />]
-        : content,
+      content,
     };
   });
 
@@ -3198,6 +3198,7 @@ export default function Home() {
                 setRequestedHeadingId(heading.id);
                 setBookEditing(false);
                 setActView("detail");
+                setCharacterView("detail");
                 if (heading.sectionKey.startsWith("acts:")) {
                   setSelectedActId(heading.sectionKey.slice("acts:".length));
                   setView("acts");
@@ -3291,8 +3292,12 @@ export default function Home() {
           {view === "dashboard" && (
             <DashboardView
               project={activeProject}
-              onNavigate={setView}
+              onNavigate={(target) => {
+                setCharacterView("detail");
+                setView(target);
+              }}
               onContinueReading={(sectionKey) => {
+                setCharacterView("detail");
                 setPendingReadingPosition(activeProject.lastReadingPosition);
                 if (sectionKey?.startsWith("acts:")) {
                   setSelectedActId(sectionKey.slice("acts:".length));
@@ -3358,6 +3363,7 @@ export default function Home() {
                 setPendingReadingPosition(undefined);
                 setBookEditing(false);
                 setActView("detail");
+                setCharacterView("detail");
                 if (target === "acts") {
                   setSelectedActId(prologueAct?.id ?? firstActId ?? null);
                 }
@@ -3366,6 +3372,8 @@ export default function Home() {
             />
           )}
           {STAGE_VIEWS.includes(view) && actView === "detail" && (
+            view !== "stage-characters" || characterView === "detail"
+          ) && (
             <>
             {bookEditing ? (
               <BookEditor
@@ -3406,6 +3414,7 @@ export default function Home() {
               editing={bookEditing}
               onEditingChange={setBookEditing}
               onOpenActTree={() => setActView("tree")}
+              onOpenCharacterRelations={() => setCharacterView("relations")}
               initialPage={pendingReadingPosition?.sectionKey === (
                 view === "acts" ? activeActSectionKey : view
               ) ? pendingReadingPosition.page : undefined}
@@ -3461,6 +3470,31 @@ export default function Home() {
                     setSelectedActId(actId);
                     setActView("detail");
                   }}
+                />
+              </div>
+            </div>
+          )}
+          {view === "stage-characters" && characterView === "relations" && (
+            <div className="content-stack">
+              <div className="act-tree-reader character-relations-reader">
+                <div className="act-tree-reader-toolbar">
+                  <div>
+                    <span className="eyebrow">CHARACTER RELATIONS</span>
+                    <h2>核心人物关系</h2>
+                  </div>
+                  <div className="character-relations-toolbar-actions">
+                    <span>滚轮缩放；点击人物可打开资料卡。</span>
+                    <button
+                      className="ghost-button compact"
+                      onClick={() => setCharacterView("detail")}
+                    >
+                      返回文本
+                    </button>
+                  </div>
+                </div>
+                <CoreCharacterRelations
+                  project={activeProject}
+                  onSelectPerson={(personId) => openEntityWindow(`person:${personId}`)}
                 />
               </div>
             </div>

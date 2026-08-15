@@ -652,6 +652,7 @@ export function StageView({
   onEditingChange,
   onPageChange,
   onOpenActTree,
+  onOpenCharacterRelations,
   initialPage,
   requestedHeadingId,
   onHeadingStateChange,
@@ -664,6 +665,7 @@ export function StageView({
   onEditingChange?: (editing: boolean) => void;
   onPageChange?: (sectionKey: string, page: number) => void;
   onOpenActTree?: () => void;
+  onOpenCharacterRelations?: () => void;
   initialPage?: number;
   requestedHeadingId?: string;
   onHeadingStateChange?: (
@@ -752,6 +754,9 @@ export function StageView({
   const pageNavigationSections = pageSections.map(sectionNavigationKey);
   const currentSectionKey = pageSections[Math.max(0, currentPage - 1)] ?? "";
   const actPage = currentSectionKey.startsWith("acts:");
+  const characterPage = currentSectionKey === "stage-characters" || (
+    displayMode === "double" && pageSections[currentPage] === "stage-characters"
+  );
   const activeHeading = headingPages.reduce<(BookHeading & { page: number }) | undefined>(
     (found, heading) => heading.page <= currentPage ? heading : found,
     undefined,
@@ -854,6 +859,7 @@ export function StageView({
       </form>
       {onEditingChange && <button className="cb-action-button book-editor-trigger" type="button" onClick={() => onEditingChange(true)}>编辑书页</button>}
       {actPage && onOpenActTree && <button className="cb-action-button" type="button" onClick={onOpenActTree}>幕树</button>}
+      {characterPage && onOpenCharacterRelations && <button className="cb-action-button" type="button" onClick={onOpenCharacterRelations}>人物关系</button>}
       <button className="cb-action-button" type="button" onClick={nextPage} disabled={isAnimating || (!hasNext && activeSectionIndex === sections.length - 1)}>下一页 →</button>
     </nav>
   );
