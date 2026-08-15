@@ -636,6 +636,7 @@ function AnalysisView({
   onShowLog,
   onOpenSettings,
   onNavigate,
+  onRerunStage,
 }: {
   project: Project;
   configReady: boolean;
@@ -650,6 +651,7 @@ function AnalysisView({
   onShowLog: () => void;
   onOpenSettings: () => void;
   onNavigate: (view: View) => void;
+  onRerunStage: (stage: AnalysisStage) => void;
 }) {
   const stages: Record<
     AnalysisStage,
@@ -739,6 +741,15 @@ function AnalysisView({
         <p>{stage.description}</p>
         {state.error && <p className="inline-error">{state.error}</p>}
         <div className="pipeline-actions">
+          {state.status === "error" && (
+            <button
+              className="cb-action-button compact"
+              disabled={!configReady || activeStage !== null}
+              onClick={() => onRerunStage(stage.id)}
+            >
+              重新分析此阶段
+            </button>
+          )}
           <span className="pipeline-state-icon" aria-label={stateLabel(state.status)}>
             {activeStage === stage.id ? (
               <span className="analysis-loading-spinner" />
@@ -2617,6 +2628,28 @@ export default function Home() {
     analysisAbortRef.current = controller;
     setActiveStage(pending.stage);
     setError("");
+    const continuingProject: Project = {
+      ...activeProject,
+      updatedAt: new Date().toISOString(),
+      analysis: {
+        ...activeProject.analysis,
+        stages: {
+          ...activeProject.analysis.stages,
+          [pending.stage]: { status: "running", updatedAt: new Date().toISOString() },
+        },
+        activityLog: [
+          ...activeProject.analysis.activityLog,
+          {
+            id: crypto.randomUUID(),
+            stage: pending.stage,
+            kind: "progress",
+            message: `${stageLabels[pending.stage]}已收到 KP 裁决，正在继续分析。`,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      },
+    };
+    await persistProject(continuingProject);
     try {
       const response = await fetch("/api/model", {
         method: "POST",
@@ -2651,10 +2684,10 @@ export default function Home() {
         payload.previousMessages
       ) {
         await persistProject({
-          ...activeProject,
+          ...continuingProject,
           updatedAt: new Date().toISOString(),
           analysis: {
-            ...activeProject.analysis,
+            ...continuingProject.analysis,
             pendingAskUserCall: {
               stage: pending.stage,
               callId: payload.callId,
@@ -2664,7 +2697,7 @@ export default function Home() {
               previousMessages: payload.previousMessages,
             },
             activityLog: [
-              ...activeProject.analysis.activityLog,
+              ...continuingProject.analysis.activityLog,
               {
                 id: crypto.randomUUID(),
                 stage: pending.stage,
@@ -2682,12 +2715,12 @@ export default function Home() {
         throw new Error("模型继续响应中没有完整分析结果。");
       }
       const resumedProject: Project = {
-        ...activeProject,
+        ...continuingProject,
         analysis: {
-          ...activeProject.analysis,
+          ...continuingProject.analysis,
           pendingAskUserCall: undefined,
           reviewItems: [
-            ...activeProject.analysis.reviewItems,
+            ...continuingProject.analysis.reviewItems,
             {
               id: crypto.randomUUID(),
               type: "event",
@@ -2701,7 +2734,7 @@ export default function Home() {
             },
           ],
           stages: {
-            ...activeProject.analysis.stages,
+            ...continuingProject.analysis.stages,
             [pending.stage]: { status: "running" },
           },
         },
@@ -2709,10 +2742,54 @@ export default function Home() {
       await runStage(pending.stage, resumedProject, payload.data);
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
+        await persistProject({
+          ...continuingProject,
+          status: "structured",
+          analysis: {
+            ...continuingProject.analysis,
+            stages: {
+              ...continuingProject.analysis.stages,
+              [pending.stage]: { status: "paused", updatedAt: new Date().toISOString() },
+            },
+            activityLog: [
+              ...continuingProject.analysis.activityLog,
+              {
+                id: crypto.randomUUID(),
+                stage: pending.stage,
+                kind: "paused",
+                message: `${stageLabels[pending.stage]}继续请求已暂停。`,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          },
+        });
         if (analysisAbortRef.current === controller) setActiveStage(null);
         return;
       }
-      setError(caught instanceof Error ? caught.message : "继续分析失败。");
+      const message = caught instanceof Error ? caught.message : "继续分析失败。";
+      await persistProject({
+        ...continuingProject,
+        status: "structured",
+        analysis: {
+          ...continuingProject.analysis,
+          pendingAskUserCall: undefined,
+          stages: {
+            ...continuingProject.analysis.stages,
+            [pending.stage]: { status: "error", error: message, updatedAt: new Date().toISOString() },
+          },
+          activityLog: [
+            ...continuingProject.analysis.activityLog,
+            {
+              id: crypto.randomUUID(),
+              stage: pending.stage,
+              kind: "error",
+              message: `${stageLabels[pending.stage]}继续分析失败：${message}`,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        },
+      });
+      setError(message);
     } finally {
       setIsContinuing(false);
       if (
@@ -3487,6 +3564,10 @@ export default function Home() {
                 void persistProject(resetProject).then(() => runStage("background", resetProject));
               }}
               onShowLog={() => setShowAnalysisLog(true)}
+              onRerunStage={(stage) => {
+                if (activeStage) return;
+                void runStage(stage);
+              }}
               onOpenSettings={() => setShowSettings(true)}
               onNavigate={(target) => {
                 setRequestedHeadingId(undefined);
@@ -3672,11 +3753,9 @@ export default function Home() {
         />
       ) : null}
       {isContinuing && (
-        <div className="analysis-loading-overlay" role="status" aria-live="polite">
-          <div>
-            <span className="analysis-loading-spinner" />
-            <strong>继续分析中...</strong>
-          </div>
+        <div className="analysis-progress-toast" role="status" aria-live="polite">
+          <span className="analysis-loading-spinner" />
+          <strong>已记录裁决，分析继续在后台进行…</strong>
         </div>
       )}
       {showSettings && (
