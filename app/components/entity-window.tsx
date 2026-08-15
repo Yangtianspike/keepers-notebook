@@ -175,8 +175,8 @@ export function EntityWindow({
             <div className="entity-window-actions">
               <button type="button" onClick={() => onJump(entity)}>跳转到书页</button>
               <button type="button" onClick={() => setEditing(true)}>编辑资料</button>
-              {entity.kind === "person" && (
-                <button type="button" onClick={() => onOpenRelations(entity.ref)}>查看人物关系</button>
+              {(entity.kind === "person" || entity.kind === "monster") && (
+                <button type="button" onClick={() => onOpenRelations(entity.ref)}>{entity.kind === "person" ? "查看人物关系" : "查看关联关系"}</button>
               )}
               {isCorePerson && (
                 <button type="button" onClick={onOpenCoreRelations}>完整关系图</button>

@@ -7,21 +7,20 @@ import { buildProjectEntities, entityFields, entityName, getRelatedEntities } fr
 import type { Project } from "@/lib/types";
 
 type Props = {
-  project: Project; entityRef: string; x: number; y: number; zIndex: number;
+  project: Project; entityRef: string; x: number; y: number; width: number; height: number; zIndex: number;
   onClose: () => void; onFocus: () => void; onMove: (x: number, y: number) => void;
-  onOpenPerson: (entityRef: string) => void;
+  onResize: (width: number, height: number) => void;
+  onOpenEntity: (entityRef: string) => void;
 };
 
-const WINDOW_WIDTH = 720;
-const WINDOW_HEIGHT = 560;
-
-export function PersonRelationWindow({ project, entityRef, x, y, zIndex, onClose, onFocus, onMove, onOpenPerson }: Props) {
+export function PersonRelationWindow({ project, entityRef, x, y, width, height, zIndex, onClose, onFocus, onMove, onResize, onOpenEntity }: Props) {
   const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
+  const resizeRef = useRef<{ pointerId: number; startX: number; startY: number; width: number; height: number } | null>(null);
   const entities = useMemo(() => buildProjectEntities(project), [project]);
-  const person = entities.find((candidate) => candidate.ref === entityRef && candidate.kind === "person");
+  const person = entities.find((candidate) => candidate.ref === entityRef);
   const graph = useMemo(() => {
     if (!person) return { nodes: [] as Node[], edges: [] as Edge[] };
-    const related = getRelatedEntities(entityRef, project).filter((item) => item.entity.kind === "person");
+    const related = getRelatedEntities(entityRef, project).filter((item) => person.kind !== "person" || item.entity.kind === "person");
     const radius = Math.max(180, Math.min(255, 125 + related.length * 11));
     const nodes: Node[] = [{
       id: person.ref, position: { x: 300, y: 210 }, sourcePosition: Position.Right, targetPosition: Position.Left,
@@ -37,9 +36,11 @@ export function PersonRelationWindow({ project, entityRef, x, y, zIndex, onClose
         data: { label: <span><strong>{entityName(item.entity)}</strong><em>{String(entityFields(item.entity).role || "身份待确认")}</em></span> },
       });
       edges.push({
-        id: item.relation.id, source: item.relation.sourceRef === entityRef ? person.ref : item.entity.ref,
-        target: item.relation.sourceRef === entityRef ? item.entity.ref : person.ref,
-        label: item.relation.label || "相关", markerEnd: { type: MarkerType.ArrowClosed },
+        id: item.relation.id, source: person.ref, target: item.entity.ref, type: "straight",
+        label: item.relation.sourceRef === entityRef
+          ? (item.relation.label || "相关")
+          : `← ${item.relation.label || "相关"}`,
+        markerEnd: { type: MarkerType.ArrowClosed },
         className: item.relation.level === "inference" ? "is-inference" : "",
         labelBgPadding: [5, 3], labelBgBorderRadius: 3,
       });
@@ -50,23 +51,38 @@ export function PersonRelationWindow({ project, entityRef, x, y, zIndex, onClose
   useEffect(() => {
     const move = (event: PointerEvent) => {
       const drag = dragRef.current;
-      if (!drag || drag.pointerId !== event.pointerId) return;
-      onMove(Math.max(8, Math.min(window.innerWidth - WINDOW_WIDTH - 8, event.clientX - drag.offsetX)), Math.max(8, Math.min(window.innerHeight - WINDOW_HEIGHT - 8, event.clientY - drag.offsetY)));
+      if (drag?.pointerId === event.pointerId) {
+        onMove(Math.max(8, Math.min(window.innerWidth - width - 8, event.clientX - drag.offsetX)), Math.max(8, Math.min(window.innerHeight - height - 8, event.clientY - drag.offsetY)));
+      }
+      const resize = resizeRef.current;
+      if (resize?.pointerId === event.pointerId) {
+        onResize(
+          Math.max(560, Math.min(window.innerWidth - x - 8, resize.width + event.clientX - resize.startX)),
+          Math.max(420, Math.min(window.innerHeight - y - 8, resize.height + event.clientY - resize.startY)),
+        );
+      }
     };
-    const up = (event: PointerEvent) => { if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null; };
+    const up = (event: PointerEvent) => {
+      if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
+      if (resizeRef.current?.pointerId === event.pointerId) resizeRef.current = null;
+    };
     window.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("pointercancel", up, true);
     return () => { window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("pointercancel", up, true); };
-  }, [onMove]);
+  }, [height, onMove, onResize, width, x, y]);
   if (!person) return null;
 
-  return <article className="person-relation-window parchment-window" role="dialog" aria-modal="false" aria-label={`${entityName(person)}的人物关系`} onPointerDown={onFocus} style={{ left: x, top: y, zIndex }}>
+  return <article className="person-relation-window parchment-window" role="dialog" aria-modal="false" aria-label={`${entityName(person)}的关系`} onPointerDown={onFocus} style={{ left: x, top: y, width, height, zIndex }}>
     <header onPointerDown={(event) => {
       if ((event.target as HTMLElement).closest("button")) return;
       event.preventDefault(); onFocus();
       dragRef.current = { pointerId: event.pointerId, offsetX: event.clientX - x, offsetY: event.clientY - y };
-    }}><div><small>人物关系</small><h2>{entityName(person)}</h2></div><button type="button" aria-label="关闭人物关系窗口" onClick={onClose}>×</button></header>
+    }}><div><small>{person.kind === "person" ? "人物关系" : "实体关系"}</small><h2>{entityName(person)}</h2></div><button type="button" aria-label="关闭关系窗口" onClick={onClose}>×</button></header>
     <div className="person-relation-flow">
-      {graph.nodes.length > 1 ? <ReactFlow nodes={graph.nodes} edges={graph.edges} nodesDraggable={false} nodesConnectable={false} fitView fitViewOptions={{ padding: .22, maxZoom: 1.05 }} minZoom={.35} maxZoom={1.7} onNodeClick={(_, node) => onOpenPerson(node.id)}><Controls showInteractive={false} position="bottom-right" /></ReactFlow> : <p>当前分析结果中暂无与此人物直接相连的语义关系。</p>}
+      {graph.nodes.length > 1 ? <ReactFlow nodes={graph.nodes} edges={graph.edges} nodesDraggable={false} nodesConnectable={false} fitView fitViewOptions={{ padding: .22, maxZoom: 1.05 }} minZoom={.35} maxZoom={1.7} onNodeClick={(_, node) => onOpenEntity(node.id)}><Controls showInteractive={false} position="bottom-right" /></ReactFlow> : <p>当前分析结果中暂无与此实体直接相连的语义关系。</p>}
     </div>
+    <button className="person-relation-resize-handle" type="button" aria-label="调整关系窗口大小" onPointerDown={(event) => {
+      event.preventDefault(); event.stopPropagation(); onFocus();
+      resizeRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, width, height };
+    }} />
   </article>;
 }

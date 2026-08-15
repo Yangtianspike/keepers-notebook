@@ -107,6 +107,8 @@ type FloatingPersonRelationWindow = {
   entityRef: string;
   x: number;
   y: number;
+  width: number;
+  height: number;
   zIndex: number;
 };
 
@@ -3031,6 +3033,8 @@ export default function Home() {
         entityRef,
         x: Math.max(8, Math.min(window.innerWidth - width - 8, 110 + offset)),
         y: Math.max(8, 90 + offset),
+        width,
+        height: Math.min(560, window.innerHeight - 16),
         zIndex,
       }];
     });
@@ -3228,6 +3232,7 @@ export default function Home() {
       },
       onEntityEdit: (entity) => setEditingEntityRef(entity.ref),
       onOpenCoreRelations: openCoreCharacterRelations,
+      onOpenEntityRelations: (entity) => openPersonRelationWindow(entity.ref),
     });
     return {
       key: section.key,
@@ -3760,11 +3765,14 @@ export default function Home() {
           entityRef={floatingWindow.entityRef}
           x={floatingWindow.x}
           y={floatingWindow.y}
+          width={floatingWindow.width}
+          height={floatingWindow.height}
           zIndex={floatingWindow.zIndex}
           onClose={() => setPersonRelationWindows((current) => current.filter((item) => item.id !== floatingWindow.id))}
           onFocus={() => setPersonRelationWindows((current) => current.map((item) => item.id === floatingWindow.id ? { ...item, zIndex: ++floatingWindowZRef.current } : item))}
           onMove={(x, y) => setPersonRelationWindows((current) => current.map((item) => item.id === floatingWindow.id ? { ...item, x, y } : item))}
-          onOpenPerson={openEntityWindow}
+          onResize={(width, height) => setPersonRelationWindows((current) => current.map((item) => item.id === floatingWindow.id ? { ...item, width, height } : item))}
+          onOpenEntity={openEntityWindow}
         />
       ))}
       {toast && <div className="toast">{toast}</div>}

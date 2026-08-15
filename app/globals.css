@@ -4196,8 +4196,6 @@ button:disabled {
 .person-relation-window {
   position: fixed;
   display: grid;
-  width: min(720px, calc(100vw - 16px));
-  height: min(560px, calc(100vh - 16px));
   overflow: hidden;
   grid-template-rows: auto minmax(0, 1fr);
   border: 1px solid #9a7b58;
@@ -4207,6 +4205,7 @@ button:disabled {
   padding: 20px 24px 24px;
   box-shadow: 0 28px 90px rgba(0,0,0,.68);
 }
+.person-relation-resize-handle { position: absolute; right: 2px; bottom: 2px; width: 22px; height: 22px; border: 0; background: linear-gradient(135deg, transparent 48%, #7b4c2b 50%, #7b4c2b 58%, transparent 60%, transparent 68%, #7b4c2b 70%, #7b4c2b 78%, transparent 80%); cursor: nwse-resize; touch-action: none; }
 .person-relation-window > header { display: flex; align-items: start; justify-content: space-between; border-bottom: 1px solid rgba(123,33,30,.28); padding-bottom: 12px; cursor: move; touch-action: none; user-select: none; }
 .person-relation-window > header small { color: #8d5e38; letter-spacing: .14em; }
 .person-relation-window > header h2 { margin: 3px 0 0; }

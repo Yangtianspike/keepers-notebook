@@ -35,6 +35,7 @@ type MarkdownDocumentProps = {
   onEntityImageChange?: (entity: EntityCard, image: string) => void;
   onEntityEdit?: (entity: EntityCard) => void;
   onOpenCoreRelations?: () => void;
+  onOpenEntityRelations?: (entity: EntityCard) => void;
   sectionKey?: string;
 };
 
@@ -253,6 +254,7 @@ function CharacterCardRenderer({
   onEntityImageChange,
   onEntityEdit,
   onOpenCoreRelations,
+  onOpenEntityRelations,
 }: {
   entity: EntityCard;
   importance: "core" | "important" | "minor";
@@ -261,6 +263,7 @@ function CharacterCardRenderer({
   onEntityImageChange?: MarkdownDocumentProps["onEntityImageChange"];
   onEntityEdit?: MarkdownDocumentProps["onEntityEdit"];
   onOpenCoreRelations?: MarkdownDocumentProps["onOpenCoreRelations"];
+  onOpenEntityRelations?: MarkdownDocumentProps["onOpenEntityRelations"];
 }) {
   const fields = entityFields(entity);
   const image = entityImage(entity);
@@ -367,6 +370,9 @@ function CharacterCardRenderer({
           {importance === "core" && entity.kind === "person" && (
             <button className="character-card-action" type="button" onClick={onOpenCoreRelations}>关系图</button>
           )}
+          {importance === "core" && entity.kind === "monster" && (
+            <button className="character-card-action" type="button" onClick={() => onOpenEntityRelations?.(entity)}>关系图</button>
+          )}
           {importance === "core" && <button className="character-card-action" type="button" onClick={() => onEntityEdit?.(entity)}>编辑</button>}
         </div>
       </header>
@@ -403,7 +409,7 @@ export function markdownHeadingId(sectionKey: string, blockIndex: number) {
   return `${sectionKey}:heading:${blockIndex}`;
 }
 
-export function markdownToReactBlocks({ markdown, entities = [], onEntityAction, onEntityImageChange, onEntityEdit, onOpenCoreRelations, sectionKey = "document" }: MarkdownDocumentProps) {
+export function markdownToReactBlocks({ markdown, entities = [], onEntityAction, onEntityImageChange, onEntityEdit, onOpenCoreRelations, onOpenEntityRelations, sectionKey = "document" }: MarkdownDocumentProps) {
   return parseMarkdownBlocks(markdown).flatMap((block, index) => {
     const content = block.text ? inlineMarkdown(block.text, entities, onEntityAction) : null;
     const common = { className: "markdown-block", "data-keep-with-next": block.kind === "heading" ? "true" : undefined };
@@ -459,7 +465,7 @@ export function markdownToReactBlocks({ markdown, entities = [], onEntityAction,
           stats.attacks?.length
         ));
         return [
-          <CharacterCardRenderer entity={entity} importance="core" segment="overview" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} onEntityEdit={onEntityEdit} onOpenCoreRelations={onOpenCoreRelations} key={`${index}-overview`} />,
+          <CharacterCardRenderer entity={entity} importance="core" segment="overview" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} onEntityEdit={onEntityEdit} onOpenCoreRelations={onOpenCoreRelations} onOpenEntityRelations={onOpenEntityRelations} key={`${index}-overview`} />,
           ...(hasDetails ? [<CharacterCardRenderer entity={entity} importance="core" segment="details" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} onEntityEdit={onEntityEdit} key={`${index}-details`} />] : []),
           ...(hasStats ? [<CharacterCardRenderer entity={entity} importance="core" segment="stats" onEntityAction={onEntityAction} onEntityImageChange={onEntityImageChange} onEntityEdit={onEntityEdit} key={`${index}-stats`} />] : []),
         ];
