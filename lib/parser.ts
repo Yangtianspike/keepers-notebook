@@ -23,7 +23,7 @@ function detectPrintedPage(text: string): string | undefined {
   return match?.[1];
 }
 
-function buildChapters(pages: DocumentPage[]): Chapter[] {
+function discoveredTextHeadings(pages: DocumentPage[]) {
   const discovered: Array<{ title: string; page: number }> = [];
   for (const page of pages) {
     const lines = page.text
@@ -53,6 +53,20 @@ function buildChapters(pages: DocumentPage[]): Chapter[] {
     }
   }
 
+  return discovered;
+}
+
+function buildChapters(
+  pages: DocumentPage[],
+  outline: Array<{ title: string; page: number }> = [],
+): Chapter[] {
+  const discovered = [...outline];
+  discoveredTextHeadings(pages).forEach((candidate) => {
+    if (!discovered.some((item) => item.page === candidate.page && item.title === candidate.title)) {
+      discovered.push(candidate);
+    }
+  });
+  discovered.sort((left, right) => left.page - right.page);
   if (discovered.length === 0) {
     return [
       {
@@ -89,6 +103,32 @@ async function parsePdf(file: File): Promise<ParsedDocument> {
   const data = new Uint8Array(await file.arrayBuffer());
   const document = await pdfjs.getDocument({ data }).promise;
   const pages: DocumentPage[] = [];
+  const outlineEntries: Array<{ title: string; page: number }> = [];
+
+  const outline = await document.getOutline();
+  const visitOutline = async (items: NonNullable<typeof outline>) => {
+    for (const item of items) {
+      try {
+        const destination = typeof item.dest === "string"
+          ? await document.getDestination(item.dest)
+          : item.dest;
+        const reference = destination?.[0];
+        if (reference) {
+          const page = typeof reference === "number"
+            ? reference + 1
+            : await document.getPageIndex(reference) + 1;
+          const title = cleanLine(item.title);
+          if (title && !outlineEntries.some((entry) => entry.title === title && entry.page === page)) {
+            outlineEntries.push({ title, page });
+          }
+        }
+      } catch {
+        // Broken destinations are common in edited PDFs; keep reading siblings.
+      }
+      if (item.items.length > 0) await visitOutline(item.items);
+    }
+  };
+  if (outline) await visitOutline(outline);
 
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
     const page = await document.getPage(pageNumber);
@@ -131,7 +171,7 @@ async function parsePdf(file: File): Promise<ParsedDocument> {
     documentText: pages
       .map((page) => `[[PDF_PAGE:${page.pageNumber}]]\n${page.text}`)
       .join("\n\n"),
-    chapters: buildChapters(pages),
+    chapters: buildChapters(pages, outlineEntries),
   };
 }
 

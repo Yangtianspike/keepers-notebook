@@ -16,6 +16,7 @@ import {
   providerError,
   providerHeaders,
 } from "@/lib/provider-adapter";
+import { parseLooseJsonObject } from "@/lib/json-repair";
 
 type RequestBody = {
   action: "test" | "analyze" | "continue" | "embedTest" | "embed";
@@ -239,14 +240,7 @@ ${
 }
 
 function parseJsonContent(content: string): unknown {
-  const trimmed = content.trim();
-  const withoutFence = trimmed
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "");
-  const start = withoutFence.indexOf("{");
-  const end = withoutFence.lastIndexOf("}");
-  if (start < 0 || end < start) throw new Error("模型没有返回 JSON 对象。");
-  return JSON.parse(withoutFence.slice(start, end + 1));
+  return parseLooseJsonObject(content);
 }
 
 export async function POST(request: NextRequest) {

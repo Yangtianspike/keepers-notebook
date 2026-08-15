@@ -14,6 +14,7 @@ import {
   mergeExplicitCoCStats,
 } from "@/lib/coc-stat-extractor";
 import { ensureVectorIndex, probeEmbedding } from "@/lib/embedding";
+import { parseLooseJsonObject } from "@/lib/json-repair";
 import {
   flagUnverifiedSourceRefs,
   verifySourceRefs,
@@ -334,15 +335,11 @@ function NotebookToc({
 }
 
 function parseModelJson(content: string): Record<string, unknown> {
-  const clean = content
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "");
-  const start = clean.indexOf("{");
-  const end = clean.lastIndexOf("}");
-  if (start < 0 || end < start)
-    throw new Error("模型流式输出未形成完整 JSON。请重试该阶段。");
-  return JSON.parse(clean.slice(start, end + 1)) as Record<string, unknown>;
+  try {
+    return parseLooseJsonObject(content);
+  } catch {
+    throw new Error("模型流式输出未形成可修复的完整 JSON。请重试该阶段。");
+  }
 }
 
 function formatBytes(bytes: number) {
@@ -502,11 +499,14 @@ function StructureView({
   project,
   onChange,
   onConfirm,
+  onRefresh,
 }: {
   project: Project;
   onChange: (project: Project) => void;
   onConfirm: () => void;
+  onRefresh: () => Promise<void>;
 }) {
+  const [refreshing, setRefreshing] = useState(false);
   const updateChapter = (
     id: string,
     patch: Partial<Project["chapters"][number]>,
@@ -598,9 +598,23 @@ function StructureView({
           </strong>
           <span>确认后仍可回来调整；重新分析由你主动触发。</span>
         </div>
-        <button className="dark-outline-button" onClick={onConfirm}>
-          确认结构并进入分析
-        </button>
+        <div className="inline-actions">
+          {project.fileType === "pdf" && (
+            <button
+              className="dark-outline-button"
+              disabled={refreshing}
+              onClick={() => {
+                setRefreshing(true);
+                void onRefresh().finally(() => setRefreshing(false));
+              }}
+            >
+              {refreshing ? "正在读取…" : "重新读取 PDF 书签"}
+            </button>
+          )}
+          <button className="dark-outline-button" onClick={onConfirm}>
+            确认结构并进入分析
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -3406,6 +3420,23 @@ export default function Home() {
             <StructureView
               project={activeProject}
               onChange={persistProject}
+              onRefresh={async () => {
+                const blob = await loadSourceFile(activeProject.id);
+                if (!blob) throw new Error("未找到原始文档，无法重新读取书签。");
+                const parsed = await parseScenarioFile(new File([blob], activeProject.fileName, {
+                  type: blob.type,
+                }));
+                await persistProject({
+                  ...activeProject,
+                  documentText: parsed.documentText,
+                  pages: parsed.pages,
+                  chapters: parsed.chapters,
+                  updatedAt: new Date().toISOString(),
+                });
+                setToast(parsed.chapters.length > 1
+                  ? `已读取 ${parsed.chapters.length} 个章节。`
+                  : "PDF 未提供可用书签，已按正文标题重新识别。");
+              }}
               onConfirm={() => {
                 void persistProject({
                   ...activeProject,
