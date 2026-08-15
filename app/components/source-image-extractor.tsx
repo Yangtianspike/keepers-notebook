@@ -512,7 +512,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
       {project.fileType === "markdown" && <div className="notice">Markdown 没有内嵌图片容器，可直接把图片拖入或粘贴到资料包工作区。</div>}
       <section className="image-pack-section">
         <header>
-          <div><span className="eyebrow">INVESTIGATOR HANDOUTS</span><h3>调查员资料包</h3><p className="image-pack-paste-hint">支持拖入图片；QQ 截图后直接按 Ctrl+V 粘贴。</p></div>
+          <div><span className="eyebrow">INVESTIGATOR HANDOUTS</span><h3>调查员资料包</h3><p className="image-pack-paste-hint">支持拖入图片；使用截图工具后直接按 Ctrl+V 粘贴。</p></div>
           <div className="image-pack-actions">
             <input ref={uploadRef} hidden multiple accept="image/*" type="file" onChange={(event: ChangeEvent<HTMLInputElement>) => {
               if (event.target.files) void addUploadedFiles(event.target.files);
@@ -540,7 +540,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
                 <button title="移出资料包" onClick={() => updateAsset(asset.id, { inPack: false, packOrder: undefined })}>×</button>
               </div>
             </article>
-          )) : <div className="image-pack-empty"><strong>把图片拖到这里</strong><span>可从下方图片库拖入、拖入本地截图，或在 QQ 截图后按 Ctrl+V 粘贴。</span></div>}
+          )) : <div className="image-pack-empty"><strong>把图片拖到这里</strong><span>可从下方图片库拖入、拖入本地截图，或使用截图工具后按 Ctrl+V 粘贴。</span></div>}
         </div>
       </section>
       <section className="source-image-library">
