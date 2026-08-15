@@ -3347,7 +3347,16 @@ export default function Home() {
               }}
               onShowLog={() => setShowAnalysisLog(true)}
               onOpenSettings={() => setShowSettings(true)}
-              onNavigate={setView}
+              onNavigate={(target) => {
+                setRequestedHeadingId(undefined);
+                setPendingReadingPosition(undefined);
+                setBookEditing(false);
+                setActView("detail");
+                if (target === "acts") {
+                  setSelectedActId(prologueAct?.id ?? firstActId ?? null);
+                }
+                setView(target);
+              }}
             />
           )}
           {STAGE_VIEWS.includes(view) && actView === "detail" && (
