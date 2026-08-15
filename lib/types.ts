@@ -503,6 +503,7 @@ export type Project = {
 };
 
 export type ModelConfig = {
+  protocol?: "openai" | "anthropic" | "gemini" | "ollama";
   baseUrl: string;
   model: string;
   confirmMode?: "tier1" | "tier2" | "tier3";

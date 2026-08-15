@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { AnalysisStage } from "@/lib/types";
+import type { AnalysisStage, ModelConfig } from "@/lib/types";
 import {
   buildContinueRequest,
   buildModelRequest,
@@ -8,11 +8,19 @@ import {
   type ModelMessage,
   type ModelRawResponse,
 } from "@/lib/model-adapter";
+import {
+  adaptProviderRequest,
+  normalizeProviderResponse,
+  protocolFor,
+  providerEndpoint,
+  providerError,
+  providerHeaders,
+} from "@/lib/provider-adapter";
 
 type RequestBody = {
   action: "test" | "analyze" | "continue" | "embedTest" | "embed";
   apiKey: string;
-  config: { baseUrl: string; model: string };
+  config: ModelConfig;
   stage?: AnalysisStage;
   confirmMode?: ConfirmMode;
   callId?: string;
@@ -37,17 +45,6 @@ type RequestBody = {
     monsterSkeleton?: unknown;
   };
 };
-
-function endpointFor(baseUrl: string, path = "/chat/completions"): string {
-  const parsed = new URL(baseUrl);
-  const local = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
-  if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && local)) {
-    throw new Error("接口地址必须使用 HTTPS；本机模型可以使用 localhost。");
-  }
-  const normalized = baseUrl.replace(/\/+$/, "");
-  const suffix = path.replace(/^\//, "");
-  return normalized.endsWith(path) ? normalized : `${normalized.replace(/\/(?:chat\/completions|embeddings)$/, "")}/${suffix}`;
-}
 
 function isDeepSeekEndpoint(endpoint: string): boolean {
   const hostname = new URL(endpoint).hostname.toLowerCase();
@@ -221,7 +218,7 @@ importance 为 key、secondary、other。对没有替代入口或依赖特定技
 ${
   phase === "detail"
     ? `基于已生成的幕骨架，为每一幕补全详细描述、人物行动和阶段性重要事件点。保留骨架中的 id、sequence、人物、线索和分支。关键事件类型只能是 boss、death、revelation、checkpoint；Boss 事件尽量给出 STR/CON/DEX/INT/POW/HP/MP 和 SAN 损失。personActions 必须覆盖该幕全部 personIds：依据明确原文总结时标记 source 并附 sources；只能由上下文可靠推断时标记 inference；没有发现明确行动时 summary 写“本幕无明确行动”、provenance 写 none、sources 为空，不得编造。`
-    : `基于前五阶段的全局分析生成序幕并把剧本划分为多个幕。prologue 必须包含可朗读开场、玩家初始处境、第一个冲突、氛围感官建议和导入技巧；它是幕章节的一部分，不是独立分析阶段。每幕给出稳定 id、标题、序号、地点、时间、涉及人物 id、涉及怪物 id、涉及线索 id和幕末分支。分支必须有稳定 id、条件和下一幕 id；结局分支标记 isEnding。${phase === "skeleton" ? "本次只生成幕骨架，description 可简短且 keyEvents 为空数组。" : "能力足够时同时补全 description 和 keyEvents。"}`
+    : `基于前五阶段的全局分析划分剧本原有的幕。识别标题中明确存在的“序幕”“楔子”或开场幕；不得额外创造独立序幕。prologue 只保存要合并进该原始开场幕的主持辅助内容，必须包含可朗读开场、玩家初始处境、第一个冲突、氛围感官建议和导入技巧；如果原文没有序幕，则这些内容合并进第一幕。每幕给出稳定 id、标题、序号、地点、时间、涉及人物 id、涉及怪物 id、涉及线索 id和幕末分支。分支必须有稳定 id、条件和下一幕 id；结局分支标记 isEnding。${phase === "skeleton" ? "本次只生成幕骨架，description 可简短且 keyEvents 为空数组。" : "能力足够时同时补全 description 和 keyEvents。"}`
 }
 返回：
 {
@@ -255,18 +252,19 @@ function parseJsonContent(content: string): unknown {
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as RequestBody;
-    if (!body.apiKey?.trim()) {
-      return NextResponse.json({ error: "请填写 API Key。" }, { status: 400 });
-    }
     if (!body.config?.baseUrl || !body.config?.model) {
       return NextResponse.json(
         { error: "请填写接口地址和模型名称。" },
         { status: 400 },
       );
     }
+    const protocol = protocolFor(body.config);
+    if (protocol !== "ollama" && !body.apiKey?.trim()) {
+      return NextResponse.json({ error: "请填写 API Key。" }, { status: 400 });
+    }
 
     const isEmbeddingAction = body.action === "embedTest" || body.action === "embed";
-    const endpoint = endpointFor(body.config.baseUrl, isEmbeddingAction ? "/embeddings" : "/chat/completions");
+    const endpoint = providerEndpoint(body.config, body.apiKey ?? "", isEmbeddingAction);
     const isTest = body.action === "test";
     const isContinue = body.action === "continue";
     if (
@@ -281,6 +279,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (isEmbeddingAction) {
+      if (protocol === "anthropic" || protocol === "gemini") {
+        return body.action === "embedTest"
+          ? NextResponse.json({ supported: false })
+          : NextResponse.json({ error: "当前协议未配置嵌入接口。" }, { status: 400 });
+      }
       try {
         const input = body.action === "embedTest" ? "test" : (body.texts ?? []);
         if (body.action === "embed" && !Array.isArray(body.texts)) {
@@ -288,11 +291,15 @@ export async function POST(request: NextRequest) {
         }
         const response = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${body.apiKey}` },
-          body: JSON.stringify({ model: body.embeddingModel ?? "text-embedding-3-small", input }),
+          headers: providerHeaders(body.config, body.apiKey ?? ""),
+          body: JSON.stringify(protocol === "ollama"
+            ? { model: body.embeddingModel ?? "nomic-embed-text", input }
+            : { model: body.embeddingModel ?? "text-embedding-3-small", input }),
         });
-        const raw = (await response.json()) as { data?: Array<{ embedding?: number[] }> };
-        const vectors = raw.data?.map((item) => item.embedding).filter((vector): vector is number[] => Array.isArray(vector)) ?? [];
+        const raw = (await response.json()) as { data?: Array<{ embedding?: number[] }>; embeddings?: number[][] };
+        const vectors = protocol === "ollama"
+          ? (Array.isArray(raw.embeddings) ? raw.embeddings : [])
+          : raw.data?.map((item) => item.embedding).filter((vector): vector is number[] => Array.isArray(vector)) ?? [];
         if (!response.ok || !vectors.length) {
           if (body.action === "embedTest") return NextResponse.json({ supported: false });
           return NextResponse.json({ error: "向量接口不可用。" }, { status: 502 });
@@ -340,12 +347,15 @@ ${selectedText}
 </scenario>`;
 
     const confirmMode = body.confirmMode ?? "tier3";
-    // 人物详情会按小批次生成，不应在批次内部再次触发确认工具；
-    // 人物识别阶段仍保留用户所选的三档确认模式。
-    const effectiveConfirmMode =
-      body.stage === "characters" && body.phase === "detail"
-        ? "tier3"
+    const providerConfirmMode =
+      (protocol === "gemini" || protocol === "ollama") && confirmMode === "tier1"
+        ? "tier2"
         : confirmMode;
+    // Detail batches are merged by the client. They use the stage-barrier
+    // fallback so an unresolved batch cannot advance the pipeline, while the
+    // top-level call for every stage supports true pause/continue.
+    const effectiveConfirmMode =
+      isTest || body.phase === "detail" ? "tier3" : providerConfirmMode;
     const initialMessages: ModelMessage[] = [
       {
         role: "system",
@@ -360,14 +370,14 @@ ${selectedText}
           body.callId as string,
           body.answer as string,
           body.previousMessages as ModelMessage[],
-          confirmMode,
+          effectiveConfirmMode,
         )
       : buildModelRequest(
           body.stage as AnalysisStage,
           effectiveConfirmMode,
           initialMessages,
         );
-    const requestStream = Boolean(body.stream) && effectiveConfirmMode === "tier3";
+    const requestStream = protocol === "openai" && Boolean(body.stream) && effectiveConfirmMode === "tier3";
     const modelRequest: Record<string, unknown> = {
       model: body.config.model,
       temperature: 0.1,
@@ -387,13 +397,15 @@ ${selectedText}
       }
     }
 
+    const providerRequest = adaptProviderRequest(
+      modelRequest as Parameters<typeof adaptProviderRequest>[0],
+      body.config,
+      effectiveConfirmMode,
+    );
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${body.apiKey}`,
-      },
-      body: JSON.stringify(modelRequest),
+      headers: providerHeaders(body.config, body.apiKey ?? ""),
+      body: JSON.stringify(providerRequest),
     });
 
     if (requestStream && response.ok && response.body) {
@@ -406,7 +418,8 @@ ${selectedText}
       });
     }
 
-    const raw = (await response.json()) as ModelRawResponse & {
+    const providerRaw = (await response.json()) as Record<string, unknown>;
+    const raw = normalizeProviderResponse(providerRaw, body.config) as ModelRawResponse & {
       error?: { message?: string } | string;
       choices?: Array<{
         finish_reason?: string | null;
@@ -422,10 +435,7 @@ ${selectedText}
       }>;
     };
     if (!response.ok) {
-      const message =
-        typeof raw.error === "string"
-          ? raw.error
-          : raw.error?.message || `模型服务返回 ${response.status}`;
+      const message = providerError(providerRaw) || `模型服务返回 ${response.status}`;
       return NextResponse.json({ error: message }, { status: response.status });
     }
 

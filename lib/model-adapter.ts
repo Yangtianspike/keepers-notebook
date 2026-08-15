@@ -29,6 +29,7 @@ export type ModelStreamEvent =
 
 export type ModelRawResponse = {
   choices?: Array<{
+    finish_reason?: string | null;
     message?: {
       content?: string | null;
       tool_calls?: ModelToolCall[];
@@ -68,7 +69,7 @@ export const ASK_USER_TOOL_DEF = {
 };
 
 export const ASK_USER_JSON_INSTRUCTION = `
-当你在人物识别或线索分析中遇到信息冲突、不确定信息或需要 KP 裁决时，立即停止当前输出，并且只输出：
+当你在当前分析的任何位置遇到信息冲突、不确定信息或需要 KP 裁决时，立即停止当前输出，并且只输出：
 <<ASK_USER>>{"question":"向 KP 提出的问题","options":["选项一","选项二"],"context":"需要裁决的原因与原文依据"}<</ASK_USER>>
 收到“KP 裁决”消息后，依据裁决继续完成原定 JSON 输出。不要把 ASK_USER 标记放进最终 JSON。`;
 
@@ -99,7 +100,6 @@ export function buildModelRequest(
     previousMessages.length > 0
       ? previousMessages
       : [{ role: "system" as const, content: `当前分析阶段：${stage}` }];
-  if (stage !== "characters" && stage !== "clues") return { messages };
   if (confirmMode === "tier1") {
     return { messages, tools: [ASK_USER_TOOL_DEF], tool_choice: "auto" };
   }

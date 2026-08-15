@@ -93,21 +93,29 @@ async function parsePdf(file: File): Promise<ParsedDocument> {
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
     const page = await document.getPage(pageNumber);
     const content = await page.getTextContent();
-    let previousY: number | undefined;
-    const lines: string[] = [];
-    let currentLine = "";
-
-    for (const item of content.items) {
-      if (!("str" in item)) continue;
-      const y = item.transform?.[5] ?? 0;
-      if (previousY !== undefined && Math.abs(y - previousY) > 2) {
-        if (currentLine.trim()) lines.push(cleanLine(currentLine));
-        currentLine = "";
-      }
-      currentLine += `${item.str} `;
-      previousY = y;
-    }
-    if (currentLine.trim()) lines.push(cleanLine(currentLine));
+    const positioned = content.items.flatMap((item) => {
+      if (!("str" in item) || !item.str.trim()) return [];
+      return [{
+        text: item.str,
+        x: item.transform?.[4] ?? 0,
+        y: item.transform?.[5] ?? 0,
+      }];
+    }).sort((left, right) => {
+      const rowDifference = right.y - left.y;
+      return Math.abs(rowDifference) > 2 ? rowDifference : left.x - right.x;
+    });
+    const rows: Array<{ y: number; items: typeof positioned }> = [];
+    positioned.forEach((item) => {
+      const row = rows.find((candidate) => Math.abs(candidate.y - item.y) <= 2);
+      if (row) row.items.push(item);
+      else rows.push({ y: item.y, items: [item] });
+    });
+    const lines = rows
+      .sort((left, right) => right.y - left.y)
+      .map((row) => cleanLine(
+        row.items.sort((left, right) => left.x - right.x).map((item) => item.text).join(" "),
+      ))
+      .filter(Boolean);
     const text = lines.join("\n");
     pages.push({
       pageNumber,

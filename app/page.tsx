@@ -32,6 +32,7 @@ import {
 } from "@/app/components/markdown-document";
 import { EntityEditForm, EntityWindow } from "@/app/components/entity-window";
 import { SourceDocumentView } from "@/app/components/source-document-view";
+import { SourceImageExtractor } from "@/app/components/source-image-extractor";
 import {
   buildProjectEntities,
   buildActMarkdown,
@@ -83,6 +84,7 @@ type View =
   | "stage-clues"
   | "acts"
   | "source-document"
+  | "source-images"
   | "settings";
 
 type FloatingEntityWindow = {
@@ -144,7 +146,9 @@ const STAGE_ORDER: AnalysisStage[] = [
   "clues",
   "acts",
 ];
-const PAUSE_STAGES: AnalysisStage[] = ["characters", "clues"];
+function isActionableReview(item: ReviewItem) {
+  return item.status === "pending" && item.type !== "external";
+}
 
 const STAGE_VIEWS: View[] = [
   "stage-background",
@@ -163,7 +167,7 @@ function pausedStageFor(project: Project): AnalysisStage | null {
         project.analysis.stages[stage].status === "paused" &&
         (project.analysis.pendingAskUserCall?.stage === stage ||
           project.analysis.reviewItems.some(
-            (item) => item.stage === stage && item.status === "pending",
+            (item) => item.stage === stage && isActionableReview(item),
           )),
     ) ?? null
   );
@@ -787,18 +791,14 @@ function AnalysisView({
           <pre>{streamPreview}</pre>
         </section>
       )}
-      {reviewItems.filter(
-        (item) => item.status === "pending" && item.type !== "external",
-      ).length > 0 && (
+      {reviewItems.filter(isActionableReview).length > 0 && (
         <aside className="analysis-confirmation-rail">
           <div>
             <span className="eyebrow">KP CONFIRMATION</span>
             <h3>等待确认</h3>
           </div>
           {reviewItems
-            .filter(
-              (item) => item.status === "pending" && item.type !== "external",
-            )
+            .filter(isActionableReview)
             .sort(
               (a, b) =>
                 Number(b.severity === "critical") -
@@ -843,16 +843,20 @@ function AnalysisView({
 function SettingsView({
   config,
   apiKey,
+  rememberApiKey,
   testState,
   onConfig,
   onApiKey,
+  onRememberApiKey,
   onTest,
 }: {
   config: ModelConfig;
   apiKey: string;
+  rememberApiKey: boolean;
   testState: "idle" | "testing" | "success" | "error";
   onConfig: (config: ModelConfig) => void;
   onApiKey: (value: string) => void;
+  onRememberApiKey: (value: boolean) => void;
   onTest: () => void;
 }) {
   return (
@@ -861,7 +865,7 @@ function SettingsView({
         <div>
           <p className="eyebrow">MODEL CONNECTION</p>
           <h2>模型连接</h2>
-          <p>当前支持 OpenAI Chat Completions 兼容协议，包括 Kimi 开放平台。</p>
+          <p>支持 OpenAI 兼容、Anthropic Messages、Google Gemini 与 Ollama 本地协议。</p>
         </div>
       </header>
       <div className="settings-grid">
@@ -870,8 +874,23 @@ function SettingsView({
           <h3>接口协议</h3>
           <label className="field">
             <span>API 协议</span>
-            <select disabled value="openai-compatible">
-              <option value="openai-compatible">OpenAI Compatible</option>
+            <select
+              value={config.protocol ?? "openai"}
+              onChange={(event) => {
+                const protocol = event.target.value as NonNullable<ModelConfig["protocol"]>;
+                const defaults = {
+                  openai: "https://api.openai.com/v1",
+                  anthropic: "https://api.anthropic.com/v1",
+                  gemini: "https://generativelanguage.googleapis.com/v1beta",
+                  ollama: "http://localhost:11434/api",
+                } as const;
+                onConfig({ ...config, protocol, baseUrl: defaults[protocol], capabilities: undefined });
+              }}
+            >
+              <option value="openai">OpenAI Compatible</option>
+              <option value="anthropic">Anthropic Messages</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="ollama">Ollama Local</option>
             </select>
           </label>
           <label className="field">
@@ -883,7 +902,7 @@ function SettingsView({
                 onConfig({ ...config, baseUrl: event.target.value })
               }
             />
-            <small>填写到 `/v1`；应用会自动添加 `/chat/completions`。</small>
+            <small>填写服务根地址；应用会按所选协议自动补全请求路径。</small>
           </label>
           <p
             className={`capability-badge ${config.capabilities?.embedding ? "available" : "keyword"}`}
@@ -916,8 +935,16 @@ function SettingsView({
               onChange={(event) => onApiKey(event.target.value)}
             />
             <small>
-              当前开发版仅保存在本次浏览器会话，不进入项目，也不会写入本地文件。
+              默认仅保存到当前浏览器会话；本地 Ollama 通常不需要凭据。
             </small>
+          </label>
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={rememberApiKey}
+              onChange={(event) => onRememberApiKey(event.target.checked)}
+            />
+            <span>在此浏览器中记住 API Key（以明文保存在 localStorage）</span>
           </label>
           <button
             className="primary-button"
@@ -981,9 +1008,7 @@ function DashboardView({
   const completed = Object.values(project.analysis.stages).filter(
     (stage) => stage.status === "complete",
   ).length;
-  const pending = project.analysis.reviewItems.filter(
-    (item) => item.status === "pending",
-  ).length;
+  const pending = project.analysis.reviewItems.filter(isActionableReview).length;
   return (
     <div className="dashboard">
       <header className="dashboard-hero">
@@ -1096,13 +1121,16 @@ function SourcePanel({
   onClose: () => void;
 }) {
   const page = project.pages.find((item) => item.pageNumber === source.page);
+  const sourceLabel = source.printedPage
+    ? `印刷页 ${source.printedPage}（PDF 第 ${source.page} 页）`
+    : `PDF 第 ${source.page} 页`;
   return (
     <div className="source-overlay">
       <header>
         <div>
           <p className="eyebrow">SOURCE EVIDENCE</p>
           <h3>
-            {sourcePageLabel(source)}
+            {sourceLabel}
             {source.chapter ? ` · ${source.chapter}` : ""}
           </h3>
         </div>
@@ -1294,6 +1322,7 @@ export default function Home() {
   const [modelConfig, setModelConfig] = useState<ModelConfig>(() => {
     if (typeof window === "undefined") {
       return {
+        protocol: "openai",
         baseUrl: "https://api.moonshot.cn/v1",
         model: "",
         confirmMode: "tier1",
@@ -1302,6 +1331,7 @@ export default function Home() {
     const saved = localStorage.getItem("keeper-atlas:model-config");
     if (!saved)
       return {
+        protocol: "openai",
         baseUrl: "https://api.moonshot.cn/v1",
         model: "",
         confirmMode: "tier1",
@@ -1309,11 +1339,13 @@ export default function Home() {
     try {
       return {
         ...(JSON.parse(saved) as ModelConfig),
+        protocol: (JSON.parse(saved) as ModelConfig).protocol ?? "openai",
         confirmMode:
           (JSON.parse(saved) as ModelConfig).confirmMode ?? "tier1",
       };
     } catch {
       return {
+        protocol: "openai",
         baseUrl: "https://api.moonshot.cn/v1",
         model: "",
         confirmMode: "tier1",
@@ -1323,7 +1355,12 @@ export default function Home() {
   const [apiKey, setApiKey] = useState(() =>
     typeof window === "undefined"
       ? ""
-      : (sessionStorage.getItem("keeper-atlas:api-key") ?? ""),
+      : (localStorage.getItem("keeper-atlas:api-key") ??
+        sessionStorage.getItem("keeper-atlas:api-key") ?? ""),
+  );
+  const [rememberApiKey, setRememberApiKey] = useState(() =>
+    typeof window !== "undefined" &&
+    localStorage.getItem("keeper-atlas:remember-api-key") === "true",
   );
   const [testState, setTestState] = useState<
     "idle" | "testing" | "success" | "error"
@@ -1343,9 +1380,17 @@ export default function Home() {
   }, [modelConfig]);
 
   useEffect(() => {
-    if (apiKey) sessionStorage.setItem("keeper-atlas:api-key", apiKey);
-    else sessionStorage.removeItem("keeper-atlas:api-key");
-  }, [apiKey]);
+    localStorage.setItem("keeper-atlas:remember-api-key", String(rememberApiKey));
+    if (rememberApiKey) {
+      sessionStorage.removeItem("keeper-atlas:api-key");
+      if (apiKey) localStorage.setItem("keeper-atlas:api-key", apiKey);
+      else localStorage.removeItem("keeper-atlas:api-key");
+    } else {
+      localStorage.removeItem("keeper-atlas:api-key");
+      if (apiKey) sessionStorage.setItem("keeper-atlas:api-key", apiKey);
+      else sessionStorage.removeItem("keeper-atlas:api-key");
+    }
+  }, [apiKey, rememberApiKey]);
 
   useEffect(() => {
     localStorage.setItem("keeper-atlas:sidebar-open", String(sidebarOpen));
@@ -2351,7 +2396,7 @@ export default function Home() {
                   const action = asRecord(candidate);
                   const personId = String(action.personId ?? "").trim();
                   if (!personId) return [];
-                  const provenance = action.provenance === "source" || action.provenance === "inference"
+                  const provenance: "source" | "inference" | "none" = action.provenance === "source" || action.provenance === "inference"
                     ? action.provenance
                     : "none";
                   return [{
@@ -2378,10 +2423,10 @@ export default function Home() {
           stage,
         }),
       );
-      const shouldPause =
-        (modelConfig.confirmMode ?? "tier1") === "tier3" &&
-        PAUSE_STAGES.includes(stage) &&
-        stageReviews.some((item) => item.status === "pending");
+      // Tier 1/2 may pause during the model call. This final safety barrier also
+      // stops providers that ignore the realtime protocol from carrying an
+      // unresolved decision into later stages.
+      const shouldPause = stageReviews.some(isActionableReview);
       nextAnalysis = {
         ...nextAnalysis,
         pendingAskUserCall: undefined,
@@ -2579,6 +2624,20 @@ export default function Home() {
         analysis: {
           ...activeProject.analysis,
           pendingAskUserCall: undefined,
+          reviewItems: [
+            ...activeProject.analysis.reviewItems,
+            {
+              id: crypto.randomUUID(),
+              type: "event",
+              severity: "warning",
+              title: pending.question,
+              description: pending.context,
+              keeperNote: keeperNote ? `${answer}\n${keeperNote}` : answer,
+              status: "accepted",
+              sources: [],
+              stage: pending.stage,
+            },
+          ],
           stages: {
             ...activeProject.analysis.stages,
             [pending.stage]: { status: "running" },
@@ -2743,12 +2802,12 @@ export default function Home() {
       !reviewItems.some(
         (review) =>
           review.stage === item.stage &&
-          review.status === "pending",
+          isActionableReview(review),
       );
     const remainingForStage = item.stage
       ? reviewItems.filter(
           (review) =>
-            review.stage === item.stage && review.status === "pending",
+            review.stage === item.stage && isActionableReview(review),
         ).length
       : 0;
     const next: Project = {
@@ -2854,13 +2913,15 @@ export default function Home() {
   const wizardItems =
     activeProject && wizardStage
       ? activeProject.analysis.reviewItems.filter(
-          (item) => item.stage === wizardStage && item.status === "pending",
+          (item) => item.stage === wizardStage && isActionableReview(item),
         )
       : [];
   const wizardItem = wizardItems[0];
   const realtimeAskUserCall = activeProject?.analysis.pendingAskUserCall;
   const configReady = Boolean(
-    modelConfig.baseUrl.trim() && modelConfig.model.trim() && apiKey.trim(),
+    modelConfig.baseUrl.trim() &&
+    modelConfig.model.trim() &&
+    ((modelConfig.protocol ?? "openai") === "ollama" || apiKey.trim()),
   );
   const selectedActPerson = activeProject?.analysis.people.find(
     (person) => person.id === selectedActPersonId,
@@ -2954,6 +3015,20 @@ export default function Home() {
   const noteMarkdown = (sectionKey: string) => (activeProject?.kpNotes?.sectionNotes?.[sectionKey] ?? [])
     .map((note) => `\n## ${note.title}\n${note.body}`)
     .join("\n");
+  const prologueAct = activeProject?.analysis.acts.find((act) =>
+    /序幕|楔子|开场/.test(act.title),
+  ) ?? activeProject?.analysis.acts[0];
+  const activeActSectionKey = `acts:${selectedActId ?? prologueAct?.id ?? ""}`;
+  const legacyPrologue = activeProject
+    ? (sectionMarkdown["acts:prologue"] ?? buildPrologueMarkdown(activeProject))
+    : "";
+  const openingSupplement = legacyPrologue
+    .replace(/^\s*#\s+幕\s*/m, "")
+    .replace(/^\s*##\s+序幕\s*/m, "")
+    .replace(/^(#{3,6})(\s+)/gm, (_match, marks: string, spacing: string) =>
+      `${"#".repeat(Math.min(6, marks.length + 1))}${spacing}`,
+    )
+    .trim();
   const defaultMarkdown: Record<string, string> = activeProject ? {
     "stage-background": `# 故事背景\n\n## 起因\n${activeProject.analysis.overview?.cause ?? ""}\n\n## 开团前的历史\n${activeProject.analysis.overview?.history ?? ""}\n\n## 当前状态\n${activeProject.analysis.overview?.currentState ?? ""}${noteMarkdown("stage-background")}`,
     "stage-timeplace": `# 时间地点\n\n${activeProject.analysis.timePlace?.places.map((place) => `## ${place.name}\n${place.description || place.summary}`).join("\n\n") ?? ""}${noteMarkdown("stage-timeplace")}`,
@@ -2961,10 +3036,13 @@ export default function Home() {
     "stage-monsters": `${buildMonsterMarkdown(activeProject)}${noteMarkdown("stage-monsters")}`,
     "stage-characterArcs": `${buildCharacterArcsMarkdown(activeProject)}${noteMarkdown("stage-characterArcs")}`,
     "stage-clues": `# 关键线索安排\n\n${activeProject.analysis.clues.map((clue) => `## ${clue.name}\n${clue.summary}\n\n- 来源：${clue.source}\n- 获取方式：${clue.acquisition || "待补充"}\n- 指向：${clue.targets.map((target) => target.label).join("、") || "待补充"}`).join("\n\n")}${noteMarkdown("stage-clues")}`,
-    "acts:prologue": `${buildPrologueMarkdown(activeProject)}${noteMarkdown("acts:prologue")}`,
     ...Object.fromEntries(activeProject.analysis.acts.map((act) => [
       `acts:${act.id}`,
-      `${buildActMarkdown(activeProject, act.id, false)}${noteMarkdown(`acts:${act.id}`)}`,
+      `${buildActMarkdown(activeProject, act.id, false)}${
+        act.id === prologueAct?.id && openingSupplement
+          ? `\n\n### 开场导入\n\n${openingSupplement}${noteMarkdown("acts:prologue")}`
+          : ""
+      }${noteMarkdown(`acts:${act.id}`)}`,
     ])),
   } : {};
 
@@ -2973,9 +3051,7 @@ export default function Home() {
     return {
       key,
       name: key.startsWith("acts:")
-        ? key === "acts:prologue"
-          ? "序幕"
-          : activeProject?.analysis.acts.find((act) => `acts:${act.id}` === key)?.title ?? "幕"
+        ? activeProject?.analysis.acts.find((act) => `acts:${act.id}` === key)?.title ?? "幕"
         : key === "stage-monsters"
           ? "怪物与 Boss"
         : stageLabels[({
@@ -2987,9 +3063,14 @@ export default function Home() {
             "stage-clues": "clues",
           } as Record<string, AnalysisStage>)[key]],
       markdown: key.startsWith("acts:")
-        ? key === "acts:prologue"
-          ? savedMarkdown
-          : normalizeActMarkdownHierarchy(savedMarkdown, false)
+        ? normalizeActMarkdownHierarchy(
+            key === `acts:${prologueAct?.id}` &&
+              openingSupplement &&
+              !/^(?:###)\s+开场导入\s*$/m.test(savedMarkdown)
+              ? `${savedMarkdown}\n\n### 开场导入\n\n${openingSupplement}`
+              : savedMarkdown,
+            false,
+          )
         : savedMarkdown,
       templateMarkdown: defaultMarkdown[key],
       customized: sectionMarkdown[key] !== undefined,
@@ -3049,9 +3130,11 @@ export default function Home() {
           <SettingsView
             config={modelConfig}
             apiKey={apiKey}
+            rememberApiKey={rememberApiKey}
             testState={testState}
             onConfig={setModelConfig}
             onApiKey={setApiKey}
+            onRememberApiKey={setRememberApiKey}
             onTest={testConnection}
           />
           {toast && <div className="toast">{toast}</div>}
@@ -3120,6 +3203,12 @@ export default function Home() {
               onClick={() => setView("source-document")}
             >
               <span>原始文档</span>
+            </button>
+            <button
+              className={view === "source-images" ? "active" : ""}
+              onClick={() => setView("source-images")}
+            >
+              <span>图片提取</span>
             </button>
           </div>
         </nav>
@@ -3283,7 +3372,7 @@ export default function Home() {
               sections={renderedBookSections}
               activeSectionKey={
                 view === "acts"
-                  ? `acts:${selectedActId ?? "prologue"}`
+                  ? activeActSectionKey
                   : view
               }
               contentKey={`${activeProject.id}:${activeProject.updatedAt}`}
@@ -3298,7 +3387,7 @@ export default function Home() {
               onEditingChange={setBookEditing}
               onOpenActTree={() => setActView("tree")}
               initialPage={pendingReadingPosition?.sectionKey === (
-                view === "acts" ? `acts:${selectedActId ?? "prologue"}` : view
+                view === "acts" ? activeActSectionKey : view
               ) ? pendingReadingPosition.page : undefined}
               onPageChange={(sectionKey, page) => {
                 setPendingReadingPosition(undefined);
@@ -3327,6 +3416,9 @@ export default function Home() {
           )}
           {view === "source-document" && (
             <SourceDocumentView project={activeProject} sourceUrl={sourceUrl} />
+          )}
+          {view === "source-images" && (
+            <SourceImageExtractor project={activeProject} sourceUrl={sourceUrl} />
           )}
           {view === "acts" && actView === "tree" && (
             <div className="content-stack">
@@ -3411,9 +3503,11 @@ export default function Home() {
           <SettingsView
             config={modelConfig}
             apiKey={apiKey}
+            rememberApiKey={rememberApiKey}
             testState={testState}
             onConfig={setModelConfig}
             onApiKey={setApiKey}
+            onRememberApiKey={setRememberApiKey}
             onTest={testConnection}
           />
         </SettingsModal>
