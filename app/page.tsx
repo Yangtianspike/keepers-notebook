@@ -43,6 +43,9 @@ import {
   buildMonsterMarkdown,
   buildPrologueMarkdown,
   createKeeperEntity,
+  entityFields,
+  entityName,
+  keeperEntityUri,
   normalizeActMarkdownHierarchy,
 } from "@/lib/entities";
 import {
@@ -105,6 +108,29 @@ type FloatingPersonRelationWindow = {
   y: number;
   zIndex: number;
 };
+
+function updateCharacterImportanceMarkdown(markdown: string, entity: EntityCard, importance: Person["importance"]) {
+  const ref = entity.ref;
+  const uriPrefix = `keeper://${ref}?`;
+  const lines = markdown.split(/\r?\n/).filter((line) => !(
+    (line.includes(":::character-card") && line.includes(`\"ref\":\"${ref}\"`)) ||
+    (line.trimStart().startsWith("- [") && line.includes(uriPrefix))
+  ));
+  if (importance === "core") {
+    const coreHeading = lines.findIndex((line) => /^##\s+核心人物\s*$/.test(line));
+    if (coreHeading >= 0) lines.splice(coreHeading + 1, 0, `:::character-card${JSON.stringify({ ref, importance: "core" })}`);
+  }
+  const targetTitle = ({ core: "核心人物", important: "重要人物", minor: "次要人物" } as const)[importance];
+  let groupHeading = lines.findIndex((line) => new RegExp(`^###\\s+${targetTitle}\\s*$`).test(line));
+  if (groupHeading < 0) {
+    const indexHeading = lines.findIndex((line) => /^##\s+全部人物索引\s*$/.test(line));
+    groupHeading = indexHeading >= 0 ? indexHeading + 1 : lines.length;
+    lines.splice(groupHeading, 0, `### ${targetTitle}`);
+  }
+  const role = String(entityFields(entity).role || "").trim();
+  lines.splice(groupHeading + 1, 0, `- [${entityName(entity)}](${keeperEntityUri(ref)})${role ? `：${role}` : ""}`);
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+}
 
 function EntityEditOverlay({
   entity,
@@ -355,13 +381,13 @@ function ProjectHome({
     <main className="home-shell">
       <header className="home-header">
         <div className="brand-lockup">
-          <div className="brand-mark">KA</div>
+          <div className="brand-mark">KN</div>
           <div>
-            <p className="eyebrow">KEEPER&apos;S LOCAL WORKBENCH</p>
-            <h1>守秘人图谱</h1>
+            <p className="eyebrow">KEEPER&apos;S LOCAL NOTEBOOK</p>
+            <h1>守秘人笔记本</h1>
           </div>
         </div>
-        <button className="ghost-button" onClick={onOpenSettings}>
+        <button className="dark-outline-button" onClick={onOpenSettings}>
           模型连接
         </button>
       </header>
@@ -370,13 +396,13 @@ function ProjectHome({
         <div>
           <p className="eyebrow accent">LOCAL FIRST · EVIDENCE LINKED</p>
           <h2>
-            把剧本读成一张
+            把模组整理成你的
             <br />
-            可以主持的地图。
+            主持笔记。
           </h2>
           <p className="hero-copy">
-            从原文中梳理幕后真相、人物关系与分支时间线。每个关键结论都能回到出处，
-            AI 推断永远不会冒充原作事实。
+            从原始剧本中梳理人物、线索、地点与幕结构。随时编辑、建立关联，
+            并回到对应原文核对依据。
           </p>
         </div>
         <div className="import-panel">
@@ -572,7 +598,7 @@ function StructureView({
           </strong>
           <span>确认后仍可回来调整；重新分析由你主动触发。</span>
         </div>
-        <button className="primary-button" onClick={onConfirm}>
+        <button className="dark-outline-button" onClick={onConfirm}>
           确认结构并进入分析
         </button>
       </div>
@@ -958,7 +984,7 @@ function SettingsView({
             <span>在此浏览器中记住 API Key（以明文保存在 localStorage）</span>
           </label>
           <button
-            className="primary-button"
+            className="dark-outline-button"
             disabled={testState === "testing"}
             onClick={onTest}
           >
@@ -3016,13 +3042,37 @@ export default function Home() {
       });
       return;
     }
+    const requestedImportance: Person["importance"] | undefined = entity.kind === "person" && (
+      override.fields?.importance === "core" ||
+      override.fields?.importance === "important" ||
+      override.fields?.importance === "minor"
+    ) ? override.fields.importance as Person["importance"] : undefined;
+    const originalPerson = requestedImportance
+      ? activeProject.analysis.people.find((person) => person.id === entity.id)
+      : undefined;
+    const importanceChanged = Boolean(originalPerson && requestedImportance && originalPerson.importance !== requestedImportance);
+    const nextPeople = importanceChanged
+      ? activeProject.analysis.people.map((person) => person.id === entity.id ? { ...person, importance: requestedImportance! } : person)
+      : activeProject.analysis.people;
+    const currentCharacterMarkdown = activeProject.kpNotes?.sectionMarkdown?.["stage-characters"];
+    const nextSectionMarkdown = importanceChanged && currentCharacterMarkdown
+      ? {
+          ...activeProject.kpNotes?.sectionMarkdown,
+          "stage-characters": updateCharacterImportanceMarkdown(currentCharacterMarkdown, { ...entity, overrides: override }, requestedImportance!),
+        }
+      : activeProject.kpNotes?.sectionMarkdown;
     void persistProject({
       ...activeProject,
       updatedAt: new Date().toISOString(),
+      analysis: { ...activeProject.analysis, people: nextPeople },
       kpNotes: {
         ...activeProject.kpNotes,
+        sectionMarkdown: nextSectionMarkdown,
         entityOverrides: { ...activeProject.kpNotes?.entityOverrides, [entity.ref]: override },
       },
+    }).then(() => {
+      if (importanceChanged) setToast("人物级别已更新；人物章节与关系图已同步刷新。");
+      else setToast("资料修改已保存。");
     });
   };
 
@@ -3425,16 +3475,14 @@ export default function Home() {
                 entities={entities}
                 onCreateEntity={(kind, name, sectionKey) => addKeeperEntity(kind, name, sectionKey)}
                 onCancel={() => setBookEditing(false)}
-                onSave={(markdown, appliedTemplateKeys) => {
+                onSave={(markdown) => {
                   void persistProject({
                     ...activeProject,
                     updatedAt: new Date().toISOString(),
                     kpNotes: {
                       ...activeProject.kpNotes,
                       sectionMarkdown: markdown,
-                      sectionTemplateVersion: appliedTemplateKeys.length > 0
-                        ? 8
-                        : activeProject.kpNotes?.sectionTemplateVersion,
+                      sectionTemplateVersion: activeProject.kpNotes?.sectionTemplateVersion,
                     },
                   }).then(() => setBookEditing(false));
                 }}

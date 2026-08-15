@@ -427,9 +427,18 @@ export function EntityEditForm({ entity, onCancel, onSave }: {
   const [cocTouchedKeys, setCocTouchedKeys] = useState<PersonCoCStatKey[]>([]);
   const [skillsTouched, setSkillsTouched] = useState(false);
   const [attacksTouched, setAttacksTouched] = useState(false);
+  const [editPage, setEditPage] = useState(0);
+  const originalImportance = entity.kind === "person" ? String(entityFields(entity).importance || "minor") : "";
+  const [importance, setImportance] = useState(originalImportance);
+  const editPageLabels = entity.kind === "person" || entity.kind === "monster"
+    ? ["基本资料", "人物设定", "CoC 属性", "技能战斗", "可见性"]
+    : ["基本资料", "详细资料", "可见性"];
   return (
     <form className="entity-edit-form" onSubmit={(event) => {
       event.preventDefault();
+      if (entity.kind === "person" && importance !== originalImportance && !window.confirm(
+        `人物级别将由“${({ core: "核心人物", important: "重要人物", minor: "次要人物" } as Record<string, string>)[originalImportance]}”改为“${({ core: "核心人物", important: "重要人物", minor: "次要人物" } as Record<string, string>)[importance]}”。保存后会重排人物章节并刷新关系图，是否继续？`,
+      )) return;
       const nextCocStats: Partial<PersonCoCStats> = { ...(entity.overrides?.cocStats ?? {}) };
       cocTouchedKeys.forEach((key) => {
         const value = cocValues[key]?.trim();
@@ -460,12 +469,17 @@ export function EntityEditForm({ entity, onCancel, onSave }: {
       const cocChanged = cocTouchedKeys.length > 0 || skillsTouched || attacksTouched;
       onSave({
         name: name.trim(), aliases: aliases.split(/[、,，]/).map((item) => item.trim()).filter(Boolean),
-        fields, cocStats: cocChanged ? nextCocStats : entity.overrides?.cocStats,
+        fields: entity.kind === "person" ? { ...fields, importance } : fields,
+        cocStats: cocChanged ? nextCocStats : entity.overrides?.cocStats,
         image: imageTouched ? image : entity.overrides?.image,
         imageSource: imageTouched && image ? "manual" : entity.overrides?.imageSource,
         playerVisible, keeperPrivate, linkBehavior: { jump, preview }, updatedAt: new Date().toISOString(),
       });
     }}>
+      <nav className="entity-edit-tabs" aria-label="资料编辑分页">
+        {editPageLabels.map((label, index) => <button className={editPage === index ? "active" : ""} type="button" onClick={() => setEditPage(index)} key={label}>{index + 1}. {label}</button>)}
+      </nav>
+      <section className="entity-edit-page" hidden={editPage !== 0}>
       <div className="entity-image-editor">
         {image ? (
           <>
@@ -490,17 +504,25 @@ export function EntityEditForm({ entity, onCancel, onSave }: {
       </div>
       <label>名称<input value={name} onChange={(event) => setName(event.target.value)} required /></label>
       <label>别名<input value={aliases} onChange={(event) => setAliases(event.target.value)} placeholder="用顿号分隔" /></label>
+      {entity.kind === "person" && <label>人物级别<select value={importance} onChange={(event) => setImportance(event.target.value)}><option value="core">核心人物</option><option value="important">重要人物</option><option value="minor">次要人物</option></select><small>变更后会重排人物章节并立即刷新完整及局部关系图。</small></label>}
+      </section>
+      <section className="entity-edit-page entity-edit-fields" hidden={editPage !== 1}>
       {ENTITY_FIELD_LABELS[entity.kind].map(([key, label]) => (
+        key === "importance" ? null :
         <label key={key}>{label}<textarea value={fields[key] ?? ""} onChange={(event) => setFields((current) => ({ ...current, [key]: event.target.value }))} /></label>
       ))}
-      {(entity.kind === "person" || entity.kind === "monster") && <fieldset className="entity-coc-edit">
+      </section>
+      {(entity.kind === "person" || entity.kind === "monster") && <section className="entity-edit-page" hidden={editPage !== 2}><fieldset className="entity-coc-edit">
         <legend>CoC 7版属性（修改后作为 KP 覆盖值保存）</legend>
         <div className="entity-coc-edit-grid">
           {COC_FIELDS.map(([key, label]) => <label key={key}>{label}<input value={cocValues[key] ?? ""} onChange={(event) => { setCocTouchedKeys((current) => current.includes(key) ? current : [...current, key]); setCocValues((current) => ({ ...current, [key]: event.target.value })); }} /></label>)}
         </div>
+      </fieldset></section>}
+      {(entity.kind === "person" || entity.kind === "monster") && <section className="entity-edit-page entity-edit-combat" hidden={editPage !== 3}>
         <label>技能（每行“名称: 数值”）<textarea value={skillsText} onChange={(event) => { setSkillsTouched(true); setSkillsText(event.target.value); }} /></label>
         <label>攻击（每行“名称 | 命中 | 伤害”）<textarea value={attacksText} onChange={(event) => { setAttacksTouched(true); setAttacksText(event.target.value); }} /></label>
-      </fieldset>}
+      </section>}
+      <section className="entity-edit-page" hidden={editPage !== editPageLabels.length - 1}>
       <label>玩家可见<textarea value={playerVisible} onChange={(event) => setPlayerVisible(event.target.value)} /></label>
       <label>KP 私密<textarea value={keeperPrivate} onChange={(event) => setKeeperPrivate(event.target.value)} /></label>
       <fieldset>
@@ -508,8 +530,12 @@ export function EntityEditForm({ entity, onCancel, onSave }: {
         <label><input type="checkbox" checked={jump} onChange={(event) => setJump(event.target.checked)} />跳转到书页</label>
         <label><input type="checkbox" checked={preview} onChange={(event) => setPreview(event.target.checked)} />打开资料窗口</label>
       </fieldset>
+      </section>
       <div className="entity-form-actions">
         <button type="button" onClick={onCancel}>取消</button>
+        <button type="button" disabled={editPage === 0} onClick={() => setEditPage((page) => Math.max(0, page - 1))}>← 上一页</button>
+        <span>{editPage + 1} / {editPageLabels.length}</span>
+        <button type="button" disabled={editPage + 1 >= editPageLabels.length} onClick={() => setEditPage((page) => Math.min(editPageLabels.length - 1, page + 1))}>下一页 →</button>
         <button type="submit">保存修改</button>
       </div>
     </form>

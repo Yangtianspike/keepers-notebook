@@ -28,9 +28,8 @@ test("renders the Keeper Atlas application shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>守秘人图谱 · COC 本地备本工作台<\/title>/i);
-  assert.match(html, /守秘人图谱/);
-  assert.match(html, /把剧本读成一张/);
+  assert.match(html, /<title>守秘人笔记本 · COC 本地备本工作台<\/title>/i);
+  assert.match(html, /守秘人笔记本/);
+  assert.match(html, /把模组整理成你的/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
-
