@@ -1072,7 +1072,8 @@ button:disabled {
   color: var(--teal);
 }
 
-.pipeline-body > p {
+.pipeline-body > p,
+.pipeline-description > p {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.7;
@@ -1159,9 +1160,15 @@ button:disabled {
   margin-top: 0;
 }
 
-.pipeline-major .pipeline-body > p {
+.pipeline-major .pipeline-body > p,
+.pipeline-major .pipeline-description > p {
   margin: 0;
 }
+
+.pipeline-major .pipeline-description { min-width: 0; }
+.pipeline-major .pipeline-description .inline-error { margin-top: 6px; color: #ff746d; }
+.pipeline-major .pipeline-actions { justify-self: end; }
+.pipeline-major .pipeline-rerun-button { min-width: 132px; white-space: nowrap; }
 
 .pipeline-state-icon {
   display: inline-grid;

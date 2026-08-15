@@ -163,6 +163,8 @@ export function stageQuery(
       return "时间 日期 先后 地点 场景 区域 方位";
     case "characters":
       return "人物 角色 姓名 身份 动机 组织 NPC 守秘人笔记 建议数据 属性 力量 体质 体型 敏捷 灵感 外貌 意志 教育 理智 HP MP 移动 体格 DB 战斗 斗殴 闪避 技能 攻击 伤害";
+    case "monsters":
+      return "怪物 Boss 神话生物 野兽 敌人模板 守秘人笔记 建议数据 属性 力量 体质 体型 敏捷 意志 HP MP 移动 体格 DB 护甲 战斗 技能 攻击 伤害";
     case "characterArcs":
       return `人物 经历 动机 目标 行动 变化 秘密 关系 领导 雇佣 威胁 保护 合作 背叛 同盟 敌对 ${analysis.people.map((person) => person.name).join(" ")}`;
     case "clues":

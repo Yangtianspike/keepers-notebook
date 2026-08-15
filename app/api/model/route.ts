@@ -56,6 +56,7 @@ function maxTokensFor(stage?: AnalysisStage, isTest = false): number {
   if (isTest) return 128;
   if (
     stage === "characters" ||
+    stage === "monsters" ||
     stage === "characterArcs" ||
     stage === "clues" ||
     stage === "acts"
@@ -112,10 +113,10 @@ confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 pri
     characters: `${common}
 ${
   phase === "skeleton"
-    ? `识别所有有名人物、无姓名 NPC 群体、敌人模板与超自然存在。守秘人笔记中的“建议数据”“战斗”“技能”模板也必须纳入。疑似同一对象的不同称呼不得自动合并。
-有姓名的人类或类人 Boss 必须放入 people 并标记 isBoss:true；非人怪物、神话生物、野兽和无名敌人模板必须放入 monsters。同一对象不得同时出现在两个集合。
+    ? `只识别人物：所有有名人物、无姓名人类 NPC 群体，以及有姓名的人类或类人 Boss。守秘人笔记中的人物“建议数据”“战斗”“技能”模板也必须纳入。疑似同一对象的不同称呼不得自动合并。
+人类或类人 Boss 必须放入 people 并标记 isBoss:true；非人怪物、神话生物、野兽和无名敌人模板由独立的怪物 / Boss 阶段处理，本阶段不得输出 monsters。
 只有原文明确说明的别名才可直接放入 aliases；其余写入 mergeCandidates。
-本次只生成索引，不生成 cocStats。务必覆盖核心、重要和次要人物及所有怪物，并保持内容简洁。
+本次只生成人物索引，不生成 cocStats。务必覆盖核心、重要和次要人物，并保持内容简洁。
 返回：
 {
   "people": [{
@@ -124,13 +125,11 @@ ${
     "publicIdentity":"公开身份","trueIdentity":"真实身份","isBoss":false,
     "confidence":0.9,"provenance":"source|inference|conflict","sources":[]
   }],
-  "monsters":[{"id":"稳定标识","name":"名称","aliases":[],"monsterType":"类型","threatLevel":"威胁等级","summary":"摘要","confidence":0.9,"provenance":"source|inference|conflict","sources":[]}],
   "mergeCandidates":[{"names":["称呼A","称呼B"],"reason":"为什么可能是同一人","sources":[]}],
   "reviewItems":[]
 }`
-    : `只补全 context.characterSkeleton 或 context.monsterSkeleton 中列出的对象，不得增加或遗漏，并保留索引 id、name、aliases 和来源。人物返回 people，怪物返回 monsters。
-人物补全摘要、外貌、性格、当前状态和扮演提示；怪物补全 monsterType、threatLevel、summary、appearance、abilities、weaknesses、tactics、rewards 和 keeperPrivate。
-所有人物与怪物都要给出 CoC 7版属性。原文明示的每个数值逐项标记 source 并附来源；缺失值允许合理推断，但必须逐项标记 inference，不能把推断伪装成原文数据。
+    : `只补全 context.characterSkeleton 中列出的人物，不得增加或遗漏，并保留索引 id、name、aliases 和来源。只返回 people。
+人物补全摘要、外貌、性格、当前状态和扮演提示，并给出 CoC 7版属性。原文明示的每个数值逐项标记 source 并附来源；缺失值允许合理推断，但必须逐项标记 inference，不能把推断伪装成原文数据。
 中文属性名必须按 CoC 7版字段直接读取：力量=str、体质=con、体型=siz、敏捷=dex、外貌=app、灵感/智力=int、意志=pow、教育=edu、理智=san、移动=mov、体格=build、DB=damageBonus。若人物附近存在“建议数据”“战斗”“技能”等明确数据块，必须逐项抄录原值，不得以合理化数值替换；只有该字段在原文数据块中确实缺失时才能推断。
 属性通常为 1-100，MOV 通常为 0-20，Build 通常为 -2 到 5；技能和攻击也必须分别标记 provenance。技能最多保留 8 项，攻击最多保留 4 项。`
 }
@@ -165,12 +164,26 @@ ${phase === "skeleton" ? "" : `
     "provenance":"source|inference|conflict",
     "sources":[]
   }],
+  "mergeCandidates":[{"names":["称呼A","称呼B"],"reason":"为什么可能是同一人","sources":[]}],
+  "reviewItems":[]
+}`}`,
+    monsters: `${common}
+${phase === "skeleton" ? `独立识别所有非人怪物、神话生物、野兽、无姓名敌人模板，以及具有怪物规则数据的 Boss。守秘人笔记中的“建议数据”“战斗”“技能”模板必须纳入。
+有姓名的人类或类人 Boss 不得放入 monsters；它们属于人物阶段。只生成怪物索引，不生成 cocStats，务必覆盖全部目标。
+返回：
+{
+  "monsters":[{"id":"稳定标识","name":"名称","aliases":[],"monsterType":"类型","threatLevel":"威胁等级","summary":"摘要","confidence":0.9,"provenance":"source|inference|conflict","sources":[]}],
+  "reviewItems":[]
+}` : `只补全 context.monsterSkeleton 中列出的怪物，不得增加或遗漏，并保留索引 id、name、aliases 和来源。
+逐个补全 monsterType、threatLevel、summary、appearance、abilities、weaknesses、tactics、rewards、keeperPrivate 与 CoC 7版属性。
+原文明示的每个数值逐项标记 source 并附来源；缺失值允许推断，但必须标记 inference。中文属性映射：力量=str、体质=con、体型=siz、敏捷=dex、灵感/智力=int、意志=pow、移动=mov、体格=build、DB=damageBonus。
+返回：
+{
   "monsters":[{
     "id":"稳定标识","name":"名称","aliases":[],"monsterType":"类型","threatLevel":"威胁等级","summary":"摘要","appearance":"外貌","abilities":"能力","weaknesses":"弱点","tactics":"战术","rewards":"奖励","keeperPrivate":"KP信息",
     "cocStats":{"str":50,"con":50,"siz":50,"dex":50,"int":50,"pow":50,"hp":10,"mp":10,"mov":8,"build":0,"damageBonus":"0","armor":"0","skills":[],"attacks":[],"fieldProvenance":{}},
     "confidence":0.9,"provenance":"source|inference|conflict","sources":[]
   }],
-  "mergeCandidates":[{"names":["称呼A","称呼B"],"reason":"为什么可能是同一人","sources":[]}],
   "reviewItems":[]
 }`}`,
     characterArcs: `${common}
@@ -325,6 +338,9 @@ export async function POST(request: NextRequest) {
     const characterContext = body.context?.characterSkeleton
       ? `\n待补全的人物索引：\n${JSON.stringify(body.context.characterSkeleton)}`
       : "";
+    const monsterContext = body.context?.monsterSkeleton
+      ? `\n待补全的怪物 / Boss 索引：\n${JSON.stringify(body.context.monsterSkeleton)}`
+      : "";
     const userMessage = isTest
       ? "请只返回一个 JSON 对象：{\"ok\":true}"
       : `剧本名称：${body.document?.name}
@@ -334,6 +350,7 @@ ${keeperContext}
 ${analysisContext}
 ${actContext}
 ${characterContext}
+${monsterContext}
 
 以下是与本阶段最相关的剧本原文摘录（按页码排序）。[[PDF_PAGE:N]] 表示 PDF 实际第 N 页；如摘录不足以回答，基于已有信息给出结论并降低 confidence：
 <scenario>

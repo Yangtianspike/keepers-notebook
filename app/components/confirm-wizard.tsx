@@ -22,6 +22,7 @@ const stageNames: Record<AnalysisStage, string> = {
   background: "故事背景",
   timeplace: "时间地点",
   characters: "人物",
+  monsters: "怪物 / Boss",
   characterArcs: "人物经历与动机",
   clues: "关键线索安排",
   acts: "幕",

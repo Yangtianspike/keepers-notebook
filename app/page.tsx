@@ -172,6 +172,7 @@ const stageLabels: Record<AnalysisStage, string> = {
   background: "故事背景",
   timeplace: "时间地点",
   characters: "人物",
+  monsters: "怪物 / Boss",
   characterArcs: "人物经历与动机",
   clues: "关键线索安排",
   acts: "幕",
@@ -181,6 +182,7 @@ const STAGE_ORDER: AnalysisStage[] = [
   "background",
   "timeplace",
   "characters",
+  "monsters",
   "characterArcs",
   "clues",
   "acts",
@@ -199,17 +201,7 @@ const STAGE_VIEWS: View[] = [
   "acts",
 ];
 
-// “人物”请求同时生成人物与怪物/Boss 两个独立备本板块。
-// API 编排仍是六次分析调用，但仪表盘按用户可见的七个流程计数。
-const DASHBOARD_FLOW_STAGES: AnalysisStage[] = [
-  "background",
-  "timeplace",
-  "characters",
-  "characters",
-  "characterArcs",
-  "clues",
-  "acts",
-];
+const DASHBOARD_FLOW_STAGES: AnalysisStage[] = STAGE_ORDER;
 
 function pausedStageFor(project: Project): AnalysisStage | null {
   return (
@@ -236,7 +228,7 @@ function analysisStageForSectionKey(sectionKey: string): AnalysisStage | undefin
     "stage-background": "background",
     "stage-timeplace": "timeplace",
     "stage-characters": "characters",
-    "stage-monsters": "characters",
+    "stage-monsters": "monsters",
     "stage-characterArcs": "characterArcs",
     "stage-clues": "clues",
   } as Record<string, AnalysisStage>)[sectionKey];
@@ -250,6 +242,8 @@ function stageHasReadableAnalysis(project: Project, stage: AnalysisStage) {
       return Boolean(project.analysis.timePlace?.timeline || project.analysis.timePlace?.places.length);
     case "characters":
       return project.analysis.people.length > 0;
+    case "monsters":
+      return Boolean(project.analysis.monsters?.length);
     case "characterArcs":
       return Boolean(project.analysis.characterArcs?.length);
     case "clues":
@@ -683,23 +677,30 @@ function AnalysisView({
       requires: "timeplace",
       target: "stage-characters",
     },
+    monsters: {
+      id: "monsters",
+      number: "04",
+      description: "独立识别怪物、神话生物、野兽、敌人模板与 Boss。",
+      requires: "characters",
+      target: "stage-monsters",
+    },
     characterArcs: {
       id: "characterArcs",
-      number: "04",
+      number: "05",
       description: "梳理人物在故事中的经历、变化与深层动机。",
-      requires: "characters",
+      requires: "monsters",
       target: "stage-characterArcs",
     },
     clues: {
       id: "clues",
-      number: "05",
+      number: "06",
       description: "梳理调查线索、关键真相、替代入口与卡关风险。",
       requires: "characterArcs",
       target: "stage-clues",
     },
     acts: {
       id: "acts",
-      number: "06",
+      number: "07",
       description: "生成序幕及后续各幕，并补全分支和关键事件。",
       requires: "clues",
       target: "acts",
@@ -738,18 +739,11 @@ function AnalysisView({
         <div className="pipeline-title">
           <h3>{stageLabels[stage.id]}</h3>
         </div>
-        <p>{stage.description}</p>
-        {state.error && <p className="inline-error">{state.error}</p>}
+        <div className="pipeline-description">
+          <p>{stage.description}</p>
+          {state.error && <p className="inline-error">{state.error}</p>}
+        </div>
         <div className="pipeline-actions">
-          {state.status === "error" && (
-            <button
-              className="cb-action-button compact"
-              disabled={!configReady || activeStage !== null}
-              onClick={() => onRerunStage(stage.id)}
-            >
-              重新分析此阶段
-            </button>
-          )}
           <span className="pipeline-state-icon" aria-label={stateLabel(state.status)}>
             {activeStage === stage.id ? (
               <span className="analysis-loading-spinner" />
@@ -763,6 +757,21 @@ function AnalysisView({
               "—"
             )}
           </span>
+          <button
+            className="cb-action-button compact pipeline-rerun-button"
+            disabled={
+              !configReady ||
+              activeStage !== null ||
+              state.status === "running" ||
+              Boolean(stage.requires && project.analysis.stages[stage.requires].status !== "complete")
+            }
+            onClick={(event) => {
+              event.stopPropagation();
+              onRerunStage(stage.id);
+            }}
+          >
+            重新分析此阶段
+          </button>
         </div>
       </section>
     );
@@ -1325,7 +1334,11 @@ function hydrateProject(project: Project): Project {
   const defaults = emptyAnalysis();
   const stages = Object.fromEntries(
     STAGE_ORDER.map((stage) => {
-      const saved = project.analysis.stages?.[stage] ?? defaults.stages[stage];
+      const saved = project.analysis.stages?.[stage] ?? (
+        stage === "monsters" && project.analysis.stages?.characters?.status === "complete"
+          ? { status: "complete" as const, updatedAt: project.analysis.stages.characters.updatedAt }
+          : defaults.stages[stage]
+      );
       return [stage, saved.status === "running" ? { status: "idle" } : saved];
     }),
   ) as Project["analysis"]["stages"];
@@ -1627,7 +1640,7 @@ export default function Home() {
         const chunks = await hybridSearch(
           runningProject,
           stageQuery(stage, runningProject.analysis),
-          stage === "characters" || stage === "characterArcs" ? 24 : 12,
+          stage === "characters" || stage === "monsters" || stage === "characterArcs" ? 24 : 12,
           modelConfig,
           apiKey,
         );
@@ -1704,7 +1717,7 @@ export default function Home() {
           config: modelConfig,
           stage,
           phase:
-            stage === "acts" || stage === "characters"
+            stage === "acts" || stage === "characters" || stage === "monsters"
               ? "skeleton"
               : undefined,
           confirmMode: modelConfig.confirmMode ?? "tier1",
@@ -1831,16 +1844,16 @@ export default function Home() {
       }
       }
       if (
-        stage === "characters" &&
+        (stage === "characters" || stage === "monsters") &&
         responseOk &&
         payload.data &&
         (Array.isArray(payload.data.people) || Array.isArray(payload.data.monsters))
       ) {
-        const characterSkeleton = Array.isArray(payload.data.people)
+        const characterSkeleton = stage === "characters" && Array.isArray(payload.data.people)
           ? payload.data.people as Array<Record<string, unknown>>
           : [];
         const detailedPeople: Array<Record<string, unknown>> = [];
-        const monsterSkeleton = Array.isArray(payload.data.monsters)
+        const monsterSkeleton = stage === "monsters" && Array.isArray(payload.data.monsters)
           ? payload.data.monsters as Array<Record<string, unknown>>
           : [];
         const detailedMonsters: Array<Record<string, unknown>> = [];
@@ -2057,8 +2070,8 @@ export default function Home() {
           type: "complete",
           data: {
             ...payload.data,
-            people: detailedPeople,
-            monsters: detailedMonsters,
+            ...(stage === "characters" ? { people: detailedPeople } : {}),
+            ...(stage === "monsters" ? { monsters: detailedMonsters } : {}),
             reviewItems: [
               ...(Array.isArray(payload.data.reviewItems)
                 ? payload.data.reviewItems
@@ -2237,38 +2250,7 @@ export default function Home() {
           provenance: person.provenance || "source",
           confidence: Number(person.confidence ?? 0.5),
         }));
-        const personNames = new Set(people.flatMap((person) =>
-          [person.name, ...person.aliases].map((name) => name.trim().toLocaleLowerCase()).filter(Boolean),
-        ));
-        const seenMonsterNames = new Set<string>();
-        const monsters = (Array.isArray(data.monsters) ? data.monsters as Monster[] : [])
-          .flatMap((monster) => {
-            const names = [monster.name, ...(Array.isArray(monster.aliases) ? monster.aliases : [])]
-              .map((name) => String(name ?? "").trim().toLocaleLowerCase())
-              .filter(Boolean);
-            if (names.some((name) => personNames.has(name) || seenMonsterNames.has(name))) return [];
-            names.forEach((name) => seenMonsterNames.add(name));
-            return [{
-              ...monster,
-              id: String(monster.id || crypto.randomUUID()),
-              name: String(monster.name ?? "未命名怪物"),
-              aliases: Array.isArray(monster.aliases) ? monster.aliases.map(String) : [],
-              monsterType: String(monster.monsterType ?? "怪物"),
-              threatLevel: String(monster.threatLevel ?? "待评估"),
-              summary: String(monster.summary ?? ""),
-              appearance: monster.appearance ? String(monster.appearance) : undefined,
-              abilities: monster.abilities ? String(monster.abilities) : undefined,
-              weaknesses: monster.weaknesses ? String(monster.weaknesses) : undefined,
-              tactics: monster.tactics ? String(monster.tactics) : undefined,
-              rewards: monster.rewards ? String(monster.rewards) : undefined,
-              keeperPrivate: monster.keeperPrivate ? String(monster.keeperPrivate) : undefined,
-              cocStats: normalizePersonCoCStats(monster.cocStats),
-              sources: Array.isArray(monster.sources) ? monster.sources : [],
-              provenance: monster.provenance || "source",
-              confidence: Number(monster.confidence ?? 0.5),
-            }];
-          });
-        nextAnalysis = { ...nextAnalysis, people, monsters };
+        nextAnalysis = { ...nextAnalysis, people };
         if (Array.isArray(data.mergeCandidates)) {
           (
             data.mergeCandidates as Array<{
@@ -2290,6 +2272,39 @@ export default function Home() {
             });
           });
         }
+      }
+      if (stage === "monsters" && Array.isArray(data.monsters)) {
+        const personNames = new Set(nextAnalysis.people.flatMap((person) =>
+          [person.name, ...person.aliases].map((name) => name.trim().toLocaleLowerCase()).filter(Boolean),
+        ));
+        const seenMonsterNames = new Set<string>();
+        const monsters = (data.monsters as Monster[]).flatMap((monster) => {
+          const names = [monster.name, ...(Array.isArray(monster.aliases) ? monster.aliases : [])]
+            .map((name) => String(name ?? "").trim().toLocaleLowerCase())
+            .filter(Boolean);
+          if (names.some((name) => personNames.has(name) || seenMonsterNames.has(name))) return [];
+          names.forEach((name) => seenMonsterNames.add(name));
+          return [{
+            ...monster,
+            id: String(monster.id || crypto.randomUUID()),
+            name: String(monster.name ?? "未命名怪物"),
+            aliases: Array.isArray(monster.aliases) ? monster.aliases.map(String) : [],
+            monsterType: String(monster.monsterType ?? "怪物"),
+            threatLevel: String(monster.threatLevel ?? "待评估"),
+            summary: String(monster.summary ?? ""),
+            appearance: monster.appearance ? String(monster.appearance) : undefined,
+            abilities: monster.abilities ? String(monster.abilities) : undefined,
+            weaknesses: monster.weaknesses ? String(monster.weaknesses) : undefined,
+            tactics: monster.tactics ? String(monster.tactics) : undefined,
+            rewards: monster.rewards ? String(monster.rewards) : undefined,
+            keeperPrivate: monster.keeperPrivate ? String(monster.keeperPrivate) : undefined,
+            cocStats: normalizePersonCoCStats(monster.cocStats),
+            sources: Array.isArray(monster.sources) ? monster.sources : [],
+            provenance: monster.provenance || "source",
+            confidence: Number(monster.confidence ?? 0.5),
+          }];
+        });
+        nextAnalysis = { ...nextAnalysis, monsters };
       }
       if (stage === "timeplace" && data.timePlace) {
         const raw = data.timePlace as Partial<TimePlace>;
@@ -3251,7 +3266,7 @@ export default function Home() {
             "stage-background": "background",
             "stage-timeplace": "timeplace",
             "stage-characters": "characters",
-            "stage-monsters": "characters",
+            "stage-monsters": "monsters",
             "stage-characterArcs": "characterArcs",
             "stage-clues": "clues",
           } as Record<string, AnalysisStage>)[key]],

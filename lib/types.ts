@@ -339,6 +339,7 @@ export type AnalysisStage =
   | "background"
   | "timeplace"
   | "characters"
+  | "monsters"
   | "characterArcs"
   | "clues"
   | "acts";
@@ -541,6 +542,7 @@ export const emptyAnalysis = (): ProjectAnalysis => ({
     background: { status: "idle" },
     timeplace: { status: "idle" },
     characters: { status: "idle" },
+    monsters: { status: "idle" },
     characterArcs: { status: "idle" },
     clues: { status: "idle" },
     acts: { status: "idle" },
