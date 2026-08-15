@@ -25,6 +25,11 @@ export type ExtractedImageRecord = {
   height: number;
   blob: Blob;
   createdAt: string;
+  origin?: "pdf" | "upload";
+  fileName?: string;
+  title?: string;
+  inPack?: boolean;
+  packOrder?: number;
 };
 
 type LegacyAnalysis = Record<string, unknown> & {

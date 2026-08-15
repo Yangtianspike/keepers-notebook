@@ -3224,7 +3224,7 @@ export default function Home() {
               className={view === "source-images" ? "active" : ""}
               onClick={() => setView("source-images")}
             >
-              <span>图片提取</span>
+              <span>图片资料</span>
             </button>
           </div>
         </nav>
