@@ -211,6 +211,8 @@ const STAGE_VIEWS: View[] = [
 ];
 
 const DASHBOARD_FLOW_STAGES: AnalysisStage[] = STAGE_ORDER;
+const deletedProjectIds = new Set<string>();
+const inactiveProjectIds = new Set<string>();
 
 function pausedStageFor(project: Project): AnalysisStage | null {
   return (
@@ -467,9 +469,9 @@ function ProjectHome({
                     <span
                       style={{
                         width: `${
-                          Object.values(project.analysis.stages).filter(
+                          (Object.values(project.analysis.stages).filter(
                             (stage) => stage.status === "complete",
-                          ).length * 25
+                          ).length / Math.max(1, Object.values(project.analysis.stages).length)) * 100
                         }%`,
                       }}
                     />
@@ -1520,7 +1522,8 @@ export default function Home() {
   }, [toast]);
 
   const persistProject = useCallback(async (project: Project) => {
-    setActiveProject(project);
+    if (deletedProjectIds.has(project.id)) return;
+    if (!inactiveProjectIds.has(project.id)) setActiveProject(project);
     setProjects((items) => {
       const without = items.filter((item) => item.id !== project.id);
       return [project, ...without].sort((a, b) =>
@@ -1555,6 +1558,7 @@ export default function Home() {
         saveSourceFile(project.id, file),
       ]);
       setProjects((items) => [project, ...items]);
+      inactiveProjectIds.delete(project.id);
       setActiveProject(project);
       setView("structure");
       setToast("剧本已导入，请先确认章节结构。");
@@ -1571,8 +1575,23 @@ export default function Home() {
     ) {
       return;
     }
-    await deleteProject(project.id);
-    setProjects((items) => items.filter((item) => item.id !== project.id));
+    deletedProjectIds.add(project.id);
+    if (activeProject?.id === project.id) {
+      analysisAbortRef.current?.abort();
+      analysisAbortRef.current = null;
+      setActiveStage(null);
+      setIsContinuing(false);
+      setWizardStage(null);
+      setActiveProject(null);
+    }
+    try {
+      await deleteProject(project.id);
+      setProjects((items) => items.filter((item) => item.id !== project.id));
+      setToast(`已删除“${project.name}”及其原文、索引和图片资料。`);
+    } catch (caught) {
+      deletedProjectIds.delete(project.id);
+      setError(caught instanceof Error ? caught.message : "删除项目失败。");
+    }
   };
 
   const includedText = (project: Project) => {
@@ -3375,6 +3394,7 @@ export default function Home() {
           error={error}
           onImport={handleImport}
           onOpen={(project) => {
+            inactiveProjectIds.delete(project.id);
             setActiveProject(project);
             setWizardStage(pausedStageFor(project));
             setView("dashboard");
@@ -3465,6 +3485,12 @@ export default function Home() {
               aria-label="返回项目首页"
               title="返回项目首页"
               onClick={() => {
+                inactiveProjectIds.add(activeProject.id);
+                analysisAbortRef.current?.abort();
+                analysisAbortRef.current = null;
+                setActiveStage(null);
+                setIsContinuing(false);
+                setWizardStage(null);
                 setActiveProject(null);
                 setView("dashboard");
               }}
