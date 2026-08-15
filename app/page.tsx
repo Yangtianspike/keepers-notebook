@@ -188,7 +188,16 @@ const STAGE_ORDER: AnalysisStage[] = [
   "acts",
 ];
 function isActionableReview(item: ReviewItem) {
-  return item.status === "pending" && item.type !== "external";
+  return item.status === "pending" && item.type !== "external" && isMeaningfulReviewCandidate(item);
+}
+
+function isMeaningfulReviewCandidate(item: Partial<ReviewItem>) {
+  const title = String(item.title ?? "").trim();
+  const description = String(item.description ?? "").trim();
+  const hasSpecificTitle = Boolean(title && title !== "需要确认" && title !== "需要 KP 确认");
+  const hasCandidates = Array.isArray(item.candidateNames) && item.candidateNames.some((name) => String(name).trim());
+  const hasSources = Array.isArray(item.sources) && item.sources.some((source) => Boolean(source?.quote?.trim()));
+  return Boolean(hasSpecificTitle || description || hasCandidates || item.proposal || hasSources);
 }
 
 const STAGE_VIEWS: View[] = [
@@ -1357,6 +1366,9 @@ function hydrateProject(project: Project): Project {
       openingHook: project.analysis.openingHook ?? "",
       openingHookDetails: normalizeOpeningHookDetails(project.analysis.openingHookDetails),
       activityLog: project.analysis.activityLog ?? [],
+      reviewItems: (project.analysis.reviewItems ?? []).filter(
+        (item) => item.status !== "pending" || isMeaningfulReviewCandidate(item),
+      ),
       unresolvedRelationCount:
         project.analysis.unresolvedRelationCount ?? 0,
       places: project.analysis.places ?? [],
@@ -2174,9 +2186,9 @@ export default function Home() {
         }),
       );
       const returnedReviews = Array.isArray(data.reviewItems)
-        ? (data.reviewItems as Partial<ReviewItem>[]).map((item) =>
-            normalizeReviewItem(item, "event"),
-          )
+        ? (data.reviewItems as Partial<ReviewItem>[])
+            .filter(isMeaningfulReviewCandidate)
+            .map((item) => normalizeReviewItem(item, "event"))
         : [];
 
       if (stage === "background" && data.overview) {

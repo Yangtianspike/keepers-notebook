@@ -76,6 +76,7 @@ function stageInstructions(
 需要推测的内容为 "inference"；原作自相矛盾为 "conflict"。
 confidence 是 0 到 1。sources 必须给出 PDF 实际页码 page、可选 printedPage、chapter 和不超过 45 个汉字的 quote。
 找不到依据时 sources 使用空数组，且 provenance 必须是 inference。
+reviewItems 禁止包含空对象；每项必须有具体 title 与 description，没有需要裁决的内容时返回空数组。
 只返回一个合法 JSON 对象，不要 Markdown，不要解释，不要代码围栏。`;
 
   const stages: Record<AnalysisStage, string> = {
