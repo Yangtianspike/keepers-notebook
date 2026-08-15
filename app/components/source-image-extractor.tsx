@@ -358,10 +358,58 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
   };
 
   const scan = async () => {
-    if (!sourceUrl || project.fileType !== "pdf") return;
+    if (!sourceUrl || (project.fileType !== "pdf" && project.fileType !== "docx")) return;
     setScanning(true);
     cancelledRef.current = false;
     try {
+      if (project.fileType === "docx") {
+        setStatus("正在读取 Word 文档中的内嵌图片…");
+        const mammoth = await import("mammoth/mammoth.browser");
+        const arrayBuffer = await fetch(sourceUrl).then((response) => response.arrayBuffer());
+        const imageSources: Array<{ src: string; contentType: string }> = [];
+        await mammoth.convertToHtml({ arrayBuffer }, {
+          convertImage: mammoth.images.imgElement(async (image) => {
+            const src = `data:${image.contentType};base64,${await image.read("base64")}`;
+            imageSources.push({ src, contentType: image.contentType });
+            return { src };
+          }),
+        });
+        const retained = assets.filter((asset) => asset.origin !== "docx");
+        const removed = assets.filter((asset) => asset.origin === "docx");
+        removed.forEach((asset) => URL.revokeObjectURL(asset.url));
+        await deleteExtractedImages(project.id, { start: 1, end: 1 });
+        const found: ExtractedAsset[] = [];
+        for (let index = 0; index < imageSources.length; index += 1) {
+          const item = imageSources[index];
+          const blob = await fetch(item.src).then((response) => response.blob());
+          const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+            const url = URL.createObjectURL(blob);
+            const image = new Image();
+            image.onload = () => { resolve({ width: image.naturalWidth, height: image.naturalHeight }); URL.revokeObjectURL(url); };
+            image.onerror = () => { reject(new Error("无法读取 Word 内嵌图片。")); URL.revokeObjectURL(url); };
+            image.src = url;
+          });
+          const url = URL.createObjectURL(blob);
+          objectUrlsRef.current.push(url);
+          found.push({
+            id: `${project.id}:docx:${index}`,
+            projectId: project.id,
+            page: 1,
+            sourceObjectName: `docx-image-${index + 1}`,
+            width: dimensions.width,
+            height: dimensions.height,
+            blob,
+            createdAt: new Date().toISOString(),
+            origin: "docx",
+            title: `Word 内嵌图片 ${index + 1}`,
+            url,
+          });
+        }
+        await saveExtractedImages(found.map(toRecord));
+        setAssets([...retained, ...found]);
+        setStatus(found.length ? `已提取并保存 ${found.length} 张 Word 内嵌图片。` : "Word 文档中没有可提取的内嵌图片。");
+        return;
+      }
       const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
       pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
       const loadingTask = pdfjs.getDocument({ url: sourceUrl });
@@ -448,7 +496,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
         <div>
           <p className="eyebrow">SOURCE ASSETS</p>
           <h2>图片资料</h2>
-          <p>提取原始 PDF 图片或加入本地截图，再整理成可交付给调查员的图片资料包。</p>
+          <p>提取原始 PDF / Word 图片或加入本地截图，再整理成可交付给调查员的图片资料包。</p>
         </div>
         <div className="source-image-actions">
           <label>从第 <input min={1} max={project.pages.length} type="number" value={startPage} onChange={(event) => setStartPage(Number(event.target.value))} /> 页</label>
@@ -456,12 +504,12 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
           {scanning ? (
             <button className="image-resource-action" onClick={() => { cancelledRef.current = true; setStatus("正在停止扫描…"); }}>停止</button>
           ) : (
-            <button className="image-resource-action" disabled={!sourceUrl || project.fileType !== "pdf"} onClick={() => void scan()}>扫描所选页</button>
+            <button className="image-resource-action" disabled={!sourceUrl || (project.fileType !== "pdf" && project.fileType !== "docx")} onClick={() => void scan()}>{project.fileType === "docx" ? "提取 Word 图片" : "扫描所选页"}</button>
           )}
         </div>
       </header>
       <div className="source-image-status">{status}</div>
-      {project.fileType !== "pdf" && <div className="notice">图片提取目前仅支持 PDF 原始资料。</div>}
+      {project.fileType === "markdown" && <div className="notice">Markdown 没有内嵌图片容器，可直接把图片拖入或粘贴到资料包工作区。</div>}
       <section className="image-pack-section">
         <header>
           <div><span className="eyebrow">INVESTIGATOR HANDOUTS</span><h3>调查员资料包</h3><p className="image-pack-paste-hint">支持拖入图片；QQ 截图后直接按 Ctrl+V 粘贴。</p></div>
@@ -484,7 +532,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
                   const current = assets.find((item) => item.id === asset.id);
                   if (current) void saveExtractedImages([toRecord(current)]);
                 }} /></label>
-                <small>{asset.origin === "upload" ? "本地图片" : `PDF 第 ${asset.page} 页`}</small>
+                <small>{asset.origin === "upload" ? "本地图片" : asset.origin === "docx" ? "Word 内嵌图片" : `PDF 第 ${asset.page} 页`}</small>
               </div>
               <div className="image-pack-order">
                 <button disabled={index === 0} title="前移" onClick={() => movePackAsset(asset.id, -1)}>←</button>
@@ -496,7 +544,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
         </div>
       </section>
       <section className="source-image-library">
-        <header><div><span className="eyebrow">PDF IMAGE LIBRARY</span><h3>PDF 图片库</h3></div><span>{assets.filter((asset) => asset.origin !== "upload").length} 张</span></header>
+        <header><div><span className="eyebrow">SOURCE IMAGE LIBRARY</span><h3>{project.fileType === "docx" ? "Word 图片库" : "PDF 图片库"}</h3></div><span>{assets.filter((asset) => asset.origin !== "upload").length} 张</span></header>
         <div className="source-image-grid">
         {assets.filter((asset) => asset.origin !== "upload").map((asset) => (
           <article key={`${asset.page}-${asset.id}`} draggable onDragStart={(event) => {
@@ -504,9 +552,9 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
             event.dataTransfer.setData("application/x-keeper-atlas-image", asset.id);
           }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={asset.url} alt={`第 ${asset.page} 页提取图片`} />
+            <img src={asset.url} alt={asset.origin === "docx" ? assetTitle(asset) : `第 ${asset.page} 页提取图片`} />
             <footer>
-              <span>第 {asset.page} 页 · {asset.width} × {asset.height}</span>
+              <span>{asset.origin === "docx" ? "Word 内嵌" : `第 ${asset.page} 页`} · {asset.width} × {asset.height}</span>
               <div><button className="image-resource-action" disabled={asset.inPack} onClick={() => addToPack(asset.id)}>{asset.inPack ? "已加入" : "加入资料包"}</button><button className="image-resource-action" onClick={() => downloadAsset(asset, project.name)}>保存 PNG</button></div>
             </footer>
           </article>
