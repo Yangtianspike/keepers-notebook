@@ -44,3 +44,5 @@ next-env.d.ts
 /.npm-cache/
 /.dev-server.out.log
 /.dev-server.err.log
+/.prod-server.out.log
+/.prod-server.err.log

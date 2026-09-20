@@ -1,5 +1,5 @@
 {
-  "name": "keeper-atlas",
+  "name": "keepers-notebook",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -10,6 +10,7 @@
     "build": "vinext build",
     "start": "vinext start",
     "test": "npm run build && node --test tests/*.test.mjs",
+    "test:coverage": "npm run build && node --test --experimental-test-coverage tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
