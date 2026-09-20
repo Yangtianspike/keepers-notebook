@@ -74,13 +74,17 @@ function isTableDivider(line: string) {
   return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 }
 
+// 人物卡指令可以引用人物与怪物 / Boss，需与 markdown-document.tsx 的渲染判断保持一致。
+// 只放行 person: 会让怪物卡指令退化成普通段落，把 :::character-card{...} 原文印到书页上。
+const CARD_REF_PATTERN = /^(?:person|monster):[^\s]+$/;
+
 function parseCharacterDirective(line: string): CharacterCardDirective | null {
   const match = line.trim().match(/^:::character-card(\{.*\})$/);
   if (!match) return null;
   try {
     const value = JSON.parse(match[1]) as Record<string, unknown>;
     const ref = typeof value.ref === "string" ? value.ref : "";
-    if (!/^person:[^\s]+$/.test(ref)) return null;
+    if (!CARD_REF_PATTERN.test(ref)) return null;
     const importance = value.importance === "core" || value.importance === "important" || value.importance === "minor"
       ? value.importance
       : undefined;
@@ -255,7 +259,7 @@ export function editableHtmlToMarkdown(root: HTMLElement) {
   return Array.from(root.children).map((element) => {
     if (element instanceof HTMLElement && element.dataset.keeperBlock === "character-card") {
       const ref = element.dataset.ref ?? "";
-      if (!/^person:[^\s]+$/.test(ref)) return "";
+      if (!CARD_REF_PATTERN.test(ref)) return "";
       const importance = element.dataset.importance;
       return `:::character-card${JSON.stringify({ ref, ...(importance ? { importance } : {}) })}`;
     }
