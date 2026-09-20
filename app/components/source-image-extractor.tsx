@@ -220,9 +220,9 @@ function readPdfObject(page: { objs: { get: (name: string, callback: (value: unk
       settled = true;
       resolve(value);
     };
-    // 大幅面图片（十余 MB）解码可能耗时数秒，超时过短会丢弃整张图；
-    // 但个别对象永远不解码，超时过长会让扫描看起来卡死，取一个折中值。
-    const timeout = window.setTimeout(() => finish(null), 15000);
+    // 实测该模组内最大图片（2602x1553、1298x3456）解码约 46ms，正常对象都是毫秒级。
+    // 这里只需留出充足余量；个别对象不会回调，超时值直接决定扫描被拖慢的程度。
+    const timeout = window.setTimeout(() => finish(null), 1500);
     try {
       page.objs.get(name, (value: unknown) => {
         window.clearTimeout(timeout);
@@ -515,88 +515,6 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
     }
   };
 
-  /**
-   * 把 PDF 整页渲染成图片。
-   * 展示材料类内容常常由「图片图层 + 文本层」混合排版，单独提取内嵌图片只能
-   * 拿到框线和标题。整页渲染才能同时保留文字与排版，导出后可直接交付玩家。
-   */
-  const exportPages = async () => {
-    if (!sourceUrl || project.fileType !== "pdf" || scanning) return;
-    setScanning(true);
-    cancelledRef.current = false;
-    setStatus("正在准备整页导出…");
-    try {
-      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-      pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-      const loadingTask = pdfjs.getDocument({ url: sourceUrl });
-      const pdf = await loadingTask.promise;
-      const first = Math.max(1, Math.min(Math.floor(startPage), pdf.numPages));
-      const last = Math.max(first, Math.min(Math.floor(endPage), pdf.numPages));
-
-      const previousPages = assets.filter((asset) => asset.origin === "page");
-      previousPages.forEach((asset) => URL.revokeObjectURL(asset.url));
-      objectUrlsRef.current = objectUrlsRef.current.filter(
-        (url) => !previousPages.some((asset) => asset.url === url),
-      );
-      const retained = assets.filter((asset) => asset.origin !== "page");
-      setAssets(retained);
-
-      const found: ExtractedAsset[] = [];
-      for (let pageNumber = first; pageNumber <= last; pageNumber += 1) {
-        if (cancelledRef.current) break;
-        setStatus(`正在导出第 ${pageNumber} 页（${pageNumber - first + 1} / ${last - first + 1}）…`);
-        const page = await pdf.getPage(pageNumber);
-        // 2 倍缩放让正文小字与线框保持清晰，同时控制导出体积。
-        const viewport = page.getViewport({ scale: 2 });
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        const context = canvas.getContext("2d");
-        if (!context) {
-          page.cleanup();
-          continue;
-        }
-        context.fillStyle = "#ffffff";
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        await page.render({ canvas, canvasContext: context, viewport }).promise;
-        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-        page.cleanup();
-        if (!blob) continue;
-        const url = URL.createObjectURL(blob);
-        objectUrlsRef.current.push(url);
-        const previous = assets.find((asset) => asset.id === `${project.id}:page:${pageNumber}`);
-        found.push({
-          id: `${project.id}:page:${pageNumber}`,
-          projectId: project.id,
-          page: pageNumber,
-          sourceObjectName: `page-${pageNumber}`,
-          width: canvas.width,
-          height: canvas.height,
-          blob,
-          createdAt: new Date().toISOString(),
-          origin: "page",
-          title: previous?.title ?? `第 ${pageNumber} 页整页`,
-          inPack: previous?.inPack,
-          packOrder: previous?.packOrder,
-          url,
-        });
-        setAssets([...retained, ...found]);
-        await saveExtractedImages(found.filter((asset) => asset.page === pageNumber).map(toRecord));
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      }
-
-      setStatus(
-        cancelledRef.current
-          ? `导出已停止，保留已生成的 ${found.length} 张整页图片。`
-          : `已导出 ${found.length} 张整页图片，包含该页的文字与排版。`,
-      );
-      await loadingTask.destroy();
-    } catch (error) {
-      setStatus(error instanceof Error ? `整页导出失败：${error.message}` : "整页导出失败。");
-    } finally {
-      setScanning(false);
-    }
-  };
 
   return (
     <div className="source-image-extractor">
@@ -614,16 +532,6 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
           ) : (
             <>
               <button className="image-resource-action" disabled={!sourceUrl || (project.fileType !== "pdf" && project.fileType !== "docx")} onClick={() => void scan()}>{project.fileType === "docx" ? "提取 Word 图片" : "扫描所选页"}</button>
-              {project.fileType === "pdf" && (
-                <button
-                  className="image-resource-action"
-                  disabled={!sourceUrl}
-                  onClick={() => void exportPages()}
-                  title="把该页的文字与排版一起导出成图片，适合展示材料"
-                >
-                  导出整页图片
-                </button>
-              )}
             </>
           )}
         </div>
