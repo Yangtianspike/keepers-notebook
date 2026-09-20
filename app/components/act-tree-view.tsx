@@ -50,7 +50,6 @@ function ActEdge({
   targetPosition,
   label,
   markerEnd,
-  className,
 }: EdgeProps) {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -62,9 +61,7 @@ function ActEdge({
   });
   return (
     <>
-      <g className={className}>
-        <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} />
-      </g>
+      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} />
       {label ? (
         <EdgeLabelRenderer>
           <div

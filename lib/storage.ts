@@ -25,7 +25,7 @@ export type ExtractedImageRecord = {
   height: number;
   blob: Blob;
   createdAt: string;
-  origin?: "pdf" | "docx" | "upload";
+  origin?: "pdf" | "docx" | "upload" | "page";
   fileName?: string;
   title?: string;
   inPack?: boolean;
