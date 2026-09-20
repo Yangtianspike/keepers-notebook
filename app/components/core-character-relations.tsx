@@ -4,49 +4,57 @@ import { useMemo } from "react";
 import { Controls, MarkerType, Position, ReactFlow, type Edge, type Node } from "@xyflow/react";
 import dagre from "dagre";
 import "@xyflow/react/dist/style.css";
-import type { Project } from "@/lib/types";
+import { buildEntityRelations, buildProjectEntities, entityFields, entityName } from "@/lib/entities";
+import type { EntityRelation, Project } from "@/lib/types";
 
 const CORE_WIDTH = 240;
 const RELATED_WIDTH = 190;
 const NODE_HEIGHT = 88;
 
 function layoutRelations(project: Project) {
-  const people = project.analysis.people;
-  const peopleById = new Map(people.map((person) => [person.id, person]));
-  const coreIds = new Set(people.filter((person) => person.importance === "core").map((person) => person.id));
-  const relations = [...(project.analysis.personRelations ?? [])]
-    .filter((relation) => peopleById.has(relation.sourcePersonId) && peopleById.has(relation.targetPersonId))
-    .filter((relation) => coreIds.has(relation.sourcePersonId) || coreIds.has(relation.targetPersonId))
-    .sort((left, right) => Number(right.importance === "primary") - Number(left.importance === "primary"));
+  const entities = buildProjectEntities(project);
+  const people = entities.filter((entity) => entity.kind === "person");
+  const peopleByRef = new Map(people.map((person) => [person.ref, person]));
+  const coreIds = new Set(people.filter((person) => entityFields(person).importance === "core").map((person) => person.ref));
+  const rank = (relation: EntityRelation) => (
+    ({ keeper: 5, direct: 4, inference: 3, indirect: 2 }[relation.level] ?? 0) +
+    (relation.importance === "primary" ? 1 : 0)
+  );
+  const bestByPair = new Map<string, EntityRelation>();
+  buildEntityRelations(project, entities)
+    .filter((relation) => peopleByRef.has(relation.sourceRef) && peopleByRef.has(relation.targetRef))
+    .filter((relation) => coreIds.has(relation.sourceRef) || coreIds.has(relation.targetRef))
+    .forEach((relation) => {
+      const pair = [relation.sourceRef, relation.targetRef].sort().join(":");
+      const current = bestByPair.get(pair);
+      if (!current || rank(relation) > rank(current)) bestByPair.set(pair, relation);
+    });
+  const relations = [...bestByPair.values()].sort((left, right) => rank(right) - rank(left));
   const visibleIds = new Set(coreIds);
   relations.forEach((relation) => {
-    visibleIds.add(relation.sourcePersonId);
-    visibleIds.add(relation.targetPersonId);
+    visibleIds.add(relation.sourceRef);
+    visibleIds.add(relation.targetRef);
   });
-  const nodes: Node[] = people.filter((person) => visibleIds.has(person.id)).map((person) => ({
-    id: person.id,
+  const nodes: Node[] = people.filter((person) => visibleIds.has(person.ref)).map((person) => ({
+    id: person.ref,
     position: { x: 0, y: 0 },
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
-    className: `core-relation-node ${coreIds.has(person.id) ? "is-core" : "is-related"}`,
-    data: { label: <span><small>{coreIds.has(person.id) ? "核心人物" : "相关人物"}</small><strong>{person.name}</strong><em>{person.role || person.publicIdentity || "身份待确认"}</em></span> },
+    className: `core-relation-node ${coreIds.has(person.ref) ? "is-core" : "is-related"}`,
+    data: { label: <span><small>{coreIds.has(person.ref) ? "核心人物" : "相关人物"}</small><strong>{entityName(person)}</strong><em>{String(entityFields(person).role || entityFields(person).publicIdentity || "身份待确认")}</em></span> },
   }));
-  const seenPairs = new Set<string>();
-  const edges: Edge[] = relations.flatMap((relation) => {
-    const pair = [relation.sourcePersonId, relation.targetPersonId].sort().join(":");
-    if (seenPairs.has(pair)) return [];
-    seenPairs.add(pair);
+  const edges: Edge[] = relations.map((relation) => {
     const label = relation.label || relation.summary || "相关";
-    return [{
+    return {
       id: relation.id,
-      source: relation.sourcePersonId,
-      target: relation.targetPersonId,
+      source: relation.sourceRef,
+      target: relation.targetRef,
       label: label.length > 14 ? `${label.slice(0, 14)}…` : label,
       markerEnd: { type: MarkerType.ArrowClosed },
-      className: relation.provenance === "inference" ? "core-relation-edge is-inference" : "core-relation-edge",
+      className: relation.provenance === "inference" || relation.level === "inference" ? "core-relation-edge is-inference" : "core-relation-edge",
       labelBgPadding: [6, 4] as [number, number],
       labelBgBorderRadius: 4,
-    }];
+    };
   });
 
   const graph = new dagre.graphlib.Graph();
@@ -63,7 +71,7 @@ function layoutRelations(project: Project) {
   return { nodes, edges, coreCount: coreIds.size };
 }
 
-export function CoreCharacterRelations({ project, onSelectPerson }: { project: Project; onSelectPerson: (personId: string) => void }) {
+export function CoreCharacterRelations({ project, onSelectPerson }: { project: Project; onSelectPerson: (entityRef: string) => void }) {
   const graph = useMemo(() => layoutRelations(project), [project]);
   if (graph.coreCount === 0) {
     return <div className="core-relations-empty">暂无核心人物关系数据。</div>;

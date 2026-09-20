@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Controls, MarkerType, Position, ReactFlow, type Edge, type Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { buildProjectEntities, entityFields, entityName, getRelatedEntities } from "@/lib/entities";
+import { buildProjectEntities, ENTITY_KIND_LABELS, entityFields, entityName, getRelatedEntities } from "@/lib/entities";
 import type { Project } from "@/lib/types";
 
 type Props = {
@@ -20,7 +20,7 @@ export function PersonRelationWindow({ project, entityRef, x, y, width, height, 
   const person = entities.find((candidate) => candidate.ref === entityRef);
   const graph = useMemo(() => {
     if (!person) return { nodes: [] as Node[], edges: [] as Edge[] };
-    const related = getRelatedEntities(entityRef, project).filter((item) => person.kind !== "person" || item.entity.kind === "person");
+    const related = getRelatedEntities(entityRef, project);
     const radius = Math.max(180, Math.min(255, 125 + related.length * 11));
     const nodes: Node[] = [{
       id: person.ref, position: { x: 300, y: 210 }, sourcePosition: Position.Right, targetPosition: Position.Left,
@@ -33,7 +33,7 @@ export function PersonRelationWindow({ project, entityRef, x, y, width, height, 
       nodes.push({
         id: item.entity.ref, position: { x: 300 + Math.cos(angle) * radius, y: 210 + Math.sin(angle) * radius },
         sourcePosition: Position.Right, targetPosition: Position.Left, className: "person-relation-flow-node",
-        data: { label: <span><strong>{entityName(item.entity)}</strong><em>{String(entityFields(item.entity).role || "身份待确认")}</em></span> },
+        data: { label: <span><small>{ENTITY_KIND_LABELS[item.entity.kind]}</small><strong>{entityName(item.entity)}</strong><em>{String(entityFields(item.entity).role || entityFields(item.entity).summary || "资料待补充")}</em></span> },
       });
       edges.push({
         id: item.relation.id, source: person.ref, target: item.entity.ref, type: "straight",

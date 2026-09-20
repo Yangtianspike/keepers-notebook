@@ -427,9 +427,12 @@ export type EntityRelation = {
   targetRef: string;
   label?: string;
   level: EntityRelationLevel;
+  provenance?: "source" | "inference" | "derived" | "keeper";
   summary?: string;
   importance?: "primary" | "secondary";
   sources?: SourceRef[];
+  replacesId?: string;
+  hidden?: boolean;
 };
 
 export type EntityFields = Record<string, string | string[] | boolean>;

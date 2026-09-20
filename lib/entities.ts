@@ -227,18 +227,29 @@ export function entityCoCStats(entity: EntityCard) {
 
 export function buildEntityRelations(project: Project, entities: EntityCard[]): EntityRelation[] {
   const refs = new Set(entities.map((entity) => entity.ref));
-  const relations: EntityRelation[] = [...(project.kpNotes?.entityRelations ?? [])];
+  const savedRelations = project.kpNotes?.entityRelations ?? [];
+  const replacements = new Map(
+    savedRelations.filter((relation) => relation.replacesId).map((relation) => [relation.replacesId!, relation]),
+  );
+  const relations: EntityRelation[] = savedRelations.filter(
+    (relation) => !relation.replacesId && !relation.hidden && refs.has(relation.sourceRef) && refs.has(relation.targetRef),
+  );
   const push = (
+    id: string,
     sourceRef: string,
     targetRef: string,
     label: string,
     level: EntityRelation["level"] = "direct",
-    details: Pick<EntityRelation, "summary" | "importance" | "sources"> = {},
+    details: Pick<EntityRelation, "summary" | "importance" | "sources" | "provenance"> = {},
   ) => {
     if (!refs.has(sourceRef) || !refs.has(targetRef)) return;
-    const id = `${sourceRef}>${targetRef}>${label}`;
-    if (!relations.some((relation) => relation.id === id)) {
-      relations.push({ id, sourceRef, targetRef, label, level, ...details });
+    const replacement = replacements.get(id);
+    if (replacement?.hidden) return;
+    const candidate = replacement
+      ? { ...replacement, sourceRef: replacement.sourceRef || sourceRef, targetRef: replacement.targetRef || targetRef }
+      : { id, sourceRef, targetRef, label, level, ...details };
+    if (!relations.some((relation) => relation.id === candidate.id)) {
+      relations.push(candidate);
     }
   };
   const semanticPairs = new Set<string>();
@@ -251,6 +262,7 @@ export function buildEntityRelations(project: Project, entities: EntityCard[]): 
       if (semanticPairs.has(pairKey)) return;
       semanticPairs.add(pairKey);
       push(
+        `model:person-pair:${pairKey}`,
         sourceRef,
         targetRef,
         relation.label,
@@ -259,6 +271,7 @@ export function buildEntityRelations(project: Project, entities: EntityCard[]): 
           summary: relation.summary,
           importance: relation.importance,
           sources: relation.sources,
+          provenance: relation.provenance,
         },
       );
     });
@@ -271,12 +284,12 @@ export function buildEntityRelations(project: Project, entities: EntityCard[]): 
     ].filter((ref, index, all) => refs.has(ref) && all.indexOf(ref) === index);
     actRefs.forEach((sourceRef, sourceIndex) => actRefs.slice(sourceIndex + 1).forEach((targetRef) => {
       if (sourceRef.startsWith("person:") && targetRef.startsWith("person:")) return;
-      push(sourceRef, targetRef, `同见于第 ${act.sequence} 幕`, "indirect");
+      push(`derived:act:${act.id}:${sourceRef}:${targetRef}`, sourceRef, targetRef, `同见于第 ${act.sequence} 幕`, "indirect", { provenance: "derived" });
     }));
   });
   project.analysis.clues.forEach((clue) => clue.targets.forEach((target) => {
     if (target.type === "person" || target.type === "place" || target.type === "event") {
-      push(entityRef("clue", clue.id), entityRef(target.type, target.id), target.label);
+      push(`derived:clue:${clue.id}:${target.type}:${target.id}`, entityRef("clue", clue.id), entityRef(target.type, target.id), target.label, "direct", { provenance: clue.provenance === "source" ? "source" : "inference" });
     }
   }));
   return relations;
@@ -433,25 +446,16 @@ export function buildActTitle(originalTitle: string, sequence: number) {
 }
 
 export function normalizeActMarkdownHierarchy(markdown: string, includeActsHeading: boolean) {
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
-  const firstHeading = lines.findIndex((line) => /^#{1,6}\s+\S/.test(line.trim()));
-  if (firstHeading >= 0 && /^#\s+幕\s*$/.test(lines[firstHeading].trim())) {
-    lines.splice(firstHeading, 1);
-    while (lines[firstHeading]?.trim() === "") lines.splice(firstHeading, 1);
-  }
-  const actHeading = lines.findIndex((line) => /^#{1,6}\s+\S/.test(line.trim()));
-  if (actHeading >= 0) {
-    const legacyHierarchy = /^#\s+/.test(lines[actHeading].trim());
-    if (legacyHierarchy) {
-      lines.forEach((line, index) => {
-        const match = line.match(/^(#{1,6})(\s+\S.*)$/);
-        if (!match) return;
-        lines[index] = `${"#".repeat(Math.min(6, match[1].length + 1))}${match[2]}`;
-      });
-    } else {
-      lines[actHeading] = lines[actHeading].replace(/^#{1,6}(\s+)/, "##$1");
-    }
-  }
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n")
+    .filter((line) => !/^#\s+幕\s*$/.test(line.trim()));
+  const headingIndexes = lines.flatMap((line, index) => /^#{1,6}\s+\S/.test(line.trim()) ? [index] : []);
+  headingIndexes.forEach((lineIndex, headingIndex) => {
+    const match = lines[lineIndex].match(/^(#{1,6})(\s+\S.*)$/);
+    if (!match) return;
+    const level = headingIndex === 0 ? 2 : Math.max(3, match[1].length);
+    lines[lineIndex] = `${"#".repeat(Math.min(6, level))}${match[2]}`;
+  });
+  while (lines[0]?.trim() === "") lines.shift();
   const body = lines.join("\n").replace(/^\s+/, "");
   return `${includeActsHeading ? "# 幕\n\n" : ""}${body}`.trim();
 }

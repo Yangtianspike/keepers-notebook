@@ -5,6 +5,7 @@ import {
   buildActMarkdown,
   buildActTitle,
   buildCharacterMarkdown,
+  buildEntityRelations,
   buildMonsterMarkdown,
   buildOpeningHookMarkdown,
   buildPrologueMarkdown,
@@ -12,6 +13,7 @@ import {
   getRelatedEntities,
   normalizeActMarkdownHierarchy,
 } from "../lib/entities.ts";
+import { buildNotebookOutline } from "../lib/notebook-outline.ts";
 
 const project = {
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -130,6 +132,10 @@ test("legacy saved act markdown is grouped below one acts heading", () => {
     normalizeActMarkdownHierarchy("# 幕\n\n## 第 1 幕 · 新标题", true),
     "# 幕\n\n## 第 1 幕 · 新标题",
   );
+  assert.equal(
+    normalizeActMarkdownHierarchy("## 第一幕\n\n# 用户新增标题\n\n###### 六级细节", true),
+    "# 幕\n\n## 第一幕\n\n### 用户新增标题\n\n###### 六级细节",
+  );
 });
 
 test("entity appearances use semantic person relations without same-act labels", () => {
@@ -142,4 +148,46 @@ test("entity appearances use semantic person relations without same-act labels",
   assert.ok(relatedRefs.includes("clue:ledger"));
   assert.equal(related.find((item) => item.entity.ref === "person:minor")?.relation.label, "指挥调查");
   assert.ok(!related.some((item) => item.entity.kind === "person" && item.relation.label?.includes("同见于")));
+});
+
+test("shared notebook outline keeps acts under one structural root and supports H1-H6", () => {
+  const outline = buildNotebookOutline([
+    { key: "stage-background", markdown: "# 背景\n\n## 二级\n\n### 三级\n\n#### 四级\n\n##### 五级\n\n###### 六级" },
+    { key: "acts:a1", markdown: "## 第一幕\n\n### 场景" },
+    { key: "acts:a2", markdown: "## 第二幕\n\n### 场景" },
+  ]);
+  assert.deepEqual(outline.slice(0, 6).map((heading) => heading.level), [1, 2, 3, 4, 5, 6]);
+  const actsRoot = outline.find((heading) => heading.title === "幕");
+  const acts = outline.filter((heading) => heading.sectionKey.startsWith("acts:") && heading.level === 2);
+  assert.ok(actsRoot);
+  assert.equal(acts.length, 2);
+  assert.ok(acts.every((heading) => heading.parentId === actsRoot.id));
+  assert.notEqual(
+    outline.find((heading) => heading.sectionKey === "acts:a1" && heading.title === "场景")?.id,
+    outline.find((heading) => heading.sectionKey === "acts:a2" && heading.title === "场景")?.id,
+  );
+});
+
+test("keeper relationship overrides and tombstones survive the unified relation build", () => {
+  const overridden = structuredClone(project);
+  overridden.kpNotes = {
+    entityRelations: [{
+      id: "keeper-override",
+      sourceRef: "person:core",
+      targetRef: "person:minor",
+      label: "KP 修订关系",
+      level: "keeper",
+      provenance: "keeper",
+      replacesId: "model:person-pair:person:core|person:minor",
+    }],
+  };
+  let relations = buildEntityRelations(overridden, buildProjectEntities(overridden));
+  assert.equal(relations.find((relation) => relation.sourceRef === "person:core" && relation.targetRef === "person:minor")?.label, "KP 修订关系");
+
+  overridden.kpNotes.entityRelations = [{
+    ...overridden.kpNotes.entityRelations[0],
+    hidden: true,
+  }];
+  relations = buildEntityRelations(overridden, buildProjectEntities(overridden));
+  assert.ok(!relations.some((relation) => relation.sourceRef === "person:core" && relation.targetRef === "person:minor"));
 });
