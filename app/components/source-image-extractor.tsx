@@ -211,7 +211,8 @@ function readPdfObject(page: { objs: { get: (name: string, callback: (value: unk
       settled = true;
       resolve(value);
     };
-    const timeout = window.setTimeout(() => finish(null), 1200);
+    // 大幅面图片（十余 MB）解码可能耗时数秒，超时过短会让整张图被静默丢弃。
+    const timeout = window.setTimeout(() => finish(null), 30000);
     try {
       page.objs.get(name, (value: unknown) => {
         window.clearTimeout(timeout);
@@ -425,6 +426,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
       const found: ExtractedAsset[] = [];
       const seen = new Set<string>();
       let ignoredLayers = 0;
+      let unreadable = 0;
 
       for (let pageNumber = first; pageNumber <= last; pageNumber += 1) {
         if (cancelledRef.current) break;
@@ -440,6 +442,11 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
         for (const name of new Set(imageNames)) {
           if (cancelledRef.current) break;
           const image = await readPdfObject(page, name);
+          if (!image) {
+            // 读取失败或解码超时的图片要计数，否则会静默丢失。
+            unreadable += 1;
+            continue;
+          }
           const converted = await imageToBlob(image);
           if (converted === "ignored") {
             ignoredLayers += 1;
@@ -479,8 +486,8 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
       setStatus(cancelledRef.current
           ? `扫描已停止，保留已找到的 ${found.length} 张图片。`
           : found.length
-          ? `扫描完成，新提取 ${found.length} 张图片${ignoredLayers > 0 ? `，已过滤 ${ignoredLayers} 张黑色蒙版或空白层` : ""}。结果已保存在当前项目。`
-          : `扫描完成，但所选页面没有可独立提取的大图${ignoredLayers > 0 ? `；已过滤 ${ignoredLayers} 张黑色蒙版或空白层` : ""}。`,
+          ? `扫描完成，新提取 ${found.length} 张图片${ignoredLayers > 0 ? `，已过滤 ${ignoredLayers} 张黑色蒙版或空白层` : ""}${unreadable > 0 ? `；另有 ${unreadable} 张图片读取失败，可缩小页码范围后重试` : ""}。结果已保存在当前项目。`
+          : `扫描完成，但所选页面没有可独立提取的大图${ignoredLayers > 0 ? `；已过滤 ${ignoredLayers} 张黑色蒙版或空白层` : ""}${unreadable > 0 ? `；${unreadable} 张图片读取失败，可缩小页码范围后重试` : ""}。`,
       );
       await loadingTask.destroy();
     } catch (error) {
