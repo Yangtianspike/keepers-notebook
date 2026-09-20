@@ -47,9 +47,29 @@ type RequestBody = {
   };
 };
 
-function isDeepSeekEndpoint(endpoint: string): boolean {
-  const hostname = new URL(endpoint).hostname.toLowerCase();
-  return hostname === "api.deepseek.com" || hostname.endsWith(".deepseek.com");
+function isDeepSeekEndpoint(endpoint: string, model: string): boolean {
+  // 第三方中转站也常常代理 DeepSeek 模型，因此不能只认官方域名。
+  if (model.trim().toLowerCase().startsWith("deepseek")) return true;
+  try {
+    const hostname = new URL(endpoint).hostname.toLowerCase();
+    return hostname === "api.deepseek.com" || hostname.endsWith(".deepseek.com");
+  } catch {
+    return false;
+  }
+}
+
+/** 把网络层异常翻译成用户可以直接照着排查的提示。 */
+function describeRequestError(error: unknown): string {
+  if (!(error instanceof Error)) return "未知错误";
+  const message = error.message || "";
+  if (
+    /fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network|socket|timeout/i.test(
+      message,
+    )
+  ) {
+    return "无法连接到模型服务地址。请确认 Base URL 填的是服务商的实际根地址，并检查本机网络能否访问该服务。";
+  }
+  return message || "未知错误";
 }
 
 function maxTokensFor(stage?: AnalysisStage, isTest = false): number {
@@ -258,6 +278,7 @@ function parseJsonContent(content: string): unknown {
 }
 
 export async function POST(request: NextRequest) {
+  let endpointHint = "";
   try {
     const body = (await request.json()) as RequestBody;
     if (!body.config?.baseUrl || !body.config?.model) {
@@ -273,6 +294,7 @@ export async function POST(request: NextRequest) {
 
     const isEmbeddingAction = body.action === "embedTest" || body.action === "embed";
     const endpoint = providerEndpoint(body.config, body.apiKey ?? "", isEmbeddingAction);
+    endpointHint = endpoint;
     const isTest = body.action === "test";
     const isContinue = body.action === "continue";
     if (
@@ -353,7 +375,7 @@ ${actContext}
 ${characterContext}
 ${monsterContext}
 
-以下是与本阶段最相关的剧本原文摘录（按页码排序）。[[PDF_PAGE:N]] 表示 PDF 实际第 N 页；如摘录不足以回答，基于已有信息给出结论并降低 confidence：
+以下是与本阶段最相关的剧本原文摘录（按页码排序）。[[PDF_PAGE:N]] 表示原文位置：PDF 为实际页号，Word / Markdown 为按目录划分的节号；[[PRINTED_PAGE:N]] 是文档自身标注的页码。如摘录不足以回答，基于已有信息给出结论并降低 confidence：
 <scenario>
 ${selectedText}
 </scenario>`;
@@ -402,7 +424,7 @@ ${selectedText}
     // reasoning tokens, so a long scenario can consume the whole budget before
     // the final JSON is written. Structured extraction is more reliable and
     // economical in non-thinking mode.
-    if (isDeepSeekEndpoint(endpoint)) {
+    if (isDeepSeekEndpoint(endpoint, body.config.model)) {
       modelRequest.thinking = { type: "disabled" };
       if (effectiveConfirmMode === "tier3" || isTest) {
         modelRequest.response_format = { type: "json_object" };
@@ -513,7 +535,14 @@ ${selectedText}
     }
     return NextResponse.json({ data: parseJsonContent(content) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "未知错误";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const detail = describeRequestError(error);
+    return NextResponse.json(
+      {
+        error: endpointHint
+          ? `${detail}（实际请求地址：${endpointHint}）`
+          : detail,
+      },
+      { status: 500 },
+    );
   }
 }
