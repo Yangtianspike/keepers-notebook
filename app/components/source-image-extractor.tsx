@@ -377,7 +377,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
         const retained = assets.filter((asset) => asset.origin !== "docx");
         const removed = assets.filter((asset) => asset.origin === "docx");
         removed.forEach((asset) => URL.revokeObjectURL(asset.url));
-        await deleteExtractedImages(project.id, { start: 1, end: 1 });
+        await deleteExtractedImages(project.id, { start: 1, end: Math.max(1, project.pages.length) });
         const found: ExtractedAsset[] = [];
         for (let index = 0; index < imageSources.length; index += 1) {
           const item = imageSources[index];

@@ -363,6 +363,64 @@ function statusLabel(status: Project["status"]) {
   }[status];
 }
 
+/** 切换协议时使用的默认服务地址。 */
+const PROTOCOL_DEFAULT_URLS = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com/v1",
+  gemini: "https://generativelanguage.googleapis.com/v1beta",
+  ollama: "http://localhost:11434/api",
+} as const;
+
+const PROTOCOL_DEFAULT_URL_SET = new Set<string>(Object.values(PROTOCOL_DEFAULT_URLS));
+
+/** 常见服务商特征，用于发现「接口地址」与「模型名称」明显不匹配的配置。 */
+const PROVIDER_SIGNATURES = [
+  {
+    id: "OpenAI",
+    hosts: ["api.openai.com"],
+    modelPrefixes: ["gpt", "o1", "o3", "o4", "text-embedding", "dall-e", "whisper"],
+  },
+  { id: "DeepSeek", hosts: ["api.deepseek.com"], modelPrefixes: ["deepseek"] },
+  { id: "Kimi", hosts: ["api.moonshot.cn"], modelPrefixes: ["moonshot", "kimi"] },
+  { id: "Anthropic", hosts: ["api.anthropic.com"], modelPrefixes: ["claude"] },
+  {
+    id: "Google Gemini",
+    hosts: ["generativelanguage.googleapis.com"],
+    modelPrefixes: ["gemini"],
+  },
+];
+
+/**
+ * 用户切换「接口协议」时决定是否套用默认地址。
+ * 只有当当前地址为空或仍是某个协议的默认地址时才覆盖，
+ * 避免把用户手填的第三方服务地址重置掉。
+ */
+function shouldApplyProtocolDefault(baseUrl: string | undefined): boolean {
+  const current = (baseUrl ?? "").trim();
+  return current === "" || PROTOCOL_DEFAULT_URL_SET.has(current);
+}
+
+/** 识别「模型名称属于 A 服务商、接口地址却指向 B 服务商」的常见配置错误。 */
+function providerMismatchHint(config: ModelConfig): string | undefined {
+  const model = config.model.trim().toLowerCase();
+  if (!model) return undefined;
+  let hostname = "";
+  try {
+    hostname = new URL(config.baseUrl).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+  const modelProvider = PROVIDER_SIGNATURES.find((provider) =>
+    provider.modelPrefixes.some((prefix) => model.startsWith(prefix)),
+  );
+  if (!modelProvider) return undefined;
+  const hostProvider = PROVIDER_SIGNATURES.find((provider) =>
+    provider.hosts.includes(hostname),
+  );
+  if (hostProvider?.id === modelProvider.id) return undefined;
+  return `模型名称看起来属于 ${modelProvider.id}，但接口地址指向 ${hostProvider?.id ?? hostname}。请确认 Base URL 是否填成了服务商的实际根地址。`;
+}
+
 function ProjectHome({
   projects,
   importing,
@@ -533,10 +591,23 @@ function StructureView({
           <p className="eyebrow">DOCUMENT STRUCTURE</p>
           <h2>确认章节结构</h2>
           <p>分析只会读取勾选的章节。标题和页码都可以在这里修正。</p>
+          {(project.skippedTocPages?.length ?? 0) > 0 && (
+            <p className="structure-notice">
+              已排除第 {project.skippedTocPages?.join("、")} 页中的目录条目，
+              该页的正文内容仍然保留。如判断有误请手动补回。
+            </p>
+          )}
+          {project.fileType === "docx" && (
+            <p className="structure-notice">
+              Word 文档没有分页信息，这里按目录分成 {project.pages.length} 节并使用节号。
+            </p>
+          )}
         </div>
         <div className="document-stat">
           <strong>{project.pages.length}</strong>
-          <span>PDF / 文档页</span>
+          <span>
+            {project.fileType === "pdf" ? "PDF 页" : "文档节"}
+          </span>
         </div>
       </header>
 
@@ -606,18 +677,16 @@ function StructureView({
           <span>确认后仍可回来调整；重新分析由你主动触发。</span>
         </div>
         <div className="inline-actions">
-          {project.fileType === "pdf" && (
-            <button
-              className="dark-outline-button"
-              disabled={refreshing}
-              onClick={() => {
-                setRefreshing(true);
-                void onRefresh().finally(() => setRefreshing(false));
-              }}
-            >
-              {refreshing ? "正在读取…" : "重新读取 PDF 书签"}
-            </button>
-          )}
+          <button
+            className="dark-outline-button"
+            disabled={refreshing}
+            onClick={() => {
+              setRefreshing(true);
+              void onRefresh().finally(() => setRefreshing(false));
+            }}
+          >
+            {refreshing ? "正在读取…" : "重新读取书签"}
+          </button>
           <button className="dark-outline-button" onClick={onConfirm}>
             确认结构并进入分析
           </button>
@@ -929,6 +998,7 @@ function SettingsView({
   apiKey,
   rememberApiKey,
   testState,
+  testError,
   onConfig,
   onApiKey,
   onRememberApiKey,
@@ -938,11 +1008,13 @@ function SettingsView({
   apiKey: string;
   rememberApiKey: boolean;
   testState: "idle" | "testing" | "success" | "error";
+  testError?: string;
   onConfig: (config: ModelConfig) => void;
   onApiKey: (value: string) => void;
   onRememberApiKey: (value: boolean) => void;
   onTest: () => void;
 }) {
+  const mismatchHint = providerMismatchHint(config);
   return (
     <div className="settings-page">
       <header className="content-header">
@@ -962,13 +1034,14 @@ function SettingsView({
               value={config.protocol ?? "openai"}
               onChange={(event) => {
                 const protocol = event.target.value as NonNullable<ModelConfig["protocol"]>;
-                const defaults = {
-                  openai: "https://api.openai.com/v1",
-                  anthropic: "https://api.anthropic.com/v1",
-                  gemini: "https://generativelanguage.googleapis.com/v1beta",
-                  ollama: "http://localhost:11434/api",
-                } as const;
-                onConfig({ ...config, protocol, baseUrl: defaults[protocol], capabilities: undefined });
+                onConfig({
+                  ...config,
+                  protocol,
+                  baseUrl: shouldApplyProtocolDefault(config.baseUrl)
+                    ? PROTOCOL_DEFAULT_URLS[protocol]
+                    : config.baseUrl,
+                  capabilities: undefined,
+                });
               }}
             >
               <option value="openai">OpenAI Compatible</option>
@@ -1009,6 +1082,9 @@ function SettingsView({
               }
             />
           </label>
+          {mismatchHint && (
+            <p className="config-warning">{mismatchHint}</p>
+          )}
           <label className="field">
             <span>API Key</span>
             <input
@@ -1043,6 +1119,9 @@ function SettingsView({
                   ? "连接失败，重新测试"
                   : "测试连接"}
           </button>
+          {testState === "error" && testError && (
+            <p className="config-error">{testError}</p>
+          )}
         </section>
         <section className="settings-card">
           <span className="settings-index">03</span>
@@ -1551,6 +1630,7 @@ export default function Home() {
         documentText: parsed.documentText,
         pages: parsed.pages,
         chapters: parsed.chapters,
+        skippedTocPages: parsed.skippedTocPages,
         analysis: emptyAnalysis(),
       };
       await Promise.all([
@@ -1561,7 +1641,9 @@ export default function Home() {
       inactiveProjectIds.delete(project.id);
       setActiveProject(project);
       setView("structure");
-      setToast("剧本已导入，请先确认章节结构。");
+      setToast(parsed.skippedTocPages.length
+        ? `剧本已导入，已排除第 ${parsed.skippedTocPages.join("、")} 页的目录条目，请确认章节结构。`
+        : "剧本已导入，请先确认章节结构。");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "文档解析失败。");
     } finally {
@@ -3376,6 +3458,7 @@ export default function Home() {
             apiKey={apiKey}
             rememberApiKey={rememberApiKey}
             testState={testState}
+            testError={testState === "error" ? error : ""}
             onConfig={setModelConfig}
             onApiKey={setApiKey}
             onRememberApiKey={setRememberApiKey}
@@ -3566,11 +3649,12 @@ export default function Home() {
                   documentText: parsed.documentText,
                   pages: parsed.pages,
                   chapters: parsed.chapters,
+                  skippedTocPages: parsed.skippedTocPages,
                   updatedAt: new Date().toISOString(),
                 });
                 setToast(parsed.chapters.length > 1
-                  ? `已读取 ${parsed.chapters.length} 个章节。`
-                  : "PDF 未提供可用书签，已按正文标题重新识别。");
+                  ? `已重新读取，共 ${parsed.chapters.length} 个章节${parsed.skippedTocPages.length ? `（已排除第 ${parsed.skippedTocPages.join("、")} 页的目录条目）` : ""}。`
+                  : "未找到可用书签或目录，已按正文标题重新识别。");
               }}
               onConfirm={() => {
                 void persistProject({
@@ -3727,6 +3811,14 @@ export default function Home() {
                 </div>
                 <ActTreeView
                   acts={activeProject.analysis.acts}
+                  positions={activeProject.kpNotes?.actGraphPositions}
+                  onPositionsChange={(next) => {
+                    void persistProject({
+                      ...activeProject,
+                      updatedAt: new Date().toISOString(),
+                      kpNotes: { ...activeProject.kpNotes, actGraphPositions: next },
+                    });
+                  }}
                   onSelectAct={(actId) => {
                     setSelectedActId(actId);
                     setActView("detail");
@@ -3818,6 +3910,7 @@ export default function Home() {
             apiKey={apiKey}
             rememberApiKey={rememberApiKey}
             testState={testState}
+            testError={testState === "error" ? error : ""}
             onConfig={setModelConfig}
             onApiKey={setApiKey}
             onRememberApiKey={setRememberApiKey}
