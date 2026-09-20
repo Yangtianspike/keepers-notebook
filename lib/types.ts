@@ -396,6 +396,12 @@ export type ProjectAnalysis = {
   };
 };
 
+/** 幕树画布中手动拖动过的节点坐标，按「只看主线 / 展开全部分支」分别保存。 */
+export type ActGraphPositions = {
+  mainline?: Record<string, { x: number; y: number }>;
+  allBranches?: Record<string, { x: number; y: number }>;
+};
+
 export type KPNotes = {
   stageViewOverrides?: Record<string, Record<string, string>>;
   actViewOverrides?: Record<string, Record<string, string>>;
@@ -405,6 +411,7 @@ export type KPNotes = {
   keeperEntities?: EntityCard[];
   entityRelations?: EntityRelation[];
   sectionTemplateVersion?: number;
+  actGraphPositions?: ActGraphPositions;
 };
 
 export type EntityKind = "person" | "monster" | "clue" | "place" | "event" | "custom";
@@ -498,6 +505,8 @@ export type Project = {
   documentText: string;
   pages: DocumentPage[];
   chapters: Chapter[];
+  /** 解析时被识别为目录页并跳过的 PDF 页号，用于在确认章节界面向用户说明。 */
+  skippedTocPages?: number[];
   analysis: ProjectAnalysis;
   kpNotes?: KPNotes;
   lastReadingPosition?: ReadingPosition;
