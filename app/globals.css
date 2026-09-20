@@ -2961,6 +2961,31 @@ button:disabled {
   line-height: 1.55;
 }
 
+.content-header p.structure-notice {
+  margin-top: 12px;
+  border-left: 3px solid var(--teal);
+  padding-left: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-card .config-warning,
+.settings-card .config-error {
+  margin: 0 0 18px;
+  border-left: 3px solid currentColor;
+  padding-left: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.settings-card .config-warning {
+  color: #e8b96a;
+}
+
+.settings-card .config-error {
+  color: #e79690;
+}
+
 .dashboard-hero {
   display: grid;
   grid-template-columns: 1fr 240px;
@@ -5254,9 +5279,45 @@ button:disabled {
 .act-tree-canvas .react-flow__controls { overflow: hidden; border: 1px solid rgba(83, 52, 28, .45); border-radius: 5px; box-shadow: 0 5px 14px rgba(72, 43, 19, .2); }
 .act-tree-canvas .react-flow__controls button { border-bottom-color: rgba(83, 52, 28, .25); background: #efe0b9; fill: #5a3822; }
 
-.act-tree-canvas .react-flow__edge-textbg { fill: rgba(246, 234, 202, .96); stroke: rgba(100, 65, 35, .3); }
-.act-tree-canvas .react-flow__edge-text { fill: #573521; font-size: 11px; }
+/* 边标签改用 HTML（EdgeLabelRenderer）：可以限宽换行，并抬到节点之上避免被幕卡片压住。 */
+.act-tree-canvas .react-flow__edgelabel-renderer {
+  z-index: 4;
+  pointer-events: none;
+}
+
+.act-edge-condition {
+  position: absolute;
+  max-width: 168px;
+  border: 1px solid rgba(100, 65, 35, .38);
+  border-radius: 4px;
+  background: #f6eaca;
+  color: #573521;
+  padding: 3px 7px;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  overflow-wrap: break-word;
+  box-shadow: 0 2px 6px rgba(72, 43, 19, .14);
+}
+
 .act-tree-canvas .react-flow__arrowhead polyline { stroke: #71442b; fill: #71442b; }
+
+.act-tree-reset {
+  position: absolute;
+  z-index: 6;
+  top: 56px;
+  right: 14px;
+  border: 1px solid rgba(122, 45, 39, .45);
+  border-radius: 5px;
+  background: rgba(245, 232, 198, .92);
+  color: #7a2d27;
+  padding: 7px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(72, 43, 19, .16);
+}
+
+.act-tree-reset:hover { background: #7a2d27; color: #fff8e8; }
 
 .act-flow-node {
   width: 310px !important;
@@ -5267,9 +5328,10 @@ button:disabled {
   color: #321e13 !important;
   box-shadow: 0 10px 22px rgba(69, 42, 20, .2), inset 0 0 18px rgba(131, 84, 37, .08);
   padding: 14px 17px !important;
-  cursor: pointer !important;
+  cursor: grab !important;
 }
-.act-flow-node:hover { border-color: #7a2d27 !important; transform: translateY(-1px); }
+.act-flow-node:hover { border-color: #7a2d27 !important; }
+.act-tree-canvas .react-flow__node.dragging .act-flow-node { cursor: grabbing !important; }
 
 .act-flow-label {
   display: grid;
