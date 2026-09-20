@@ -118,9 +118,10 @@ export function ActDetailView({
             <span>幕标题</span>
             <input
               value={draft.title}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, title: event.target.value }))
-              }
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                setDraft((current) => ({ ...current, title: value }));
+              }}
             />
           </label>
           <div className="act-editor-grid">
@@ -128,22 +129,24 @@ export function ActDetailView({
               <span>地点</span>
               <input
                 value={draft.placeText ?? ""}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
                   setDraft((current) => ({
                     ...current,
                     placeId: undefined,
-                    placeText: event.target.value,
-                  }))
-                }
+                    placeText: value,
+                  }));
+                }}
               />
             </label>
             <label className="field">
               <span>时间</span>
               <input
                 value={draft.time}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, time: event.target.value }))
-                }
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setDraft((current) => ({ ...current, time: value }));
+                }}
               />
             </label>
           </div>
@@ -152,12 +155,13 @@ export function ActDetailView({
             <textarea
               rows={8}
               value={draft.description}
-              onChange={(event) =>
+              onChange={(event) => {
+                const value = event.currentTarget.value;
                 setDraft((current) => ({
                   ...current,
-                  description: event.target.value,
-                }))
-              }
+                  description: value,
+                }));
+              }}
             />
           </label>
           <div className="act-editor-branches">
@@ -167,34 +171,36 @@ export function ActDetailView({
                 <input
                   aria-label="分支条件"
                   value={branch.condition}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
                     setDraft((current) => ({
                       ...current,
                       branches: current.branches.map((item) =>
                         item.id === branch.id
-                          ? { ...item, condition: event.target.value }
+                          ? { ...item, condition: value }
                           : item,
                       ),
-                    }))
-                  }
+                    }));
+                  }}
                 />
                 <select
                   aria-label="下一幕"
                   value={branch.nextActId ?? ""}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
                     setDraft((current) => ({
                       ...current,
                       branches: current.branches.map((item) =>
                         item.id === branch.id
                           ? {
                               ...item,
-                              nextActId: event.target.value || undefined,
-                              isEnding: !event.target.value,
+                              nextActId: value || undefined,
+                              isEnding: !value,
                             }
                           : item,
                       ),
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   <option value="">结局</option>
                   {acts

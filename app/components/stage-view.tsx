@@ -661,7 +661,10 @@ export function StageView({
   contentKey?: unknown;
   onActiveSectionChange: (sectionKey: string) => void;
   editing?: boolean;
-  onEditingChange?: (editing: boolean) => void;
+  onEditingChange?: (
+    editing: boolean,
+    context?: { sectionKey?: string; headingId?: string },
+  ) => void;
   onPageChange?: (sectionKey: string, page: number) => void;
   onOpenActTree?: () => void;
   initialPage?: number;
@@ -852,7 +855,14 @@ export function StageView({
         <label>跳至 <input inputMode="numeric" aria-label="跳转页码" value={jumpDraft} onChange={(event) => setJumpDraft(event.target.value.replace(/\D/g, ""))} /> 页</label>
         <button className="cb-action-button" type="submit" disabled={!jumpDraft}>跳页</button>
       </form>
-      {onEditingChange && <button className="cb-action-button book-editor-trigger" type="button" onClick={() => onEditingChange(true)}>编辑书页</button>}
+      {onEditingChange && <button
+        className="cb-action-button book-editor-trigger"
+        type="button"
+        onClick={() => onEditingChange(true, {
+          sectionKey: currentSectionKey || activeSectionKey,
+          headingId: activeHeading?.id,
+        })}
+      >编辑书页</button>}
       {actPage && onOpenActTree && <button className="cb-action-button" type="button" onClick={onOpenActTree}>幕树</button>}
       <button className="cb-action-button" type="button" onClick={nextPage} disabled={isAnimating || (!hasNext && activeSectionIndex === sections.length - 1)}>下一页 →</button>
     </nav>

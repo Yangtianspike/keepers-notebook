@@ -528,7 +528,10 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={asset.url} alt={assetTitle(asset)} />
               <div>
-                <label className="image-pack-name"><span>资料名称（可编辑）</span><input aria-label="图片资料名称" value={asset.title ?? assetTitle(asset)} onChange={(event) => setAssets((current) => current.map((item) => item.id === asset.id ? { ...item, title: event.target.value } : item))} onBlur={() => {
+                <label className="image-pack-name"><span>资料名称（可编辑）</span><input aria-label="图片资料名称" value={asset.title ?? assetTitle(asset)} onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setAssets((current) => current.map((item) => item.id === asset.id ? { ...item, title: value } : item));
+                }} onBlur={() => {
                   const current = assets.find((item) => item.id === asset.id);
                   if (current) void saveExtractedImages([toRecord(current)]);
                 }} /></label>

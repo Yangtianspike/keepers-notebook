@@ -15,6 +15,7 @@ import type {
   EntityCard,
   EntityKind,
   EntityOverrides,
+  EntityRelation,
   PersonCoCStatKey,
   PersonCoCStats,
   Project,
@@ -45,6 +46,8 @@ type EntityWindowProps = {
   onSave: (entity: EntityCard, override: EntityOverrides) => void;
   onCreate: (kind: EntityKind, name: string, relatedTo?: EntityCard) => EntityCard;
   onDelete: (entity: EntityCard) => void;
+  onRelationSave: (relation: EntityRelation) => void;
+  onRelationDelete: (relation: EntityRelation) => void;
 };
 
 export function EntityWindow({
@@ -65,11 +68,18 @@ export function EntityWindow({
   onSave,
   onCreate,
   onDelete,
+  onRelationSave,
+  onRelationDelete,
 }: EntityWindowProps) {
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [addingRelation, setAddingRelation] = useState(false);
   const [createKind, setCreateKind] = useState<EntityKind>("person");
   const [createName, setCreateName] = useState("");
+  const [relationTargetRef, setRelationTargetRef] = useState("");
+  const [relationLabel, setRelationLabel] = useState("");
+  const [relationImportance, setRelationImportance] = useState<"primary" | "secondary">("primary");
+  const [editingRelation, setEditingRelation] = useState<EntityRelation | null>(null);
   const [windowScale, setWindowScale] = useState(1);
   const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
   const entity = entities.find((candidate) => candidate.ref === initialRef);
@@ -182,6 +192,13 @@ export function EntityWindow({
                 <button type="button" onClick={onOpenCoreRelations}>完整关系图</button>
               )}
               <button type="button" onClick={() => setCreating((value) => !value)}>新建关联实体</button>
+              <button type="button" onClick={() => {
+                setAddingRelation((value) => !value);
+                setEditingRelation(null);
+                setRelationTargetRef("");
+                setRelationLabel("");
+                setRelationImportance("primary");
+              }}>添加已有关系</button>
               {entity.source === "keeper" && (
                 <button className="danger" type="button" onClick={() => onDelete(entity)}>删除</button>
               )}
@@ -202,6 +219,67 @@ export function EntityWindow({
                 }}>创建并关联</button>
               </div>
             )}
+            {addingRelation && (
+              <div className="entity-relation-editor">
+                <select value={relationTargetRef} onChange={(event) => setRelationTargetRef(event.target.value)}>
+                  <option value="">选择关联实体</option>
+                  {entities.filter((candidate) => candidate.ref !== entity.ref).map((candidate) => (
+                    <option value={candidate.ref} key={candidate.ref}>{ENTITY_KIND_LABELS[candidate.kind]} · {entityName(candidate)}</option>
+                  ))}
+                </select>
+                <input value={relationLabel} onChange={(event) => setRelationLabel(event.target.value)} placeholder="关系说明，例如：雇主、盟友、追捕" />
+                <select value={relationImportance} onChange={(event) => setRelationImportance(event.target.value as "primary" | "secondary")}>
+                  <option value="primary">主要关系</option>
+                  <option value="secondary">次要关系</option>
+                </select>
+                <button type="button" disabled={!relationTargetRef || !relationLabel.trim()} onClick={() => {
+                  onRelationSave({
+                    id: crypto.randomUUID(),
+                    sourceRef: entity.ref,
+                    targetRef: relationTargetRef,
+                    label: relationLabel.trim(),
+                    level: "keeper",
+                    provenance: "keeper",
+                    importance: relationImportance,
+                  });
+                  setAddingRelation(false);
+                  setRelationTargetRef("");
+                  setRelationLabel("");
+                  setRelationImportance("primary");
+                }}>保存关系</button>
+              </div>
+            )}
+            {editingRelation && (
+              <div className="entity-relation-editor">
+                <strong>编辑关系</strong>
+                <select value={relationTargetRef} onChange={(event) => setRelationTargetRef(event.target.value)}>
+                  {entities.filter((candidate) => candidate.ref !== entity.ref).map((candidate) => (
+                    <option value={candidate.ref} key={candidate.ref}>{ENTITY_KIND_LABELS[candidate.kind]} · {entityName(candidate)}</option>
+                  ))}
+                </select>
+                <input value={relationLabel} onChange={(event) => setRelationLabel(event.target.value)} placeholder="关系说明" />
+                <select value={relationImportance} onChange={(event) => setRelationImportance(event.target.value as "primary" | "secondary")}>
+                  <option value="primary">主要关系</option>
+                  <option value="secondary">次要关系</option>
+                </select>
+                <button type="button" disabled={!relationTargetRef || !relationLabel.trim()} onClick={() => {
+                  onRelationSave({
+                    ...editingRelation,
+                    sourceRef: editingRelation.sourceRef === entity.ref ? entity.ref : relationTargetRef,
+                    targetRef: editingRelation.sourceRef === entity.ref ? relationTargetRef : entity.ref,
+                    label: relationLabel.trim(),
+                    importance: relationImportance,
+                  });
+                  setEditingRelation(null);
+                  setRelationLabel("");
+                }}>保存修改</button>
+                <button type="button" onClick={() => {
+                  if (window.confirm("移除这条关系？KP 对模型关系的处理会在重新分析后继续保留。")) onRelationDelete(editingRelation);
+                  setEditingRelation(null);
+                }}>移除关系</button>
+                <button type="button" onClick={() => setEditingRelation(null)}>取消</button>
+              </div>
+            )}
             <EntityPagedContent resetKey={`${entity.ref}:${entity.updatedAt}`}>
               <EntityReadView entity={entity} />
               {entity.kind === "person" && (
@@ -217,20 +295,29 @@ export function EntityWindow({
                       <small>{({ direct: "直接关联", indirect: "间接关联", inference: "模型推断", keeper: "KP 关联" })[level]}</small>
                       <div className="entity-related-list">
                         {items.map((item) => (
-                          <button type="button" key={item.relation.id} onClick={() => {
-                            onOpenRelated(item.entity.ref);
-                            setEditing(false);
-                          }}>
-                            <strong>{entityName(item.entity)}</strong>
-                            <span>{
-                              entity.kind === "person" && item.entity.kind === "person" && item.relation.label
-                                ? item.relation.sourceRef === entity.ref
-                                  ? `${item.relation.label} →`
-                                  : `← ${item.relation.label}`
-                                : item.relation.label || ENTITY_KIND_LABELS[item.entity.kind]
-                            }</span>
-                            {item.relation.summary && <em>{item.relation.summary}</em>}
-                          </button>
+                          <div className="entity-related-item" key={item.relation.id}>
+                            <button type="button" onClick={() => {
+                              onOpenRelated(item.entity.ref);
+                              setEditing(false);
+                            }}>
+                              <strong>{entityName(item.entity)}</strong>
+                              <span>{
+                                entity.kind === "person" && item.entity.kind === "person" && item.relation.label
+                                  ? item.relation.sourceRef === entity.ref
+                                    ? `${item.relation.label} →`
+                                    : `← ${item.relation.label}`
+                                  : item.relation.label || ENTITY_KIND_LABELS[item.entity.kind]
+                              }</span>
+                              {item.relation.summary && <em>{item.relation.summary}</em>}
+                            </button>
+                            <button className="entity-relation-edit" type="button" onClick={() => {
+                              setEditingRelation(item.relation);
+                              setRelationTargetRef(item.entity.ref);
+                              setRelationLabel(item.relation.label ?? "");
+                              setRelationImportance(item.relation.importance ?? "primary");
+                              setAddingRelation(false);
+                            }}>编辑关系</button>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -509,13 +596,20 @@ export function EntityEditForm({ entity, onCancel, onSave }: {
       <section className="entity-edit-page entity-edit-fields" hidden={editPage !== 1}>
       {ENTITY_FIELD_LABELS[entity.kind].map(([key, label]) => (
         key === "importance" ? null :
-        <label key={key}>{label}<textarea value={fields[key] ?? ""} onChange={(event) => setFields((current) => ({ ...current, [key]: event.target.value }))} /></label>
+        <label key={key}>{label}<textarea value={fields[key] ?? ""} onChange={(event) => {
+          const value = event.currentTarget.value;
+          setFields((current) => ({ ...current, [key]: value }));
+        }} /></label>
       ))}
       </section>
       {(entity.kind === "person" || entity.kind === "monster") && <section className="entity-edit-page" hidden={editPage !== 2}><fieldset className="entity-coc-edit">
         <legend>CoC 7版属性（修改后作为 KP 覆盖值保存）</legend>
         <div className="entity-coc-edit-grid">
-          {COC_FIELDS.map(([key, label]) => <label key={key}>{label}<input value={cocValues[key] ?? ""} onChange={(event) => { setCocTouchedKeys((current) => current.includes(key) ? current : [...current, key]); setCocValues((current) => ({ ...current, [key]: event.target.value })); }} /></label>)}
+          {COC_FIELDS.map(([key, label]) => <label key={key}>{label}<input value={cocValues[key] ?? ""} onChange={(event) => {
+            const value = event.currentTarget.value;
+            setCocTouchedKeys((current) => current.includes(key) ? current : [...current, key]);
+            setCocValues((current) => ({ ...current, [key]: value }));
+          }} /></label>)}
         </div>
       </fieldset></section>}
       {(entity.kind === "person" || entity.kind === "monster") && <section className="entity-edit-page entity-edit-combat" hidden={editPage !== 3}>

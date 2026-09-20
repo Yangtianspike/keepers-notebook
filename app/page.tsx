@@ -4,6 +4,7 @@ import {
   type CSSProperties,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -22,14 +23,16 @@ import {
 import { ConfirmWizard } from "@/app/components/confirm-wizard";
 import { ActTreeView } from "@/app/components/act-tree-view";
 import { SettingsModal } from "@/app/components/settings-modal";
-import { StageView, type BookHeading } from "@/app/components/stage-view";
+import { StageView } from "@/app/components/stage-view";
 import { PersonDetailPanel } from "@/app/components/person-detail-panel";
-import { BookEditor } from "@/app/components/book-editor";
+import { BookEditor, type BookEditorSession, type NewEntityRelation } from "@/app/components/book-editor";
+import {
+  buildNotebookOutline,
+  type NotebookOutlineHeading,
+} from "@/lib/notebook-outline";
 import { AnalysisLogModal } from "@/app/components/analysis-log-modal";
 import {
-  markdownHeadingId,
   markdownToReactBlocks,
-  parseMarkdownBlocks,
 } from "@/app/components/markdown-document";
 import { EntityEditForm, EntityWindow } from "@/app/components/entity-window";
 import { SourceDocumentView } from "@/app/components/source-document-view";
@@ -64,6 +67,7 @@ import {
   type Clue,
   type EntityCard,
   type EntityKind,
+  type EntityRelation,
   type EntityOverrides,
   type ModelConfig,
   type Monster,
@@ -112,6 +116,13 @@ type FloatingPersonRelationWindow = {
   zIndex: number;
 };
 
+type BookEditorEntry = {
+  view: View;
+  selectedActId: string | null;
+  headingId?: string;
+  readingPosition?: Project["lastReadingPosition"];
+};
+
 function updateCharacterImportanceMarkdown(markdown: string, entity: EntityCard, importance: Person["importance"]) {
   const ref = entity.ref;
   const uriPrefix = `keeper://${ref}?`;
@@ -144,6 +155,60 @@ function EntityEditOverlay({
   onClose: () => void;
   onSave: (entity: EntityCard, override: EntityOverrides) => void;
 }) {
+  const cardRef = useRef<HTMLElement>(null);
+  const [position, setPosition] = useState<{ x: number; y: number }>();
+  const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    setPosition({ x: rect.left, y: rect.top });
+  }, []);
+
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      const drag = dragRef.current;
+      const card = cardRef.current;
+      if (!drag || drag.pointerId !== event.pointerId || !card) return;
+      const rect = card.getBoundingClientRect();
+      setPosition({
+        x: Math.max(8, Math.min(window.innerWidth - rect.width - 8, event.clientX - drag.offsetX)),
+        y: Math.max(8, Math.min(window.innerHeight - 48, event.clientY - drag.offsetY)),
+      });
+    };
+    const end = (event: PointerEvent) => {
+      if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", end, true);
+    window.addEventListener("pointercancel", end, true);
+    return () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", end, true);
+      window.removeEventListener("pointercancel", end, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    const keepVisible = () => {
+      const card = cardRef.current;
+      if (!card) return;
+      const rect = card.getBoundingClientRect();
+      setPosition((current) => current ? {
+        x: Math.max(8, Math.min(window.innerWidth - rect.width - 8, current.x)),
+        y: Math.max(8, Math.min(window.innerHeight - 48, current.y)),
+      } : current);
+    };
+    const observer = new ResizeObserver(keepVisible);
+    if (cardRef.current) observer.observe(cardRef.current);
+    window.addEventListener("resize", keepVisible);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", keepVisible);
+    };
+  }, []);
+
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -152,9 +217,21 @@ function EntityEditOverlay({
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
   return (
-    <div className="entity-edit-overlay" role="dialog" aria-modal="true" aria-label={`编辑${entity.original.name}`}>
-      <article className="entity-edit-overlay-card parchment-window">
-        <header><div><small>编辑资料</small><h2>{entity.original.name}</h2></div><button type="button" aria-label="关闭编辑" onClick={onClose}>×</button></header>
+    <div className="entity-edit-overlay">
+      <article
+        className="entity-edit-overlay-card parchment-window"
+        role="dialog"
+        aria-modal="false"
+        aria-label={`编辑${entity.original.name}`}
+        ref={cardRef}
+        style={position ? { position: "fixed", left: position.x, top: position.y } : undefined}
+      >
+        <header onPointerDown={(event) => {
+          if ((event.target as HTMLElement).closest("button,input,select,textarea,label")) return;
+          const rect = cardRef.current?.getBoundingClientRect();
+          if (!rect) return;
+          dragRef.current = { pointerId: event.pointerId, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
+        }}><div><small>编辑资料 · 拖动此处可移动窗口</small><h2>{entity.original.name}</h2></div><button type="button" aria-label="关闭编辑" onClick={onClose}>×</button></header>
         <EntityEditForm
           entity={entity}
           onCancel={onClose}
@@ -264,34 +341,14 @@ function stageHasReadableAnalysis(project: Project, stage: AnalysisStage) {
   }
 }
 
-type NotebookHeading = BookHeading & { parentId?: string; hasChildren: boolean };
-
-function organizeNotebookHeadings(headings: BookHeading[]): NotebookHeading[] {
-  return headings.map((heading, index) => {
-    let parentId: string | undefined;
-    for (let candidateIndex = index - 1; candidateIndex >= 0; candidateIndex -= 1) {
-      if (headings[candidateIndex].level < heading.level) {
-        parentId = headings[candidateIndex].id;
-        break;
-      }
-    }
-    const next = headings[index + 1];
-    return {
-      ...heading,
-      parentId,
-      hasChildren: Boolean(next && next.level > heading.level),
-    };
-  });
-}
-
 function NotebookToc({
   headings,
   activeHeadingId,
   onSelect,
 }: {
-  headings: NotebookHeading[];
+  headings: NotebookOutlineHeading[];
   activeHeadingId?: string;
-  onSelect: (heading: NotebookHeading) => void;
+  onSelect: (heading: NotebookOutlineHeading) => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const byId = new Map(headings.map((heading) => [heading.id, heading]));
@@ -1480,6 +1537,8 @@ export default function Home() {
   const [wizardStage, setWizardStage] = useState<AnalysisStage | null>(null);
   const [isContinuing, setIsContinuing] = useState(false);
   const [bookEditing, setBookEditing] = useState(false);
+  const [bookEditorSession, setBookEditorSession] = useState<BookEditorSession>();
+  const [bookEditorEntry, setBookEditorEntry] = useState<BookEditorEntry>();
   const [showAnalysisLog, setShowAnalysisLog] = useState(false);
   const [entityWindows, setEntityWindows] = useState<FloatingEntityWindow[]>([]);
   const [personRelationWindows, setPersonRelationWindows] = useState<FloatingPersonRelationWindow[]>([]);
@@ -1590,6 +1649,9 @@ export default function Home() {
     const timeout = window.setTimeout(() => {
       setEntityWindows([]);
       setPersonRelationWindows([]);
+      setBookEditing(false);
+      setBookEditorSession(undefined);
+      setBookEditorEntry(undefined);
     }, 0);
     return () => window.clearTimeout(timeout);
   }, [activeProjectId]);
@@ -3255,14 +3317,26 @@ export default function Home() {
   const saveEntityOverride = (entity: EntityCard, override: EntityOverrides) => {
     if (!activeProject) return;
     if (entity.source === "keeper") {
+      const requestedImportance = entity.kind === "person" && (
+        override.fields?.importance === "core" ||
+        override.fields?.importance === "important" ||
+        override.fields?.importance === "minor"
+      ) ? override.fields.importance as Person["importance"] : undefined;
       const keeperEntities = (activeProject.kpNotes?.keeperEntities ?? []).map((candidate) =>
         candidate.ref === entity.ref ? { ...candidate, overrides: override, linkBehavior: override.linkBehavior ?? candidate.linkBehavior, updatedAt: override.updatedAt } : candidate,
       );
+      const currentCharacterMarkdown = activeProject.kpNotes?.sectionMarkdown?.["stage-characters"] ?? buildCharacterMarkdown(activeProject);
+      const nextSectionMarkdown = requestedImportance
+        ? {
+            ...activeProject.kpNotes?.sectionMarkdown,
+            "stage-characters": updateCharacterImportanceMarkdown(currentCharacterMarkdown, { ...entity, overrides: override }, requestedImportance),
+          }
+        : activeProject.kpNotes?.sectionMarkdown;
       void persistProject({
         ...activeProject,
         updatedAt: new Date().toISOString(),
-        kpNotes: { ...activeProject.kpNotes, keeperEntities },
-      });
+        kpNotes: { ...activeProject.kpNotes, keeperEntities, sectionMarkdown: nextSectionMarkdown },
+      }).then(() => setToast(requestedImportance ? "人物级别已更新；人物章节与关系图已同步刷新。" : "资料修改已保存。"));
       return;
     }
     const requestedImportance: Person["importance"] | undefined = entity.kind === "person" && (
@@ -3299,25 +3373,83 @@ export default function Home() {
     });
   };
 
-  const addKeeperEntity = (kind: EntityKind, name: string, sectionKey: string, relatedTo?: EntityCard) => {
+  const addKeeperEntity = (
+    kind: EntityKind,
+    name: string,
+    sectionKey: string,
+    relatedTo?: EntityCard,
+    requestedRelations: NewEntityRelation[] = [],
+  ) => {
     const entity = createKeeperEntity(kind, name, sectionKey);
     if (!activeProject) return entity;
-    const relation = relatedTo ? {
-      id: crypto.randomUUID(), sourceRef: relatedTo.ref, targetRef: entity.ref,
-      label: "KP 新建关联", level: "keeper" as const,
-    } : null;
+    const relationInputs = [
+      ...(relatedTo ? [{ targetRef: relatedTo.ref, label: "KP 新建关联" }] : []),
+      ...requestedRelations,
+    ].filter((relation, index, all) => all.findIndex((candidate) => candidate.targetRef === relation.targetRef) === index);
+    const relations = relationInputs.map((relation) => ({
+      id: crypto.randomUUID(), sourceRef: entity.ref, targetRef: relation.targetRef,
+      label: relation.label || "KP 新建关联", level: "keeper" as const,
+      provenance: "keeper" as const,
+    }));
     void persistProject({
       ...activeProject,
       updatedAt: new Date().toISOString(),
       kpNotes: {
         ...activeProject.kpNotes,
         keeperEntities: [...(activeProject.kpNotes?.keeperEntities ?? []), entity],
-        entityRelations: relation
-          ? [...(activeProject.kpNotes?.entityRelations ?? []), relation]
-          : activeProject.kpNotes?.entityRelations,
+        entityRelations: [...(activeProject.kpNotes?.entityRelations ?? []), ...relations],
       },
     });
     return entity;
+  };
+
+  const saveEntityRelation = (relation: EntityRelation) => {
+    if (!activeProject) return;
+    const saved = activeProject.kpNotes?.entityRelations ?? [];
+    const stored = saved.find((candidate) => candidate.id === relation.id);
+    const isNewKeeperRelation = !stored && relation.provenance === "keeper" && relation.level === "keeper" && !relation.replacesId;
+    const replacementTarget = relation.replacesId ?? (!stored && !isNewKeeperRelation ? relation.id : undefined);
+    const nextRelation: EntityRelation = {
+      ...relation,
+      id: stored?.id ?? (isNewKeeperRelation ? relation.id : crypto.randomUUID()),
+      level: "keeper",
+      provenance: "keeper",
+      replacesId: replacementTarget,
+      hidden: false,
+    };
+    const nextRelations = [
+      ...saved.filter((candidate) => candidate.id !== stored?.id && candidate.replacesId !== replacementTarget),
+      nextRelation,
+    ];
+    void persistProject({
+      ...activeProject,
+      updatedAt: new Date().toISOString(),
+      kpNotes: { ...activeProject.kpNotes, entityRelations: nextRelations },
+    }).then(() => setToast("关系已保存；相关个人关系图与核心人物关系图已刷新。"));
+  };
+
+  const deleteEntityRelation = (relation: EntityRelation) => {
+    if (!activeProject) return;
+    const saved = activeProject.kpNotes?.entityRelations ?? [];
+    const stored = saved.find((candidate) => candidate.id === relation.id);
+    const replacementTarget = relation.replacesId ?? (!stored ? relation.id : undefined);
+    const remaining = saved.filter((candidate) => candidate.id !== stored?.id && candidate.replacesId !== replacementTarget);
+    const nextRelations = stored && !stored.replacesId
+      ? remaining
+      : [...remaining, {
+          id: crypto.randomUUID(),
+          sourceRef: relation.sourceRef,
+          targetRef: relation.targetRef,
+          level: "keeper" as const,
+          provenance: "keeper" as const,
+          replacesId: replacementTarget ?? relation.id,
+          hidden: true,
+        }];
+    void persistProject({
+      ...activeProject,
+      updatedAt: new Date().toISOString(),
+      kpNotes: { ...activeProject.kpNotes, entityRelations: nextRelations },
+    }).then(() => setToast("关系已移除；相关关系图已刷新。"));
   };
 
   const jumpToEntity = (entity: EntityCard, targetSectionKey?: string) => {
@@ -3329,6 +3461,69 @@ export default function Home() {
     } else setView(sectionKey as View);
     setActView("detail");
     setCharacterView("detail");
+  };
+
+  const navigateToBookSection = (sectionKey: string, headingId?: string) => {
+    setRequestedHeadingId(headingId);
+    setActView("detail");
+    setCharacterView("detail");
+    if (sectionKey.startsWith("acts:")) {
+      setSelectedActId(sectionKey.slice("acts:".length));
+      setView("acts");
+    } else {
+      setView(sectionKey as View);
+    }
+  };
+
+  const beginBookEditing = (context?: { sectionKey?: string; headingId?: string }) => {
+    const drafts = Object.fromEntries(markdownSections.map((section) => [section.key, section.markdown]));
+    const outline = buildNotebookOutline(markdownSections);
+    const requestedSectionKey = context?.sectionKey ?? (
+      view === "acts" ? activeActSectionKey : view
+    );
+    const activeKey = markdownSections.some((section) => section.key === requestedSectionKey)
+      ? requestedSectionKey
+      : markdownSections[0]?.key ?? "";
+    const requestedHeading = outline.find((heading) => (
+      heading.id === (context?.headingId ?? activeNotebookHeadingId) &&
+      heading.sectionKey === activeKey
+    )) ?? outline.find((heading) => heading.sectionKey === activeKey);
+    const expandedHeadingIds = new Set<string>();
+    let parentId = requestedHeading?.parentId;
+    while (parentId) {
+      expandedHeadingIds.add(parentId);
+      parentId = outline.find((heading) => heading.id === parentId)?.parentId;
+    }
+    setBookEditorEntry({
+      view,
+      selectedActId,
+      headingId: requestedHeading?.id ?? activeNotebookHeadingId,
+      readingPosition: activeProject?.lastReadingPosition,
+    });
+    setBookEditorSession({
+      drafts,
+      activeKey,
+      sourceMode: false,
+      dirty: false,
+      focusHeadingId: requestedHeading?.id,
+      expandedHeadingIds: [...expandedHeadingIds],
+      scrollBySection: {},
+      outlineScrollTop: 0,
+    });
+    setBookEditing(true);
+  };
+
+  const cancelBookEditing = () => {
+    if (bookEditorSession?.dirty && !window.confirm("放弃本次尚未保存的书页修改？")) return;
+    const entry = bookEditorEntry;
+    setBookEditing(false);
+    setBookEditorSession(undefined);
+    setBookEditorEntry(undefined);
+    if (!entry) return;
+    setSelectedActId(entry.selectedActId);
+    setPendingReadingPosition(entry.readingPosition);
+    setRequestedHeadingId(entry.headingId);
+    setView(entry.view);
   };
 
   const sectionMarkdown = activeProject?.kpNotes?.sectionMarkdown ?? {};
@@ -3398,25 +3593,15 @@ export default function Home() {
     };
   });
 
-  const notebookHeadings = organizeNotebookHeadings(
-    markdownSections.flatMap((section) => {
+  const readableMarkdownSections = markdownSections.filter((section) => {
       const stage = analysisStageForSectionKey(section.key);
       const readable = section.customized || (stage && activeProject
         ? activeProject.analysis.stages[stage].status === "complete" ||
           stageHasReadableAnalysis(activeProject, stage)
         : false);
-      if (!readable) return [];
-      return parseMarkdownBlocks(section.markdown).flatMap((block, blockIndex) => {
-        if (block.kind !== "heading" || !block.text?.trim()) return [];
-        return [{
-          id: markdownHeadingId(section.key, blockIndex),
-          title: block.text.trim(),
-          level: Math.max(1, Math.min(6, Number(block.level ?? 1))),
-          sectionKey: section.key,
-        }];
-      });
-    }),
-  );
+      return Boolean(readable);
+    });
+  const notebookHeadings = buildNotebookOutline(readableMarkdownSections);
 
   const renderedBookSections = markdownSections.map((section) => {
     const content = markdownToReactBlocks({
@@ -3512,15 +3697,15 @@ export default function Home() {
               headings={notebookHeadings}
               activeHeadingId={activeNotebookHeadingId}
               onSelect={(heading) => {
-                setRequestedHeadingId(heading.id);
-                setBookEditing(false);
-                setActView("detail");
-                setCharacterView("detail");
-                if (heading.sectionKey.startsWith("acts:")) {
-                  setSelectedActId(heading.sectionKey.slice("acts:".length));
-                  setView("acts");
+                if (bookEditing) {
+                  setBookEditorSession((current) => current ? {
+                    ...current,
+                    activeKey: heading.sectionKey,
+                    focusHeadingId: heading.id,
+                  } : current);
+                  navigateToBookSection(heading.sectionKey);
                 } else {
-                  setView(heading.sectionKey as View);
+                  navigateToBookSection(heading.sectionKey, heading.id);
                 }
               }}
             />
@@ -3568,6 +3753,7 @@ export default function Home() {
               aria-label="返回项目首页"
               title="返回项目首页"
               onClick={() => {
+                if (bookEditorSession?.dirty && !window.confirm("当前书页修改尚未保存，返回项目首页将丢弃草稿。是否继续？")) return;
                 inactiveProjectIds.add(activeProject.id);
                 analysisAbortRef.current?.abort();
                 analysisAbortRef.current = null;
@@ -3725,11 +3911,15 @@ export default function Home() {
             <>
             {bookEditing ? (
               <BookEditor
+                key={`${view}:${bookEditorSession?.focusHeadingId ?? "session"}`}
                 sections={markdownSections}
                 entities={entities}
-                onCreateEntity={(kind, name, sectionKey) => addKeeperEntity(kind, name, sectionKey)}
-                onCancel={() => setBookEditing(false)}
-                onSave={(markdown) => {
+                initialSession={bookEditorSession}
+                onSessionChange={setBookEditorSession}
+                onCreateEntity={(kind, name, sectionKey, relations) => addKeeperEntity(kind, name, sectionKey, undefined, relations)}
+                onOpenCreatedEntity={(entity) => openEntityWindow(entity.ref)}
+                onCancel={cancelBookEditing}
+                onSave={(markdown, target) => {
                   void persistProject({
                     ...activeProject,
                     updatedAt: new Date().toISOString(),
@@ -3738,7 +3928,14 @@ export default function Home() {
                       sectionMarkdown: markdown,
                       sectionTemplateVersion: activeProject.kpNotes?.sectionTemplateVersion,
                     },
-                  }).then(() => setBookEditing(false));
+                  }).then(() => {
+                    setBookEditing(false);
+                    setBookEditorSession(undefined);
+                    setBookEditorEntry(undefined);
+                    navigateToBookSection(target.sectionKey, target.headingId);
+                  }).catch((caught: unknown) => {
+                    setError(caught instanceof Error ? caught.message : "书页保存失败，草稿仍保留在编辑器中。");
+                  });
                 }}
               />
             ) : (
@@ -3758,7 +3955,10 @@ export default function Home() {
                 }
               }}
               editing={bookEditing}
-              onEditingChange={setBookEditing}
+              onEditingChange={(editing, context) => {
+                if (editing) beginBookEditing(context);
+                else cancelBookEditing();
+              }}
               onOpenActTree={() => setActView("tree")}
               initialPage={pendingReadingPosition?.sectionKey === (
                 view === "acts" ? activeActSectionKey : view
@@ -3847,7 +4047,7 @@ export default function Home() {
                 </div>
                 <CoreCharacterRelations
                   project={activeProject}
-                  onSelectPerson={(personId) => openEntityWindow(`person:${personId}`)}
+                  onSelectPerson={(entityRef) => openEntityWindow(entityRef)}
                 />
               </div>
             </div>
@@ -3969,6 +4169,8 @@ export default function Home() {
           onJump={jumpToEntity}
           onSave={saveEntityOverride}
           onCreate={(kind, name, relatedTo) => addKeeperEntity(kind, name, relatedTo?.appearances[0]?.sectionKey ?? "stage-background", relatedTo)}
+          onRelationSave={saveEntityRelation}
+          onRelationDelete={deleteEntityRelation}
           onDelete={(entity) => {
             if (entity.source !== "keeper" || !window.confirm(`删除“${entity.original.name}”实体卡？书页文字会保留。`)) return;
             void persistProject({
