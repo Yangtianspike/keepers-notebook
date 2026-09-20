@@ -74,7 +74,15 @@ AI 产出只是**起点**。**无论是结构化实体还是文字内容，每�
 | 地点 | 描述、方位提示 |
 | 线索 | 来源、获得条件、错过条件、指向目标、卡关风险、补救方案 |
 | 幕结构 | 标题、地点、涉及人物/怪物/线索、分支条件与后续幕、关键事件 |
-| 人物关系 | 关系标签、方向、依据与剧情意义 |
+| 人物关系 | 关系的**创建 / 修改 / 删除**；关系标签、方向、依据与剧情意义 |
+
+**编辑体验**：
+
+- **关系可增删改** —— 无需先选中文字也能主动创建实体；关系变更即时同步到个人关系图与核心人物关系图
+- **KP 修订永久保留** —— 对模型关系的修改或隐藏作为独立覆盖数据保存，重新分析后不会被覆盖回去
+- **编辑会话跨页面保留** —— 编辑模式、当前位置与未保存草稿在页面切换后不丢失；保存后退回最后修改的章节
+- **统一目录模型** —— Markdown 编辑器与书页共用同一套 H1–H6 层级规则，目录即时更新、可展开跳转
+- **自由浮动编辑窗** —— 资料编辑窗口可拖动、可缩放，编辑期间仍能翻页和打开其他资料窗
 
 **文字内容**（段落级编辑）：
 
@@ -199,7 +207,7 @@ lib/
 worker/index.ts         Cloudflare Worker 入口
 public/                 静态资源（pdf.js worker、turn.js、书页背景）
 tests/                  16 个测试文件（node:test）
-docs/                   32 份开发过程文档，见下节
+docs/                   81 份开发过程文档，见下节
 ```
 
 ---
@@ -213,22 +221,31 @@ docs/                   32 份开发过程文档，见下节
 **版本规划**
 - [`V0.1-开发计划.md`](docs/V0.1-开发计划.md) · [`V0.2-开发计划.md`](docs/V0.2-开发计划.md)
 
-**V0.3 / V0.7 / V0.8 系列**（完整链路示例）
-- [`V0.8-spec.md`](docs/V0.8-spec.md) · [`V0.8-plan.md`](docs/V0.8-plan.md) · [`V0.8-task.md`](docs/V0.8-task.md)
-- [`V0.8-handoff-dev.md`](docs/V0.8-handoff-dev.md) · [`V0.8-handoff-accept.md`](docs/V0.8-handoff-accept.md) · [`V0.8-checklist.md`](docs/V0.8-checklist.md)
+**各版本完整开发链路**（`spec` → `plan` → `task` → `handoff` → `checklist`）
 
-**V0.9 系列**（当前基线）
-- [`V0.9-spec.md`](docs/V0.9-spec.md) · [`V0.9-plan.md`](docs/V0.9-plan.md) · [`V0.9-task.md`](docs/V0.9-task.md)
-- [`V0.9-handoff-dev.md`](docs/V0.9-handoff-dev.md) · [`V0.9-handoff-accept.md`](docs/V0.9-handoff-accept.md) · [`V0.9-checklist.md`](docs/V0.9-checklist.md)
-- [`V0.9-series-summary.md`](docs/V0.9-series-summary.md) —— v0.9 系列总览与 v1.0 发布门槛
-- [`V0.9.0-release.md`](docs/V0.9.0-release.md) —— 版本发布记录
+| 版本 | 文档数 | 代表入口 |
+| --- | --- | --- |
+| V0.3 | 8 份 | [`V0.3-spec.md`](docs/V0.3-spec.md) · [`V0.3-accept-report.md`](docs/V0.3-accept-report.md) |
+| V0.4 | 13 份 | [`V0.4-spec.md`](docs/V0.4-spec.md) · [`V0.4-checklist.md`](docs/V0.4-checklist.md) |
+| V0.5 | 7 份 | [`V0.5-spec.md`](docs/V0.5-spec.md) · [`V0.5-checklist.md`](docs/V0.5-checklist.md) |
+| V0.6 | 9 份 | [`V0.6-spec.md`](docs/V0.6-spec.md) · [`V0.6-checklist.md`](docs/V0.6-checklist.md) |
+| V0.7 | 13 份 | [`V0.7-spec.md`](docs/V0.7-spec.md) · [`V0.7-checklist.md`](docs/V0.7-checklist.md) |
+| V0.8 | 8 份 | [`V0.8-spec.md`](docs/V0.8-spec.md) · [`V0.8-checklist.md`](docs/V0.8-checklist.md) |
+| V0.9 | 13 份 | [`V0.9-spec.md`](docs/V0.9-spec.md) · [`V0.9-series-summary.md`](docs/V0.9-series-summary.md) |
+| V1.0 | 5 份 | [`V1.0-spec.md`](docs/V1.0-spec.md) · [`V1.0-checklist.md`](docs/V1.0-checklist.md) |
 
-**补丁记录**（每个版本的问题定位与修复要求）
+**发布与补丁记录**（每个版本的问题定位、根因与修复要求）
+
+- 发布说明：[`V0.9.0-release.md`](docs/V0.9.0-release.md) · [`V1.0.0-release.md`](docs/V1.0.0-release.md)
+- V0.3–V0.7：[`V0.3.1`](docs/V0.3.1-fixes.md) · [`V0.4.1`](docs/V0.4.1-fixes.md) · [`V0.4.2`](docs/V0.4.2-task.md) · [`V0.5.1`](docs/V0.5.1-fixes.md) · [`V0.6.1`](docs/V0.6.1-fixes.md) · [`V0.6.2`](docs/V0.6.2-fixes.md) · [`V0.6.3`](docs/V0.6.3-fixes.md) · [`V0.7.1`](docs/V0.7.1-fixes.md) · [`V0.7.2`](docs/V0.7.2-fixes.md) · [`V0.7.3`](docs/V0.7.3-fixes.md)
 - V0.8：[`V0.8.1`](docs/V0.8.1-fixes.md) · [`V0.8.2`](docs/V0.8.2-fixes.md)
-- V0.9：[`V0.9.1`](docs/V0.9.1-fixes.md) · [`V0.9.2`](docs/V0.9.2-fixes.md) · [`V0.9.3`](docs/V0.9.3-fixes.md) · [`V0.9.4`](docs/V0.9.4-fixes.md) · [`V0.9.5`](docs/V0.9.5-fixes.md) · [`V0.9.6`](docs/V0.9.6-fixes.md)
+- V0.9：[`V0.9.1`](docs/V0.9.1-fixes.md) · [`V0.9.2`](docs/V0.9.2-fixes.md) · [`V0.9.3`](docs/V0.9.3-fixes.md) · [`V0.9.4`](docs/V0.9.4-fixes.md) · [`V0.9.5`](docs/V0.9.5-fixes.md)
+- V1.0：[`V1.0.1`](docs/V1.0.1-fixes.md) · [`V1.0.2`](docs/V1.0.2-fixes.md)
 
 **其他**
-- [`测试流程.md`](docs/测试流程.md)
+- [`测试流程.md`](docs/测试流程.md) —— 测试与发布检查清单
+- [`project-review-guide.md`](docs/project-review-guide.md) —— 项目评审指南
+- [`relationship-graph-report.md`](docs/relationship-graph-report.md) —— 关系图分析报告
 
 ---
 
@@ -253,4 +270,6 @@ docs/                   32 份开发过程文档，见下节
 
 ## 版本状态
 
-当前为 **v0.9.x 系列**（v1.0.0 候选版）。v1.0 的发布门槛见 [`docs/V0.9-series-summary.md`](docs/V0.9-series-summary.md)，需要真实模组的端到端验收，而非仅通过编译与单元测试。
+当前为 **v1.0.2**。v1.0.0 的发布门槛见 [`docs/V1.0-spec.md`](docs/V1.0-spec.md) —— 需要真实模组的端到端验收，而非仅通过编译与单元测试。
+
+版本演进路径：`V0.9.0 → V0.9.5 → V1.0.0 → V1.0.1 → V1.0.2`，完整过程记录在 `docs/`。
