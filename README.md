@@ -4,13 +4,34 @@
 
 一个把 COC 文字模组**实体化**的守秘人备本工作台：RAG 检索保证引文命中原文，分阶段 function calling 保证每一步都能人工介入，实体卡片与可编辑文档保证结论可改、可查、可复用。
 
-<!--
-截图区（建议放 4-5 张，横向排列，每张宽度约占 19%）：
-| 项目库 | 书页阅读 | 人物关系图 | 幕树分支 | 原文对照 |
--->
 <p align="center">
-  <em>[ 项目库 ]　[ 书页阅读 ]　[ 人物关系图 ]　[ 幕树分支 ]　[ 原文对照 ]</em><br />
-  <sub>截图占位 —— 待补充</sub>
+  <img src="docs/screenshots/01-home.png" alt="项目库 / 首页" width="100%" /><br />
+  <sub>项目库 / 首页 —— 导入模组与最近的备本项目</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/02-stages.png" alt="分阶段分析" width="100%" /><br />
+  <sub>分阶段分析 —— 七个阶段可单独重跑</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/03-confirm.png" alt="分阶段分析 · KP 确认" width="100%" /><br />
+  <sub>分阶段分析 · KP 确认 —— 暂停裁决后后台继续</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/04-book-reading.png" alt="书页阅读 · 时间地点" width="100%" /><br />
+  <sub>书页阅读 · 时间地点 —— 翻页阅读与目录定位</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/05-characters.png" alt="书页阅读 · 幕与线索" width="100%" /><br />
+  <sub>书页阅读 · 幕与线索 —— 线索来源与指向目标</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/06-act-tree.png" alt="幕树" width="100%" /><br />
+  <sub>幕树 —— 分支节点可拖动并保存布局</sub>
 </p>
 
 ---
