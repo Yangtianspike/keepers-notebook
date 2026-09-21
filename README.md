@@ -130,7 +130,7 @@ AI 产出只是**起点**。**无论是结构化实体还是文字内容，每�
 - 服务端**只做一件事**：转发模型请求（无状态、不落库）
 - 执行分析时，只有**你勾选章节**的文字会发送给你自己配置的模型服务商
 
-### 6. 不锁定模型服务商
+### 9. 不锁定模型服务商
 
 支持 **OpenAI 兼容 / Anthropic / Gemini / Ollama** 四种协议。切换协议时不会覆盖你手填的服务地址；若检测到「模型名与接口地址明显不匹配」会给出提示。
 
@@ -219,33 +219,12 @@ docs/                   81 份开发过程文档，见下节
 所有文档都在 `docs/`，按版本组织：
 
 **版本规划**
-- [`V0.1-开发计划.md`](docs/V0.1-开发计划.md) · [`V0.2-开发计划.md`](docs/V0.2-开发计划.md)
+项目采用「规划 / 开发 / 验收」三方分离：每个版本先写 spec → plan → task，
+再交接实现，最后由独立验收环节按 checklist 逐条核对并输出验收报告。
 
-**各版本完整开发链路**（`spec` → `plan` → `task` → `handoff` → `checklist`）
+已完成 9 个版本（V0.3 → V1.0），累计 81 份过程文档 + 16 个测试文件。
 
-| 版本 | 文档数 | 代表入口 |
-| --- | --- | --- |
-| V0.3 | 8 份 | [`V0.3-spec.md`](docs/V0.3-spec.md) · [`V0.3-accept-report.md`](docs/V0.3-accept-report.md) |
-| V0.4 | 13 份 | [`V0.4-spec.md`](docs/V0.4-spec.md) · [`V0.4-checklist.md`](docs/V0.4-checklist.md) |
-| V0.5 | 7 份 | [`V0.5-spec.md`](docs/V0.5-spec.md) · [`V0.5-checklist.md`](docs/V0.5-checklist.md) |
-| V0.6 | 9 份 | [`V0.6-spec.md`](docs/V0.6-spec.md) · [`V0.6-checklist.md`](docs/V0.6-checklist.md) |
-| V0.7 | 13 份 | [`V0.7-spec.md`](docs/V0.7-spec.md) · [`V0.7-checklist.md`](docs/V0.7-checklist.md) |
-| V0.8 | 8 份 | [`V0.8-spec.md`](docs/V0.8-spec.md) · [`V0.8-checklist.md`](docs/V0.8-checklist.md) |
-| V0.9 | 13 份 | [`V0.9-spec.md`](docs/V0.9-spec.md) · [`V0.9-series-summary.md`](docs/V0.9-series-summary.md) |
-| V1.0 | 5 份 | [`V1.0-spec.md`](docs/V1.0-spec.md) · [`V1.0-checklist.md`](docs/V1.0-checklist.md) |
-
-**发布与补丁记录**（每个版本的问题定位、根因与修复要求）
-
-- 发布说明：[`V0.9.0-release.md`](docs/V0.9.0-release.md) · [`V1.0.0-release.md`](docs/V1.0.0-release.md)
-- V0.3–V0.7：[`V0.3.1`](docs/V0.3.1-fixes.md) · [`V0.4.1`](docs/V0.4.1-fixes.md) · [`V0.4.2`](docs/V0.4.2-task.md) · [`V0.5.1`](docs/V0.5.1-fixes.md) · [`V0.6.1`](docs/V0.6.1-fixes.md) · [`V0.6.2`](docs/V0.6.2-fixes.md) · [`V0.6.3`](docs/V0.6.3-fixes.md) · [`V0.7.1`](docs/V0.7.1-fixes.md) · [`V0.7.2`](docs/V0.7.2-fixes.md) · [`V0.7.3`](docs/V0.7.3-fixes.md)
-- V0.8：[`V0.8.1`](docs/V0.8.1-fixes.md) · [`V0.8.2`](docs/V0.8.2-fixes.md)
-- V0.9：[`V0.9.1`](docs/V0.9.1-fixes.md) · [`V0.9.2`](docs/V0.9.2-fixes.md) · [`V0.9.3`](docs/V0.9.3-fixes.md) · [`V0.9.4`](docs/V0.9.4-fixes.md) · [`V0.9.5`](docs/V0.9.5-fixes.md)
-- V1.0：[`V1.0.1`](docs/V1.0.1-fixes.md) · [`V1.0.2`](docs/V1.0.2-fixes.md)
-
-**其他**
-- [`测试流程.md`](docs/测试流程.md) —— 测试与发布检查清单
-- [`project-review-guide.md`](docs/project-review-guide.md) —— 项目评审指南
-- [`relationship-graph-report.md`](docs/relationship-graph-report.md) —— 关系图分析报告
+📁 [文档索引 →](./docs/)
 
 ---
 
@@ -272,4 +251,3 @@ docs/                   81 份开发过程文档，见下节
 
 当前为 **v1.0.2**。v1.0.0 的发布门槛见 [`docs/V1.0-spec.md`](docs/V1.0-spec.md) —— 需要真实模组的端到端验收，而非仅通过编译与单元测试。
 
-版本演进路径：`V0.9.0 → V0.9.5 → V1.0.0 → V1.0.1 → V1.0.2`，完整过程记录在 `docs/`。
