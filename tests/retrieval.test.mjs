@@ -113,7 +113,7 @@ test("按相关度返回命中的文本块", () => {
 });
 
 test("结果按分数从高到低排序，且不超过请求条数", () => {
-  const results = bm25Search(chunks, "吸血鬼 纹身店 塞耶", 2);
+  const results = bm25Search(chunks, "访客 钟表店 塞耶", 2);
   assert.ok(results.length > 0);
   assert.ok(results.length <= 2);
   for (let index = 1; index < results.length; index += 1) {
@@ -158,7 +158,7 @@ test("人物列表为空时不会把 undefined 写进查询", () => {
 
 test("关系召回同时使用人物名与关系词，并且结果不重复", () => {
   const people = [
-    { id: "a", name: "多米克", aliases: ["格"], importance: "core" },
+    { id: "a", name: "多米克", aliases: ["多"], importance: "core" },
     { id: "b", name: "塞耶", aliases: [], importance: "important" },
     { id: "c", name: "无关人物", aliases: [], importance: "minor" },
   ];
