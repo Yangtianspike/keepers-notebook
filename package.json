@@ -12,6 +12,7 @@
     "test": "npm run build && node --test tests/*.test.mjs",
     "test:coverage": "npm run build && node --test --experimental-test-coverage tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

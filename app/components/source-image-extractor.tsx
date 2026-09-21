@@ -7,6 +7,7 @@ import {
   saveExtractedImages,
   type ExtractedImageRecord,
 } from "@/lib/storage";
+import { loadMammoth } from "@/lib/mammoth-browser";
 import type { Project } from "@/lib/types";
 
 type ExtractedAsset = ExtractedImageRecord & { url: string };
@@ -375,7 +376,7 @@ export function SourceImageExtractor({ project, sourceUrl }: { project: Project;
     try {
       if (project.fileType === "docx") {
         setStatus("正在读取 Word 文档中的内嵌图片…");
-        const mammoth = await import("mammoth/mammoth.browser");
+        const mammoth = await loadMammoth();
         const arrayBuffer = await fetch(sourceUrl).then((response) => response.arrayBuffer());
         const imageSources: Array<{ src: string; contentType: string }> = [];
         await mammoth.convertToHtml({ arrayBuffer }, {

@@ -1,3 +1,6 @@
+// 必须带 .ts 扩展名：本文件同时被 Node 原生 ESM（tests/*.mjs 直接 import）
+// 与 Vite 加载，Node 的 ESM 解析器要求显式扩展名。
+// tsconfig 已开启 allowImportingTsExtensions 以允许这种写法。
 import { parseMarkdown } from "./markdown.ts";
 
 export type NotebookOutlineSection = {

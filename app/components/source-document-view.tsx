@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { loadMammoth } from "@/lib/mammoth-browser";
 import type { Project } from "@/lib/types";
 
 export function SourceDocumentView({
@@ -22,7 +23,7 @@ export function SourceDocumentView({
     void fetch(sourceUrl)
       .then((response) => response.arrayBuffer())
       .then(async (arrayBuffer) => {
-        const mammoth = await import("mammoth/mammoth.browser");
+        const mammoth = await loadMammoth();
         const result = await mammoth.convertToHtml(
           { arrayBuffer },
           { convertImage: mammoth.images.imgElement(async (image) => ({

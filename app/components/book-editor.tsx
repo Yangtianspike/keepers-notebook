@@ -201,6 +201,7 @@ export function BookEditor({
     const anchor = selection?.anchorNode;
     if (!anchor || !editorRef.current.contains(anchor)) return -1;
     const anchorElement = anchor instanceof Element ? anchor : anchor.parentElement;
+    if (!anchorElement) return -1;
     const headings = Array.from(editorRef.current.querySelectorAll("h1,h2,h3,h4,h5,h6"));
     const headingIndex = headings.findLastIndex((heading) => (
       heading === anchorElement ||
